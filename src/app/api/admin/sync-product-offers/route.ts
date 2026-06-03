@@ -3,34 +3,55 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { fetchCongressusProductOfferId } from "@/lib/congressus";
 
-// GET — returns raw Congressus product data for the first synced product, for debugging
+// GET — probes Congressus API to debug product sync issues
 export async function GET() {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const product = await prisma.product.findFirst({
-    where: { congressusProductId: { not: null } },
-  });
-  if (!product) return NextResponse.json({ error: "No synced products found" }, { status: 404 });
-
   const BASE = "https://api.congressus.nl/v30";
-  const headers = {
+  const hdrs = {
     Authorization: `Bearer ${process.env.CONGRESSUS_API_TOKEN}`,
     "Content-Type": "application/json",
   };
 
-  // Fetch the product itself
-  const productRes = await fetch(`${BASE}/products/${product.congressusProductId}`, { headers });
-  const productData = productRes.ok ? await productRes.json() : { error: await productRes.text() };
+  // 1. Check token works — fetch SSS folder products
+  const folderRes = await fetch(`${BASE}/products?folder_id=5952&page_size=10`, { headers: hdrs });
+  const folderData = folderRes.ok ? await folderRes.json() : { error: await folderRes.text(), status: folderRes.status };
 
-  // Also try /product-offers?product_id=...
-  const offersRes = await fetch(`${BASE}/product-offers?product_id=${product.congressusProductId}&page_size=10`, { headers });
-  const offersData = offersRes.ok ? await offersRes.json() : { error: await offersRes.text(), status: offersRes.status };
+  // 2. Try creating a test product
+  const createRes = await fetch(`${BASE}/products`, {
+    method: "POST",
+    headers: hdrs,
+    body: JSON.stringify({ folder_id: 5952, name: "__debug_test__", price: 0.01 }),
+  });
+  const createData = createRes.ok ? await createRes.json() : { error: await createRes.text(), status: createRes.status };
+
+  // 3. If creation succeeded, fetch the created product back and check for offers
+  let fetchedProduct = null;
+  let offersData = null;
+  if (createRes.ok && createData.id) {
+    const pRes = await fetch(`${BASE}/products/${createData.id}`, { headers: hdrs });
+    fetchedProduct = pRes.ok ? await pRes.json() : { error: await pRes.text() };
+
+    const oRes = await fetch(`${BASE}/product-offers?product_id=${createData.id}&page_size=10`, { headers: hdrs });
+    offersData = oRes.ok ? await oRes.json() : { error: await oRes.text(), status: oRes.status };
+
+    // Clean up: delete the test product
+    await fetch(`${BASE}/products/${createData.id}`, { method: "DELETE", headers: hdrs });
+  }
+
+  // 4. Check all local products and their sync status
+  const localProducts = await prisma.product.findMany({
+    select: { id: true, name: true, congressusProductId: true, congressusProductOfferId: true },
+  });
 
   return NextResponse.json({
-    localProduct: { id: product.id, name: product.name, congressusProductId: product.congressusProductId },
-    congressusProduct: productData,
-    congressusOffers: offersData,
+    tokenEnvSet: !!process.env.CONGRESSUS_API_TOKEN,
+    folderProducts: folderData,
+    createAttempt: { status: createRes.status, body: createData },
+    fetchedProduct,
+    offersData,
+    localProducts,
   });
 }
 
