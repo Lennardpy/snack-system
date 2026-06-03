@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+// Always use the canonical public URL so the confirmation form and redirect
+// work correctly regardless of where the email link was opened (e.g. on a
+// phone that can't reach localhost).
+const BASE_URL =
+  process.env.BASE_URL ??
+  process.env.NEXT_PUBLIC_BASE_URL ??
+  "http://localhost:3000";
+
 // ── GET: show confirmation page ───────────────────────────────────────────────
 // Email clients (Gmail, Outlook, Apple Mail) pre-fetch links to scan for
 // malware. A GET that performs the action would link the card before the user
@@ -42,7 +50,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Token is valid — show confirmation page with a POST form
-  return new NextResponse(confirmPage(token), {
+  return new NextResponse(confirmPage(token, BASE_URL), {
     status: 200,
     headers: { "Content-Type": "text/html" },
   });
@@ -122,12 +130,12 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return NextResponse.redirect(new URL(`/shop/${session.token}`, req.url));
+  return NextResponse.redirect(`${BASE_URL}/shop/${session.token}`);
 }
 
 // ── HTML helpers ──────────────────────────────────────────────────────────────
 
-function confirmPage(token: string) {
+function confirmPage(token: string, baseUrl: string) {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -159,7 +167,7 @@ function confirmPage(token: string) {
     <div class="icon">🪪</div>
     <h1>Link your card</h1>
     <p>Click the button below to link your student card to your SSS account.<br/>You'll be taken straight to the shop.</p>
-    <form method="POST" action="/api/card/verify">
+    <form method="POST" action="${baseUrl}/api/card/verify">
       <input type="hidden" name="token" value="${token}" />
       <button type="submit">Yes, link my card</button>
     </form>
