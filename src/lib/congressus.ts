@@ -69,19 +69,46 @@ export async function fetchAllMembers(): Promise<CongressusMember[]> {
 }
 
 // ── Products ──────────────────────────────────────────────────────────────────
+//
+// How Congressus products work (discovered via API inspection):
+//   GET /products?folder_id=5952 returns "product offer" objects where:
+//     id             = product_offer_id  (these are always equal)
+//     product_id     = the underlying product entity ID
+//     product_offer_id = the ID used in invoice line items
+//   POST /products returns the created object including product_offer_id.
+//   GET /products/{id} does NOT work with offer IDs — returns 404.
+//   PATCH /products/{product_id} uses the underlying product_id (not the offer ID).
 
-export interface CongressusProductIds {
-  productId: number;
-  offerId: number | null; // null if Congressus didn't return an offer
+export interface CongressusFolderProduct {
+  id: number;               // same as product_offer_id
+  name: string;
+  price: number;            // in euros
+  product_id: number;       // underlying entity ID — used for PATCH
+  product_offer_id: number; // = id — used in invoice line items
+  is_archived: boolean;
+}
+
+// Fetch all products in the SSS folder from Congressus.
+export async function fetchSSSFolderProducts(): Promise<CongressusFolderProduct[]> {
+  const res = await fetch(
+    `${BASE}/products?folder_id=${SSS_FOLDER_ID}&page_size=200`,
+    { headers: headers() }
+  );
+  if (!res.ok) {
+    throw new Error(`Congressus folder fetch failed: ${res.status} ${await res.text()}`);
+  }
+  const data: { data: CongressusFolderProduct[] } = await res.json();
+  return data.data;
 }
 
 // Create a product in the SSS folder in Congressus.
-// Returns both the real product ID and the offer ID (needed for invoice line items).
-// NOTE: the POST response returns a stale ID — we verify by querying the folder.
+// Returns the product_offer_id — used directly in invoice line items.
+// The POST response includes product_offer_id directly; no secondary GET needed
+// (GET /products/{offer_id} returns 404 — the endpoint uses a different ID space).
 export async function createCongressusProduct(
   name: string,
   priceEuros: number
-): Promise<CongressusProductIds> {
+): Promise<{ offerId: number }> {
   const res = await fetch(`${BASE}/products`, {
     method: "POST",
     headers: headers(),
@@ -98,87 +125,33 @@ export async function createCongressusProduct(
     );
   }
 
-  const body = await res.json();
-
-  // The POST response may return a stale/wrong ID (known Congressus API bug).
-  // Verify by fetching the product directly; this also gives us the offer ID.
-  let productId: number | null = null;
-
-  if (body.id) {
-    const check = await fetch(`${BASE}/products/${body.id}`, { headers: headers() });
-    if (check.ok) {
-      productId = body.id as number;
-      const productData = await check.json();
-      const offerId = extractOfferId(productData);
-      return { productId, offerId };
-    }
-  }
-
-  // Fallback: search the SSS folder for a product matching the name
-  const folderRes = await fetch(
-    `${BASE}/products?folder_id=${SSS_FOLDER_ID}&page_size=200`,
-    { headers: headers() }
-  );
-  if (folderRes.ok) {
-    const folderData: { data: CongressusProductDetail[] } = await folderRes.json();
-    const matches = folderData.data.filter((p) => p.name === name);
-    if (matches.length > 0) {
-      const p = matches[matches.length - 1];
-      return { productId: p.id, offerId: extractOfferId(p) };
-    }
-  }
-
-  throw new Error(`Created Congressus product "${name}" but could not determine its ID`);
-}
-
-interface CongressusProductDetail {
-  id: number;
-  name: string;
-  // Congressus may nest the offer under different keys depending on API version
-  offer?: { id: number };
-  offers?: { id: number }[];
-  product_offer?: { id: number };
-  product_offers?: { id: number }[];
-  offer_id?: number;
-  product_offer_id?: number;
-}
-
-function extractOfferId(product: CongressusProductDetail): number | null {
-  if (product.offer?.id) return product.offer.id;
-  if (product.offers?.[0]?.id) return product.offers[0].id;
-  if (product.product_offer?.id) return product.product_offer.id;
-  if (product.product_offers?.[0]?.id) return product.product_offers[0].id;
-  if (product.offer_id) return product.offer_id;
-  if (product.product_offer_id) return product.product_offer_id;
-  return null;
-}
-
-// Fetch the offer ID for an already-existing Congressus product.
-// Used to backfill congressusProductOfferId for products created before this feature.
-export async function fetchCongressusProductOfferId(
-  productId: number
-): Promise<number | null> {
-  const res = await fetch(`${BASE}/products/${productId}`, { headers: headers() });
-  if (!res.ok) return null;
-  const data: CongressusProductDetail = await res.json();
-  return extractOfferId(data);
+  const body: { id: number; product_offer_id?: number } = await res.json();
+  // product_offer_id is returned directly in the POST response
+  const offerId = body.product_offer_id ?? body.id;
+  return { offerId };
 }
 
 // Update a product's name and/or price in Congressus.
+// congressusOfferId is the product_offer_id stored locally.
+// The PATCH endpoint uses the underlying product_id, so we look that up via the folder.
 export async function updateCongressusProduct(
-  congressusProductId: number,
+  congressusOfferId: number,
   name: string,
   priceEuros: number
 ): Promise<void> {
-  const res = await fetch(`${BASE}/products/${congressusProductId}`, {
+  const folderProducts = await fetchSSSFolderProducts();
+  const product = folderProducts.find((p) => p.product_offer_id === congressusOfferId);
+  if (!product) {
+    throw new Error(`Congressus product with offer ID ${congressusOfferId} not found in SSS folder`);
+  }
+  const res = await fetch(`${BASE}/products/${product.product_id}`, {
     method: "PATCH",
     headers: headers(),
     body: JSON.stringify({ name, price: priceEuros }),
   });
-
   if (!res.ok) {
     throw new Error(
-      `Congressus update product ${congressusProductId} failed: ${res.status} ${await res.text()}`
+      `Congressus update product ${product.product_id} failed: ${res.status} ${await res.text()}`
     );
   }
 }
@@ -194,14 +167,14 @@ const SSS_MENDIX_PRODUCT_OFFER_ID = parseInt(
 
 export interface InvoiceLineItem {
   productName: string;
-  quantity: number;       // number of units (e.g. 3 Colas)
-  unitCents: number;      // price per unit in cents
-  congressusOfferId: number | null; // null → will use fallback
+  quantity: number;          // number of units (e.g. 3 Colas)
+  unitCents: number;         // price per unit in cents
+  congressusOfferId: number | null; // null → falls back to SSS Mendix method
 }
 
 // Build the Congressus items array from SSS invoice lines.
 // For products with a known offer ID: one line per distinct product.
-// For products without an offer ID: falls back to "SSS purchases Mendix" at €0.01 × cents.
+// For products without an offer ID: accumulates into one fallback line.
 function buildCongressusItems(
   lines: InvoiceLineItem[],
   reference: string
@@ -211,7 +184,6 @@ function buildCongressusItems(
   let fallbackCents = 0;
 
   for (const line of lines) {
-    const lineCents = line.quantity * line.unitCents;
     if (line.congressusOfferId) {
       items.push({
         product_offer_id: line.congressusOfferId,
@@ -220,7 +192,7 @@ function buildCongressusItems(
         description: line.productName,
       });
     } else {
-      fallbackCents += lineCents;
+      fallbackCents += line.quantity * line.unitCents;
     }
   }
 
@@ -235,7 +207,6 @@ function buildCongressusItems(
 
   // items array must never be empty (Congressus crashes with 500)
   if (items.length === 0) {
-    // Should never happen if totalCents > 0, but guard anyway
     const totalCents = lines.reduce((s, l) => s + l.quantity * l.unitCents, 0);
     items.push({
       product_offer_id: SSS_MENDIX_PRODUCT_OFFER_ID,
@@ -251,8 +222,7 @@ function buildCongressusItems(
 // Create a monthly sale invoice in Congressus for a member.
 // Lines with a known Congressus offer ID appear as real products on the invoice.
 // Lines without one fall back to "SSS purchases Mendix" at €0.01 × cents.
-// Items MUST be included in the initial POST (the API crashes with 500 if
-// the items array is omitted, returning no useful error message).
+// Items MUST be included in the initial POST (the API crashes with 500 if omitted).
 export async function createSaleInvoice(
   memberId: number,
   lines: InvoiceLineItem[],

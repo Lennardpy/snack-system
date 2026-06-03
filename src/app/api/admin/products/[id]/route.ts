@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
-import { createCongressusProduct, updateCongressusProduct, fetchCongressusProductOfferId } from "@/lib/congressus";
+import { createCongressusProduct, updateCongressusProduct } from "@/lib/congressus";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdmin();
@@ -23,28 +23,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const newName = data.name ?? existing.name;
     const newPriceCents = data.price ?? existing.price;
 
-    if (product.congressusProductId) {
-      // Update existing Congressus product; also backfill offer ID if missing
-      updateCongressusProduct(product.congressusProductId, newName, newPriceCents / 100)
-        .then(async () => {
-          if (!product.congressusProductOfferId) {
-            const offerId = await fetchCongressusProductOfferId(product.congressusProductId!);
-            if (offerId) {
-              await prisma.product.update({ where: { id }, data: { congressusProductOfferId: offerId } });
-            }
-          }
-        })
-        .catch((err) => console.error(`Congressus update product ${product.congressusProductId} failed:`, err));
+    if (product.congressusProductOfferId) {
+      // Update existing Congressus product
+      updateCongressusProduct(product.congressusProductOfferId, newName, newPriceCents / 100)
+        .catch((err) => console.error(`Congressus update product ${product.congressusProductOfferId} failed:`, err));
     } else {
-      // Product doesn't have a Congressus ID yet — create it now
+      // Product doesn't have a Congressus offer ID yet — create it now
       createCongressusProduct(newName, newPriceCents / 100)
-        .then(({ productId: congressusProductId, offerId: congressusProductOfferId }) =>
+        .then(({ offerId }) =>
           prisma.product.update({
             where: { id },
-            data: {
-              congressusProductId,
-              ...(congressusProductOfferId ? { congressusProductOfferId } : {}),
-            },
+            data: { congressusProductId: offerId, congressusProductOfferId: offerId },
           })
         )
         .catch((err) => console.error("Congressus product create-on-update failed:", err));

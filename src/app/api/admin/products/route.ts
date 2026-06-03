@@ -31,13 +31,12 @@ export async function POST(req: NextRequest) {
 
   // Sync to Congressus — create a matching product in the SSS folder
   try {
-    const { productId: congressusProductId, offerId: congressusProductOfferId } =
-      await createCongressusProduct(name, price / 100);
+    const { offerId } = await createCongressusProduct(name, price / 100);
     const updated = await prisma.product.update({
       where: { id: product.id },
       data: {
-        congressusProductId,
-        ...(congressusProductOfferId ? { congressusProductOfferId } : {}),
+        congressusProductId: offerId,      // store offer ID in both fields
+        congressusProductOfferId: offerId,
       },
     });
     return NextResponse.json({ product: updated });
