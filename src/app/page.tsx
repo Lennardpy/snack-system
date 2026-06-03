@@ -151,7 +151,7 @@ export default function KioskPage() {
 
       {status === "idle" && (
         <>
-          <p className="text-3xl md:text-4xl font-semibold text-gray-300 tracking-wide mb-8">
+          <p className="text-7xl md:text-8xl font-bold text-gray-300 tracking-wide mb-8">
             Stress Snack System
           </p>
           <Image
