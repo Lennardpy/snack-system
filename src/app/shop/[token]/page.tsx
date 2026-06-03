@@ -216,11 +216,8 @@ export default function ShopPage() {
 
       <header className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
         <div className="flex items-center gap-3">
-          <Image src="/stress-logo.svg" alt="Stress" width={40} height={40} priority className="select-none" />
-          <div className="leading-tight">
-            <h1 className="text-xl font-bold">SSS</h1>
-            <span className="text-gray-500 text-xs">Stress Snack System</span>
-          </div>
+          <Image src="/stress-logo.svg" alt="Stress" width={44} height={44} priority className="select-none" />
+          <h1 className="text-2xl font-bold">Stress Snack System</h1>
         </div>
         <div className="flex items-center gap-5">
           {memberFirstName && (
@@ -251,17 +248,22 @@ export default function ShopPage() {
                     return (
                       <div
                         key={p.id}
-                        className={`relative flex flex-col overflow-hidden rounded-2xl bg-gray-800 ring-2 transition-colors ${
-                          qty > 0 ? "ring-green-500" : "ring-transparent"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => updateCart(p.id, 1)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            updateCart(p.id, 1);
+                          }
+                        }}
+                        aria-label={`Add one ${p.name}`}
+                        className={`relative flex cursor-pointer flex-col overflow-hidden rounded-2xl bg-gray-800 ring-2 transition-all hover:brightness-110 active:scale-[0.98] ${
+                          qty > 0 ? "ring-green-500" : "ring-transparent hover:ring-gray-600"
                         }`}
                       >
-                        {/* Image — tapping it adds one (quick add) */}
-                        <button
-                          type="button"
-                          onClick={() => updateCart(p.id, 1)}
-                          aria-label={`Add one ${p.name}`}
-                          className="relative h-24 w-full flex-shrink-0 bg-gray-700 transition-opacity active:opacity-80 cursor-pointer"
-                        >
+                        {/* Image */}
+                        <div className="relative h-24 w-full flex-shrink-0 bg-gray-700">
                           {p.imageUrl ? (
                             <Image src={p.imageUrl} alt={p.name} fill className="object-cover" />
                           ) : (
@@ -272,7 +274,7 @@ export default function ShopPage() {
                               {qty}
                             </div>
                           )}
-                        </button>
+                        </div>
 
                         <div className="flex flex-1 flex-col gap-3 p-3">
                           <div className="min-w-0">
@@ -280,13 +282,14 @@ export default function ShopPage() {
                             <p className="text-base text-gray-400">€{(p.price / 100).toFixed(2)}</p>
                           </div>
 
-                          {/* Large +/- stepper */}
+                          {/* Large +/- stepper. Buttons stop propagation so they
+                              don't also trigger the card's add-on-click. */}
                           <div className="mt-auto">
                             {qty > 0 ? (
                               <div className="flex items-center justify-between gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => updateCart(p.id, -1)}
+                                  onClick={(e) => { e.stopPropagation(); updateCart(p.id, -1); }}
                                   aria-label={`Remove one ${p.name}`}
                                   className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-700 text-3xl font-bold leading-none text-white transition-colors hover:bg-red-600 active:scale-90"
                                 >
@@ -295,7 +298,7 @@ export default function ShopPage() {
                                 <span className="min-w-8 text-center text-2xl font-bold tabular-nums">{qty}</span>
                                 <button
                                   type="button"
-                                  onClick={() => updateCart(p.id, 1)}
+                                  onClick={(e) => { e.stopPropagation(); updateCart(p.id, 1); }}
                                   aria-label={`Add one ${p.name}`}
                                   className="flex h-12 w-12 items-center justify-center rounded-xl bg-green-600 text-3xl font-bold leading-none text-white transition-colors hover:bg-green-500 active:scale-90"
                                 >
@@ -303,13 +306,9 @@ export default function ShopPage() {
                                 </button>
                               </div>
                             ) : (
-                              <button
-                                type="button"
-                                onClick={() => updateCart(p.id, 1)}
-                                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gray-700 text-lg font-semibold text-white transition-colors hover:bg-green-600 active:scale-95"
-                              >
+                              <div className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gray-700 text-lg font-semibold text-white">
                                 <span className="text-2xl leading-none">+</span> Add
-                              </button>
+                              </div>
                             )}
                           </div>
                         </div>
