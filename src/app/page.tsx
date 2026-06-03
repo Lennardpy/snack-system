@@ -150,21 +150,26 @@ export default function KioskPage() {
     <main className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center select-none px-6">
 
       {status === "idle" && (
-        <>
-          <p className="text-7xl md:text-8xl font-bold text-gray-300 tracking-wide mb-8">
-            Stress Snack System
-          </p>
+        <div className="relative flex flex-col items-center text-center">
+          {/* Soft glow behind the logo */}
+          <div className="pointer-events-none absolute -top-16 h-80 w-80 rounded-full bg-blue-600/20 blur-3xl" />
+
           <Image
             src="/stress-logo.svg"
             alt="Stress"
-            width={220}
-            height={220}
+            width={200}
+            height={200}
             priority
-            className="mb-12 select-none animate-pulse"
+            className="relative mb-8 select-none animate-float drop-shadow-2xl"
           />
-          <h1 className="text-7xl md:text-8xl font-bold mb-6">Tap your card</h1>
+
+          <h2 className="mb-20 bg-gradient-to-b from-white to-gray-500 bg-clip-text text-5xl md:text-6xl font-extrabold tracking-tight text-transparent">
+            Stress Snack System
+          </h2>
+
+          <h1 className="text-7xl md:text-8xl font-bold mb-5">Tap your card</h1>
           <p className="text-gray-400 text-2xl md:text-3xl">Hold your student card against the reader</p>
-        </>
+        </div>
       )}
 
       {status === "scanning" && (
