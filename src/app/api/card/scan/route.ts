@@ -1,9 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
-// Called when a USB HID card reader fires a UID string at the kiosk page.
+// Called when the card reader fires a UID string at the kiosk page.
 // Returns a short-lived shop token the browser navigates to.
+//
+// SECURITY: This endpoint is necessarily unauthenticated (the kiosk is a public
+// web page). Card UIDs are not secrets, so we (a) never echo member data back,
+// and (b) rate-limit per IP to make UID brute-forcing impractical. For stronger
+// protection, restrict this route to the kiosk's IP at the network layer.
 export async function POST(req: NextRequest) {
+  // Generous limit: a real kiosk does a handful of scans per minute; this only
+  // bites an attacker hammering UIDs.
+  if (!rateLimit(`scan:${clientIp(req)}`, 30, 60_000)) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+
   const { uid } = await req.json();
 
   if (!uid || typeof uid !== "string") {
@@ -33,5 +45,7 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return NextResponse.json({ token: session.token, memberName: card.member.firstName });
+  // Return only the opaque session token — never member data. The shop page
+  // loads what it needs via the token-scoped /api/cart endpoint.
+  return NextResponse.json({ token: session.token });
 }

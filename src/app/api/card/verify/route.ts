@@ -124,13 +124,24 @@ export async function POST(req: NextRequest) {
 
   // Show success — do NOT create a shop session here. The shop is only
   // accessible by physically tapping the card at the kiosk.
-  return new NextResponse(successPage(member.firstName), {
+  return new NextResponse(successPage(escapeHtml(member.firstName)), {
     status: 200,
     headers: { "Content-Type": "text/html" },
   });
 }
 
 // ── HTML helpers ──────────────────────────────────────────────────────────────
+
+// Escape any value interpolated into an HTML response to prevent injection.
+// Member names come from Congressus and are not guaranteed to be markup-safe.
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 function confirmPage(token: string, baseUrl: string) {
   return `<!DOCTYPE html>
@@ -164,8 +175,8 @@ function confirmPage(token: string, baseUrl: string) {
     <div class="icon">🪪</div>
     <h1>Link your card</h1>
     <p>Click the button below to link your student card to your SSS account.<br/>You'll be taken straight to the shop.</p>
-    <form method="POST" action="${baseUrl}/api/card/verify">
-      <input type="hidden" name="token" value="${token}" />
+    <form method="POST" action="${escapeHtml(baseUrl)}/api/card/verify">
+      <input type="hidden" name="token" value="${escapeHtml(token)}" />
       <button type="submit">Yes, link my card</button>
     </form>
     <p class="footer">SSS &mdash; Stress Snack System</p>
