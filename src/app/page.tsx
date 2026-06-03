@@ -150,7 +150,7 @@ export default function KioskPage() {
 
       {status === "idle" && (
         <>
-          <div className="text-8xl mb-8">🪪</div>
+          <div className="text-8xl mb-8">💳</div>
           <h1 className="text-4xl font-bold mb-4">Tap your card</h1>
           <p className="text-gray-400 text-xl">Hold your student card against the reader</p>
         </>
