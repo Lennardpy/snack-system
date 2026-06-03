@@ -224,72 +224,96 @@ export default function ShopPage() {
         </div>
         <div className="flex items-center gap-5">
           {memberFirstName && (
-            <span className="text-lg">
+            <span className="text-xl">
               Hi, <strong className="font-semibold">{memberFirstName}</strong> 👋
             </span>
           )}
-          <button onClick={() => router.push("/")} className="text-gray-400 hover:text-white text-sm">
+          <button
+            onClick={() => router.push("/")}
+            className="flex items-center gap-2 rounded-xl border border-gray-700 bg-gray-800 px-5 py-2.5 text-base font-semibold text-gray-200 transition-colors hover:bg-gray-700 active:scale-95"
+          >
             ← Back
           </button>
         </div>
       </header>
 
-      <div className="flex h-[calc(100vh-64px)]">
+      <div className="flex h-[calc(100vh-72px)]">
         {/* Product grid */}
         <div className="flex-1 overflow-y-auto p-6">
           {categories.map((cat) => (
             <div key={cat} className="mb-8">
-              <h2 className="text-lg font-semibold text-gray-400 mb-3 uppercase tracking-wider">{cat}</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              <h2 className="text-base font-semibold text-gray-400 mb-3 uppercase tracking-wider">{cat}</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                 {products
                   .filter((p) => p.category.name === cat)
                   .map((p) => {
                     const qty = qtyFor(p.id);
                     return (
-                      <button
+                      <div
                         key={p.id}
-                        type="button"
-                        onClick={() => updateCart(p.id, 1)}
-                        className={`relative text-left bg-gray-800 rounded-xl overflow-hidden flex flex-col transition-all active:scale-[0.97] hover:bg-gray-700 cursor-pointer ring-2 ${
-                          qty > 0 ? "ring-green-500" : "ring-transparent hover:ring-gray-600"
+                        className={`relative flex flex-col overflow-hidden rounded-2xl bg-gray-800 ring-2 transition-colors ${
+                          qty > 0 ? "ring-green-500" : "ring-transparent"
                         }`}
                       >
-                        {/* Product image */}
-                        <div className="relative w-full h-28 bg-gray-700 flex-shrink-0">
+                        {/* Image — tapping it adds one (quick add) */}
+                        <button
+                          type="button"
+                          onClick={() => updateCart(p.id, 1)}
+                          aria-label={`Add one ${p.name}`}
+                          className="relative h-24 w-full flex-shrink-0 bg-gray-700 transition-opacity active:opacity-80 cursor-pointer"
+                        >
                           {p.imageUrl ? (
                             <Image src={p.imageUrl} alt={p.name} fill className="object-cover" />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center text-3xl">🍫</div>
+                            <div className="flex h-full w-full items-center justify-center text-4xl">🍫</div>
                           )}
-                          {/* Quantity badge */}
                           {qty > 0 && (
-                            <div className="absolute top-2 right-2 min-w-7 h-7 px-1.5 rounded-full bg-green-500 text-white text-sm font-bold flex items-center justify-center shadow-lg">
+                            <div className="absolute right-2 top-2 flex h-8 min-w-8 items-center justify-center rounded-full bg-green-500 px-2 text-base font-bold text-white shadow-lg">
                               {qty}
                             </div>
                           )}
-                        </div>
-                        <div className="p-3 flex items-center justify-between gap-2 flex-1">
+                        </button>
+
+                        <div className="flex flex-1 flex-col gap-3 p-3">
                           <div className="min-w-0">
-                            <p className="font-medium truncate">{p.name}</p>
-                            <p className="text-gray-400 text-sm">€{(p.price / 100).toFixed(2)}</p>
+                            <p className="truncate text-lg font-semibold">{p.name}</p>
+                            <p className="text-base text-gray-400">€{(p.price / 100).toFixed(2)}</p>
                           </div>
-                          {/* Remove control — only when in cart */}
-                          {qty > 0 && (
-                            <span
-                              role="button"
-                              tabIndex={-1}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                updateCart(p.id, -1);
-                              }}
-                              className="flex-shrink-0 w-9 h-9 rounded-full bg-gray-700 hover:bg-red-600 active:scale-90 transition-all flex items-center justify-center text-lg font-bold"
-                              aria-label={`Remove one ${p.name}`}
-                            >
-                              −
-                            </span>
-                          )}
+
+                          {/* Large +/- stepper */}
+                          <div className="mt-auto">
+                            {qty > 0 ? (
+                              <div className="flex items-center justify-between gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => updateCart(p.id, -1)}
+                                  aria-label={`Remove one ${p.name}`}
+                                  className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-700 text-3xl font-bold leading-none text-white transition-colors hover:bg-red-600 active:scale-90"
+                                >
+                                  −
+                                </button>
+                                <span className="min-w-8 text-center text-2xl font-bold tabular-nums">{qty}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => updateCart(p.id, 1)}
+                                  aria-label={`Add one ${p.name}`}
+                                  className="flex h-12 w-12 items-center justify-center rounded-xl bg-green-600 text-3xl font-bold leading-none text-white transition-colors hover:bg-green-500 active:scale-90"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => updateCart(p.id, 1)}
+                                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gray-700 text-lg font-semibold text-white transition-colors hover:bg-green-600 active:scale-95"
+                              >
+                                <span className="text-2xl leading-none">+</span> Add
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
               </div>
@@ -298,31 +322,43 @@ export default function ShopPage() {
         </div>
 
         {/* Cart sidebar */}
-        <aside className="w-72 border-l border-gray-800 flex flex-col p-5">
-          <h2 className="text-lg font-semibold mb-4">Your cart</h2>
+        <aside className="flex w-96 flex-col border-l border-gray-800 p-6">
+          <h2 className="mb-5 text-2xl font-bold">Your cart</h2>
 
           {!invoice || invoice.lines.length === 0 ? (
-            <p className="text-gray-500 text-sm">Nothing added yet.</p>
+            <div className="flex flex-1 flex-col items-center justify-center text-center text-gray-500">
+              <div className="mb-3 text-5xl">🛒</div>
+              <p className="text-lg">Nothing added yet.</p>
+              <p className="text-sm">Tap a product to add it.</p>
+            </div>
           ) : (
-            <ul className="flex-1 space-y-2 overflow-y-auto">
+            <ul className="flex-1 space-y-3 overflow-y-auto pr-1">
               {invoice.lines.map((l) => (
-                <li key={l.productId} className="flex justify-between text-sm">
-                  <span>{l.quantity}× {l.product.name}</span>
-                  <span className="text-gray-400">€{((l.quantity * l.unitCents) / 100).toFixed(2)}</span>
+                <li
+                  key={l.productId}
+                  className="flex items-center gap-3 rounded-xl bg-gray-800/70 p-3"
+                >
+                  <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-green-600 text-xl font-bold text-white tabular-nums">
+                    {l.quantity}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-lg font-medium">{l.product.name}</span>
+                  <span className="text-lg font-semibold text-gray-200 tabular-nums">
+                    €{((l.quantity * l.unitCents) / 100).toFixed(2)}
+                  </span>
                 </li>
               ))}
             </ul>
           )}
 
-          <div className="mt-auto pt-4 border-t border-gray-800">
-            <div className="flex justify-between font-bold text-lg mb-4">
-              <span>Total</span>
-              <span>€{((invoice?.totalCents ?? 0) / 100).toFixed(2)}</span>
+          <div className="mt-4 border-t border-gray-800 pt-5">
+            <div className="mb-5 flex items-baseline justify-between">
+              <span className="text-xl font-semibold text-gray-300">Total</span>
+              <span className="text-4xl font-bold tabular-nums">€{((invoice?.totalCents ?? 0) / 100).toFixed(2)}</span>
             </div>
             <button
               onClick={confirm}
               disabled={confirming || !invoice || invoice.lines.length === 0}
-              className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white font-bold py-3 rounded-xl transition-colors"
+              className="w-full rounded-2xl bg-green-600 py-5 text-2xl font-bold text-white transition-colors hover:bg-green-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {confirming ? "Confirming…" : "Confirm order"}
             </button>
