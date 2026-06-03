@@ -30,6 +30,7 @@ export default function ShopPage() {
   const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [memberFirstName, setMemberFirstName] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -38,6 +39,7 @@ export default function ShopPage() {
     if (res.status === 401) { router.push("/"); return; }
     const data = await res.json();
     setInvoice(data.invoice);
+    if (data.memberFirstName) setMemberFirstName(data.memberFirstName);
   }, [token, router]);
 
   useEffect(() => {
@@ -97,9 +99,16 @@ export default function ShopPage() {
             <span className="text-gray-500 text-xs">Stress Snack System</span>
           </div>
         </div>
-        <button onClick={() => router.push("/")} className="text-gray-400 hover:text-white text-sm">
-          ← Back
-        </button>
+        <div className="flex items-center gap-5">
+          {memberFirstName && (
+            <span className="text-lg">
+              Hi, <strong className="font-semibold">{memberFirstName}</strong> 👋
+            </span>
+          )}
+          <button onClick={() => router.push("/")} className="text-gray-400 hover:text-white text-sm">
+            ← Back
+          </button>
+        </div>
       </header>
 
       <div className="flex h-[calc(100vh-64px)]">

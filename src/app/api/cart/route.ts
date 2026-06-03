@@ -15,13 +15,21 @@ export async function GET(req: NextRequest) {
   const session = await resolveSession(token);
   if (!session) return NextResponse.json({ error: "Session expired" }, { status: 401 });
 
-  const invoice = await prisma.saleInvoice.findFirst({
-    where: { memberId: session.memberId, status: "CONCEPT" },
-    include: { lines: { include: { product: true } } },
-    orderBy: { createdAt: "desc" },
-  });
+  const [member, invoice] = await Promise.all([
+    prisma.member.findUnique({
+      where: { id: session.memberId },
+      select: { firstName: true },
+    }),
+    prisma.saleInvoice.findFirst({
+      where: { memberId: session.memberId, status: "CONCEPT" },
+      include: { lines: { include: { product: true } } },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
 
-  return NextResponse.json({ invoice });
+  // Member name is only returned here, behind a valid shop-session token —
+  // never from the unauthenticated /api/card/scan endpoint.
+  return NextResponse.json({ invoice, memberFirstName: member?.firstName ?? null });
 }
 
 // POST /api/cart — add or remove a product
