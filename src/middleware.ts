@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 // Routes that require an active session cookie
-const PROTECTED_PREFIXES = ["/admin", "/api/admin", "/api/account"];
+const PROTECTED_PREFIXES = ["/admin", "/api/admin"];
 
 // Admin pages that are publicly accessible
 const PUBLIC_ADMIN = ["/admin/login"];
@@ -31,5 +31,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/api/admin/:path*", "/api/account/:path*"],
+  matcher: ["/admin/:path*", "/api/admin/:path*"],
 };
