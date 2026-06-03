@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+// ── GET: show confirmation page ───────────────────────────────────────────────
+// Email clients (Gmail, Outlook, Apple Mail) pre-fetch links to scan for
+// malware. A GET that performs the action would link the card before the user
+// ever clicks. Instead the GET only validates the token and renders a
+// confirmation page; the card is only linked on the subsequent POST.
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("token");
 
   if (!token) {
-    return new NextResponse("Missing token", { status: 400 });
+    return new NextResponse(errorPage("Missing token."), {
+      status: 400,
+      headers: { "Content-Type": "text/html" },
+    });
   }
 
   const registration = await prisma.cardRegistration.findUnique({
@@ -20,10 +28,54 @@ export async function GET(req: NextRequest) {
   }
 
   if (registration.expiresAt < new Date()) {
-    return new NextResponse(errorPage("This link has expired. Please tap your card again."), {
+    return new NextResponse(
+      errorPage("This link has expired. Please tap your card again to request a new one."),
+      { status: 400, headers: { "Content-Type": "text/html" } }
+    );
+  }
+
+  if (registration.usedAt) {
+    return new NextResponse(errorPage("This link has already been used."), {
       status: 400,
       headers: { "Content-Type": "text/html" },
     });
+  }
+
+  // Token is valid — show confirmation page with a POST form
+  return new NextResponse(confirmPage(token), {
+    status: 200,
+    headers: { "Content-Type": "text/html" },
+  });
+}
+
+// ── POST: link the card ───────────────────────────────────────────────────────
+export async function POST(req: NextRequest) {
+  const formData = await req.formData();
+  const token = formData.get("token") as string | null;
+
+  if (!token) {
+    return new NextResponse(errorPage("Missing token."), {
+      status: 400,
+      headers: { "Content-Type": "text/html" },
+    });
+  }
+
+  const registration = await prisma.cardRegistration.findUnique({
+    where: { token },
+  });
+
+  if (!registration) {
+    return new NextResponse(errorPage("Invalid or expired link."), {
+      status: 400,
+      headers: { "Content-Type": "text/html" },
+    });
+  }
+
+  if (registration.expiresAt < new Date()) {
+    return new NextResponse(
+      errorPage("This link has expired. Please tap your card again to request a new one."),
+      { status: 400, headers: { "Content-Type": "text/html" } }
+    );
   }
 
   if (registration.usedAt) {
@@ -45,22 +97,21 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // Check card isn't already registered (race condition guard)
+  // Guard against race condition: card registered between email send and click
   const existingCard = await prisma.card.findUnique({ where: { uid: registration.uid } });
   if (existingCard) {
     await prisma.cardRegistration.update({ where: { token }, data: { usedAt: new Date() } });
-    return new NextResponse(errorPage("Card already registered to an account."), {
+    return new NextResponse(errorPage("This card is already registered to an account."), {
       status: 409,
       headers: { "Content-Type": "text/html" },
     });
   }
 
-  // Link the card
+  // Link the card and mark registration as used
   await prisma.card.create({
     data: { uid: registration.uid, memberId: member.id, name: "Student card" },
   });
 
-  // Mark registration as used
   await prisma.cardRegistration.update({ where: { token }, data: { usedAt: new Date() } });
 
   // Create a shop session so they land straight in the shop
@@ -71,29 +122,79 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  // Redirect straight into the shop
-  return NextResponse.redirect(
-    new URL(`/shop/${session.token}`, req.url)
-  );
+  return NextResponse.redirect(new URL(`/shop/${session.token}`, req.url));
+}
+
+// ── HTML helpers ──────────────────────────────────────────────────────────────
+
+function confirmPage(token: string) {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <title>Link your card — SSS</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: sans-serif; background: #030712; color: white;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; margin: 0; padding: 24px;
+    }
+    .box { text-align: center; max-width: 420px; width: 100%; }
+    .icon { font-size: 4rem; margin-bottom: 16px; }
+    h1 { font-size: 1.5rem; margin: 0 0 8px; }
+    p { color: #9ca3af; margin: 0 0 32px; line-height: 1.5; }
+    button {
+      background: #16a34a; color: white; border: none; cursor: pointer;
+      padding: 14px 32px; border-radius: 12px; font-size: 1rem;
+      font-weight: bold; width: 100%; transition: background 0.15s;
+    }
+    button:hover { background: #15803d; }
+    button:active { background: #166534; }
+    .footer { color: #374151; font-size: 12px; margin-top: 32px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="icon">🪪</div>
+    <h1>Link your card</h1>
+    <p>Click the button below to link your student card to your SSS account.<br/>You'll be taken straight to the shop.</p>
+    <form method="POST" action="/api/card/verify">
+      <input type="hidden" name="token" value="${token}" />
+      <button type="submit">Yes, link my card</button>
+    </form>
+    <p class="footer">SSS &mdash; Stress Snack System</p>
+  </div>
+</body>
+</html>`;
 }
 
 function errorPage(message: string) {
   return `<!DOCTYPE html>
 <html>
-<head><title>Card registration</title>
-<style>
-  body { font-family: sans-serif; background: #030712; color: white; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-  .box { text-align: center; max-width: 400px; padding: 32px; }
-  h1 { font-size: 1.5rem; margin-bottom: 12px; color: #f87171; }
-  a { color: #60a5fa; }
-</style>
+<head>
+  <title>Card registration — SSS</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: sans-serif; background: #030712; color: white;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; margin: 0; padding: 24px;
+    }
+    .box { text-align: center; max-width: 400px; width: 100%; }
+    h1 { font-size: 1.5rem; margin-bottom: 12px; color: #f87171; }
+    p { color: #9ca3af; }
+    a { color: #60a5fa; }
+    .footer { color: #374151; font-size: 12px; margin-top: 32px; }
+  </style>
 </head>
 <body>
   <div class="box">
     <h1>❌ Registration failed</h1>
     <p>${message}</p>
-    <p><a href="/">Go back to SSS</a></p>
-    <p style="color: #6b7280; font-size: 12px; margin-top: 32px;">SSS &mdash; Stress Snack System</p>
+    <p><a href="/">Back to SSS</a></p>
+    <p class="footer">SSS &mdash; Stress Snack System</p>
   </div>
 </body>
 </html>`;
