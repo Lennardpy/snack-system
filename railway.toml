@@ -1,8 +1,8 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npx prisma generate && npx prisma migrate deploy && npm run build"
+buildCommand = "npx prisma generate && npm run build"
 
 [deploy]
-startCommand = "npm start"
+startCommand = "npx prisma migrate deploy && npm start"
 healthcheckPath = "/api/health"
 restartPolicyType = "on_failure"
