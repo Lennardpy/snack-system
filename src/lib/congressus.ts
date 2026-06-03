@@ -138,61 +138,51 @@ export async function updateCongressusProduct(
 
 // ── Sale Invoices (export) ────────────────────────────────────────────────────
 
-export interface CreateSaleInvoiceItem {
-  name: string;
-  description?: string;
-  quantity: number;
-  price: number;           // euros (decimal), e.g. 1.50
-  productOfferId: number;  // Congressus product_offer_id (required by API)
-}
+// Congressus product used for SSS snack exports.
+// "SSS purchases Mendix" — €0.01 per unit, quantity = total cents.
+// This matches the export method used by the original Mendix system.
+const SSS_MENDIX_PRODUCT_ID = parseInt(
+  process.env.CONGRESSUS_PRODUCT_OFFER_ID ?? "118389",
+  10
+);
 
-// Create a sale invoice in Congressus for a member and add line items to it.
-// This is what triggers the SEPA deduction.
+// Create a monthly sale invoice in Congressus for a member.
+// Uses the "SSS purchases Mendix" product at €0.01 × total_cents — the same
+// method as the original Mendix kiosk system.
+// Items MUST be included in the initial POST (the API crashes with 500 if
+// the items array is omitted, returning no useful error message).
 export async function createSaleInvoice(
   memberId: number,
-  items: CreateSaleInvoiceItem[],
-  reference?: string
+  totalCents: number,
+  reference: string
 ): Promise<number> {
-  // Step 1: create the invoice header
-  const invoiceRes = await fetch(`${BASE}/sale-invoices`, {
+  const res = await fetch(`${BASE}/sale-invoices`, {
     method: "POST",
     headers: headers(),
     body: JSON.stringify({
       member_id: memberId,
       invoice_date: new Date().toISOString().split("T")[0],
+      invoice_workflow_id: 605,
       use_direct_debit: true,
-      invoice_reference: reference ?? "",
+      invoice_reference: reference,
+      // items is required — omitting it causes a 500 instead of a validation error
+      items: [
+        {
+          product_offer_id: SSS_MENDIX_PRODUCT_ID,
+          quantity: totalCents,
+          price: 0.01,
+          description: reference,
+        },
+      ],
     }),
   });
 
-  if (!invoiceRes.ok) {
+  if (!res.ok) {
     throw new Error(
-      `Congressus create invoice failed for member ${memberId}: ${invoiceRes.status} ${await invoiceRes.text()}`
+      `Congressus create invoice failed for member ${memberId}: ${res.status} ${await res.text()}`
     );
   }
 
-  const invoice: { id: number } = await invoiceRes.json();
-
-  // Step 2: add each line item
-  for (const item of items) {
-    const itemRes = await fetch(`${BASE}/sale-invoices/${invoice.id}/items`, {
-      method: "POST",
-      headers: headers(),
-      body: JSON.stringify({
-        product_offer_id: item.productOfferId,
-        name: item.name,
-        description: item.description ?? "",
-        quantity: item.quantity,
-        price: item.price,
-      }),
-    });
-
-    if (!itemRes.ok) {
-      throw new Error(
-        `Congressus add item to invoice ${invoice.id} failed: ${itemRes.status} ${await itemRes.text()}`
-      );
-    }
-  }
-
+  const invoice: { id: number } = await res.json();
   return invoice.id;
 }

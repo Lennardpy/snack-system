@@ -1,14 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { createSaleInvoice, CreateSaleInvoiceItem } from "@/lib/congressus";
+import { createSaleInvoice } from "@/lib/congressus";
 import { requireAdmin } from "@/lib/auth";
-
-// Fallback product offer ID if a product has no congressusProductId yet.
-// "SSS Snack Purchase" — the generic product created in the SSS folder.
-const FALLBACK_PRODUCT_OFFER_ID = parseInt(
-  process.env.CONGRESSUS_PRODUCT_OFFER_ID ?? "118387",
-  10
-);
 
 export async function POST() {
   const admin = await requireAdmin();
@@ -36,7 +29,7 @@ export async function POST() {
     memberName: string;
     yearMonth: string; // "2026-01"
     invoiceIds: string[];
-    items: CreateSaleInvoiceItem[];
+    totalCents: number;
   };
 
   const groups = new Map<string, Group>();
@@ -55,25 +48,13 @@ export async function POST() {
         memberName: `${invoice.member.firstName} ${invoice.member.lastName}`,
         yearMonth,
         invoiceIds: [],
-        items: [],
+        totalCents: 0,
       });
     }
 
     const group = groups.get(key)!;
     group.invoiceIds.push(invoice.id);
-
-    // Date label used in the item description: "3 jan", "14 mrt", etc.
-    const dateLabel = d.toLocaleDateString("nl-NL", { day: "numeric", month: "short" });
-
-    for (const line of invoice.lines) {
-      group.items.push({
-        name: line.product.name,
-        description: dateLabel,
-        quantity: line.quantity,
-        price: line.unitCents / 100,
-        productOfferId: line.product.congressusProductId ?? FALLBACK_PRODUCT_OFFER_ID,
-      });
-    }
+    group.totalCents += invoice.totalCents;
   }
 
   // ── Export each group as one Congressus invoice ────────────────────────────
@@ -97,7 +78,7 @@ export async function POST() {
     try {
       const congressusInvoiceId = await createSaleInvoice(
         group.congressusMemberId,
-        group.items,
+        group.totalCents,
         reference
       );
 
