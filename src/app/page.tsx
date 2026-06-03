@@ -151,36 +151,39 @@ export default function KioskPage() {
 
       {status === "idle" && (
         <>
+          <p className="text-3xl md:text-4xl font-semibold text-gray-300 tracking-wide mb-8">
+            Stress Snack System
+          </p>
           <Image
             src="/stress-logo.svg"
             alt="Stress"
-            width={160}
-            height={160}
+            width={220}
+            height={220}
             priority
-            className="mb-10 select-none animate-pulse"
+            className="mb-12 select-none animate-pulse"
           />
-          <h1 className="text-5xl font-bold mb-4">Tap your card</h1>
-          <p className="text-gray-400 text-xl">Hold your student card against the reader</p>
+          <h1 className="text-7xl md:text-8xl font-bold mb-6">Tap your card</h1>
+          <p className="text-gray-400 text-2xl md:text-3xl">Hold your student card against the reader</p>
         </>
       )}
 
       {status === "scanning" && (
         <>
-          <div className="text-8xl mb-8 animate-pulse">⏳</div>
-          <h1 className="text-4xl font-bold">Checking card…</h1>
+          <div className="text-9xl mb-10 animate-pulse">⏳</div>
+          <h1 className="text-5xl md:text-6xl font-bold">Checking card…</h1>
         </>
       )}
 
       {status === "unregistered" && (
-        <div className="w-full max-w-sm text-center">
-          <div className="text-7xl mb-6">❓</div>
-          <h1 className="text-2xl font-bold mb-2">Card not registered</h1>
-          <p className="text-gray-400 mb-8">
+        <div className="w-full max-w-lg text-center">
+          <div className="text-8xl mb-8">❓</div>
+          <h1 className="text-4xl md:text-5xl font-bold mb-4">Card not registered</h1>
+          <p className="text-gray-400 text-xl md:text-2xl mb-10">
             Enter your association email to link this card to your SSS account.
             We&apos;ll send you a one-click verification link.
           </p>
-          {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
-          <form onSubmit={submitEmail} className="space-y-3">
+          {error && <p className="text-red-400 text-lg mb-4">{error}</p>}
+          <form onSubmit={submitEmail} className="space-y-4">
             <input
               type="email"
               placeholder="your@email.com"
@@ -188,19 +191,19 @@ export default function KioskPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
               autoFocus
-              className="w-full bg-gray-800 rounded-xl px-4 py-3 text-center text-lg outline-none focus:ring-2 focus:ring-blue-500 select-text"
+              className="w-full bg-gray-800 rounded-xl px-5 py-4 text-center text-2xl outline-none focus:ring-2 focus:ring-blue-500 select-text"
             />
             <button
               type="submit"
               disabled={submitting}
-              className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-40 font-bold py-3 rounded-xl transition-colors"
+              className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-40 font-bold text-2xl py-4 rounded-xl transition-colors"
             >
               {submitting ? "Sending…" : "Send verification email"}
             </button>
           </form>
           <button
             onClick={() => setStatus("idle")}
-            className="mt-4 text-gray-500 hover:text-gray-300 text-sm"
+            className="mt-6 text-gray-500 hover:text-gray-300 text-lg"
           >
             Cancel
           </button>
@@ -209,21 +212,21 @@ export default function KioskPage() {
 
       {status === "email_sent" && (
         <>
-          <div className="text-7xl mb-6">📧</div>
-          <h1 className="text-2xl font-bold mb-2">Check your email</h1>
-          <p className="text-gray-400 text-center max-w-xs">
+          <div className="text-8xl mb-8">📧</div>
+          <h1 className="text-4xl md:text-5xl font-bold mb-4">Check your email</h1>
+          <p className="text-gray-400 text-center text-xl md:text-2xl max-w-xl">
             A verification link has been sent to <strong className="text-white">{email}</strong>.
             Click it to link your card and open the shop.
           </p>
-          <p className="text-gray-600 text-sm mt-6">Returning to kiosk in a moment…</p>
+          <p className="text-gray-600 text-lg mt-8">Returning to kiosk in a moment…</p>
         </>
       )}
 
       {status === "error" && (
         <>
-          <div className="text-8xl mb-8">❌</div>
-          <h1 className="text-3xl font-bold mb-4 text-red-400">Something went wrong</h1>
-          <p className="text-gray-400">{error}</p>
+          <div className="text-9xl mb-10">❌</div>
+          <h1 className="text-5xl md:text-6xl font-bold mb-6 text-red-400">Something went wrong</h1>
+          <p className="text-gray-400 text-2xl md:text-3xl">{error}</p>
         </>
       )}
 
