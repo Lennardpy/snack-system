@@ -31,12 +31,16 @@ export async function POST(req: NextRequest) {
 
   // Sync to Congressus — create a matching product in the SSS folder
   try {
-    const congressusProductId = await createCongressusProduct(name, price / 100);
-    await prisma.product.update({
+    const { productId: congressusProductId, offerId: congressusProductOfferId } =
+      await createCongressusProduct(name, price / 100);
+    const updated = await prisma.product.update({
       where: { id: product.id },
-      data: { congressusProductId },
+      data: {
+        congressusProductId,
+        ...(congressusProductOfferId ? { congressusProductOfferId } : {}),
+      },
     });
-    return NextResponse.json({ product: { ...product, congressusProductId } });
+    return NextResponse.json({ product: updated });
   } catch (err) {
     // Don't fail the create — product exists locally, Congressus sync can be retried
     console.error("Congressus product sync failed:", err);
