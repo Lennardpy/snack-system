@@ -24,3 +24,37 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ── Kiosk welcome animation ─────────────────────────────────────────────── */
+
+/* Name pops in from nothing with a spring-like overshoot */
+@keyframes welcome-pop {
+  0%   { opacity: 0; transform: scale(0.3) translateY(20px); }
+  55%  { opacity: 1; transform: scale(1.12) translateY(0); }
+  72%  { transform: scale(0.96); }
+  86%  { transform: scale(1.03); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* Logo gently rises and fades in */
+@keyframes welcome-logo {
+  0%   { opacity: 0; transform: translateY(-24px) scale(0.85); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Subtitle fades up slightly after the name */
+@keyframes welcome-sub {
+  0%   { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* Whole overlay fades + scales away to reveal the shop */
+@keyframes welcome-exit {
+  0%   { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.08); visibility: hidden; }
+}
+
+.animate-welcome-pop  { animation: welcome-pop 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-welcome-logo { animation: welcome-logo 0.6s ease-out both; }
+.animate-welcome-sub  { animation: welcome-sub 0.5s ease-out 0.45s both; }
+.animate-welcome-exit { animation: welcome-exit 0.5s ease-in forwards; }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 
@@ -33,6 +33,22 @@ export default function ShopPage() {
   const [memberFirstName, setMemberFirstName] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [done, setDone] = useState(false);
+
+  // Welcome animation: name pops out, then the overlay clears to reveal the shop.
+  const [showWelcome, setShowWelcome] = useState(true);
+  const [welcomeExiting, setWelcomeExiting] = useState(false);
+  const welcomeStarted = useRef(false);
+
+  useEffect(() => {
+    if (!memberFirstName || welcomeStarted.current) return;
+    welcomeStarted.current = true;
+    const exitTimer = setTimeout(() => setWelcomeExiting(true), 1900); // start fade-out
+    const doneTimer = setTimeout(() => setShowWelcome(false), 2400);   // remove overlay
+    return () => {
+      clearTimeout(exitTimer);
+      clearTimeout(doneTimer);
+    };
+  }, [memberFirstName]);
 
   const fetchCart = useCallback(async () => {
     const res = await fetch(`/api/cart?token=${token}`);
@@ -91,6 +107,34 @@ export default function ShopPage() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
+      {/* Welcome overlay — name pops out, then clears to reveal the shop */}
+      {showWelcome && (
+        <div
+          className={`fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-950 px-6 text-center ${
+            welcomeExiting ? "animate-welcome-exit" : ""
+          }`}
+        >
+          <Image
+            src="/stress-logo.svg"
+            alt="Stress"
+            width={120}
+            height={120}
+            priority
+            className="mb-10 select-none animate-welcome-logo"
+          />
+          {memberFirstName && (
+            <>
+              <h1 className="text-6xl font-extrabold animate-welcome-pop">
+                Welcome, {memberFirstName}!
+              </h1>
+              <p className="mt-5 text-xl text-gray-400 animate-welcome-sub">
+                Let&apos;s grab some snacks 🍫
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
       <header className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
         <div className="flex items-center gap-3">
           <Image src="/stress-logo.svg" alt="Stress" width={40} height={40} priority className="select-none" />
