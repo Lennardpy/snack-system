@@ -72,12 +72,14 @@ export async function fetchAllMembers(): Promise<CongressusMember[]> {
 //
 // How Congressus products work (discovered via API inspection):
 //   GET /products?folder_id=5952 returns "product offer" objects where:
-//     id             = product_offer_id  (these are always equal)
-//     product_id     = the underlying product entity ID
-//     product_offer_id = the ID used in invoice line items
-//   POST /products returns the created object including product_offer_id.
-//   GET /products/{id} does NOT work with offer IDs — returns 404.
-//   PATCH /products/{product_id} uses the underlying product_id (not the offer ID).
+//     id             = product_offer_id  (always equal, 118xxx range)
+//     product_id     = underlying product entity ID (110xxx range)
+//     product_offer_id = the ID used as product_offer_id in invoice items
+//   POST /products returns `id` and `product_offer_id` in the 110xxx range —
+//     these are the product entity IDs, NOT the invoice offer IDs. The real
+//     offer ID (118xxx) only appears once the product is in the folder listing.
+//   GET /products/{id} does NOT work — returns 404 for any ID.
+//   PATCH /products/{product_id} uses the product_id from the folder listing.
 
 export interface CongressusFolderProduct {
   id: number;               // same as product_offer_id
@@ -102,9 +104,12 @@ export async function fetchSSSFolderProducts(): Promise<CongressusFolderProduct[
 }
 
 // Create a product in the SSS folder in Congressus.
-// Returns the product_offer_id — used directly in invoice line items.
-// The POST response includes product_offer_id directly; no secondary GET needed
-// (GET /products/{offer_id} returns 404 — the endpoint uses a different ID space).
+// Returns the product_offer_id — used in invoice line items.
+//
+// NOTE: The POST response returns `id`/`product_offer_id` in the product-entity
+// ID range (110xxx), but the actual offer ID used in invoices is a different
+// value (118xxx range) that only appears in the folder listing. We therefore
+// query the folder after creation to get the real offer ID.
 export async function createCongressusProduct(
   name: string,
   priceEuros: number
@@ -125,10 +130,22 @@ export async function createCongressusProduct(
     );
   }
 
-  const body: { id: number; product_offer_id?: number } = await res.json();
-  // product_offer_id is returned directly in the POST response
-  const offerId = body.product_offer_id ?? body.id;
-  return { offerId };
+  // Query the folder to get the real product_offer_id (the POST response id
+  // is the product entity ID, not the offer ID used in invoices).
+  const folderProducts = await fetchSSSFolderProducts();
+  const matches = folderProducts.filter((p) => p.name === name && !p.is_archived);
+
+  if (matches.length === 0) {
+    throw new Error(
+      `Created Congressus product "${name}" but could not find it in SSS folder`
+    );
+  }
+
+  // Use the highest offer ID (most recently created)
+  const best = matches.reduce((a, b) =>
+    a.product_offer_id > b.product_offer_id ? a : b
+  );
+  return { offerId: best.product_offer_id };
 }
 
 // Update a product's name and/or price in Congressus.
