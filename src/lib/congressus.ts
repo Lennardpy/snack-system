@@ -91,7 +91,7 @@ export interface CongressusFolderProduct {
 // Fetch all products in the SSS folder from Congressus.
 export async function fetchSSSFolderProducts(): Promise<CongressusFolderProduct[]> {
   const res = await fetch(
-    `${BASE}/products?folder_id=${SSS_FOLDER_ID}&page_size=200`,
+    `${BASE}/products?folder_id=${SSS_FOLDER_ID}&page_size=100`,
     { headers: headers() }
   );
   if (!res.ok) {
