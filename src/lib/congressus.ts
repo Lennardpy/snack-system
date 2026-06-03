@@ -67,6 +67,16 @@ export async function fetchAllMembers(): Promise<CongressusMember[]> {
 
 // ── Sale Invoices (export) ────────────────────────────────────────────────────
 
+// The Congressus API requires every invoice line item to reference a
+// product_offer_id. We use a single generic "SSS Snack Purchase" product
+// created in the SSS product folder (id 5952). The item name and price
+// carry the actual purchase detail; the product is just a required anchor.
+// Product ID: 118387 ("SSS Snack Purchase" in folder "SSS")
+const SSS_PRODUCT_OFFER_ID =
+  process.env.CONGRESSUS_PRODUCT_OFFER_ID
+    ? parseInt(process.env.CONGRESSUS_PRODUCT_OFFER_ID, 10)
+    : 118387;
+
 export interface CreateSaleInvoiceItem {
   name: string;
   description?: string;
@@ -81,7 +91,7 @@ export async function createSaleInvoice(
   items: CreateSaleInvoiceItem[],
   reference?: string
 ): Promise<number> {
-  // Step 1: create the invoice
+  // Step 1: create the invoice header
   const invoiceRes = await fetch(`${BASE}/sale-invoices`, {
     method: "POST",
     headers: headers(),
@@ -102,11 +112,14 @@ export async function createSaleInvoice(
   const invoice: { id: number } = await invoiceRes.json();
 
   // Step 2: add each line item
+  // product_offer_id is required by the Congressus API. We use a single
+  // generic SSS product; name + price on the item carry the real detail.
   for (const item of items) {
     const itemRes = await fetch(`${BASE}/sale-invoices/${invoice.id}/items`, {
       method: "POST",
       headers: headers(),
       body: JSON.stringify({
+        product_offer_id: SSS_PRODUCT_OFFER_ID,
         name: item.name,
         description: item.description ?? "",
         quantity: item.quantity,
