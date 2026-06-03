@@ -1,65 +1,250 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+
+type Status = "idle" | "scanning" | "unregistered" | "email_sent" | "error";
+type WsStatus = "connecting" | "connected" | "disconnected";
+
+// Arago Card Reader WebSocket server (runs on the kiosk laptop).
+// Default port matches the reader's default (3000).
+// Override via NEXT_PUBLIC_CARD_READER_WS_URL if the reader uses a different port.
+const WS_URL =
+  process.env.NEXT_PUBLIC_CARD_READER_WS_URL ?? "ws://localhost:3000";
+const RECONNECT_DELAY_MS = 3000;
+
+export default function KioskPage() {
+  const router = useRouter();
+  const [status, setStatus] = useState<Status>("idle");
+  const [wsStatus, setWsStatus] = useState<WsStatus>("connecting");
+  const [error, setError] = useState("");
+  const [email, setEmail] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const scannedUidRef = useRef("");
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Keep a stable ref to the latest handleScan so the WebSocket closure
+  // never captures a stale version.
+  const handleScanRef = useRef<(uid: string) => void>(() => {});
+
+  async function handleScan(uid: string) {
+    setStatus("scanning");
+    setError("");
+
+    try {
+      const res = await fetch("/api/card/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        router.push(`/shop/${data.token}`);
+        return;
+      }
+
+      if (data.error === "Card not registered") {
+        scannedUidRef.current = uid;
+        setStatus("unregistered");
+      } else {
+        setError(data.error ?? "Unknown error");
+        setStatus("error");
+        setTimeout(() => setStatus("idle"), 4000);
+      }
+    } catch {
+      setError("Connection error");
+      setStatus("error");
+      setTimeout(() => setStatus("idle"), 4000);
+    }
+  }
+
+  // Always keep the ref pointing at the latest closure
+  handleScanRef.current = handleScan;
+
+  useEffect(() => {
+    let destroyed = false;
+
+    function connect() {
+      if (destroyed) return;
+
+      setWsStatus("connecting");
+
+      const ws = new WebSocket(WS_URL);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (!destroyed) setWsStatus("connected");
+      };
+
+      ws.onmessage = (event: MessageEvent) => {
+        if (destroyed) return;
+        try {
+          const data = JSON.parse(event.data as string) as {
+            uid?: string;
+            atqa?: string;
+            sak?: string;
+          };
+          if (data.uid) {
+            handleScanRef.current(data.uid);
+          }
+        } catch {
+          // ignore malformed messages
+        }
+      };
+
+      ws.onclose = () => {
+        if (destroyed) return;
+        setWsStatus("disconnected");
+        // Auto-reconnect after a short delay
+        reconnectTimer.current = setTimeout(connect, RECONNECT_DELAY_MS);
+      };
+
+      ws.onerror = () => {
+        // onclose fires after onerror — reconnect is handled there
+        ws.close();
+      };
+    }
+
+    connect();
+
+    return () => {
+      destroyed = true;
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      if (wsRef.current) {
+        wsRef.current.onclose = null; // suppress reconnect on unmount
+        wsRef.current.close();
+      }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function submitEmail(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    setError("");
+
+    const res = await fetch("/api/card/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uid: scannedUidRef.current, email }),
+    });
+
+    const data = await res.json();
+    setSubmitting(false);
+
+    if (res.ok) {
+      setStatus("email_sent");
+      setTimeout(() => {
+        setStatus("idle");
+        setEmail("");
+      }, 8000);
+    } else {
+      setError(data.error ?? "Failed to send email");
+    }
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <main className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center select-none px-6">
+
+      {status === "idle" && (
+        <>
+          <div className="text-8xl mb-8">🪪</div>
+          <h1 className="text-4xl font-bold mb-4">Tap your card</h1>
+          <p className="text-gray-400 text-xl">Hold your student card against the reader</p>
+        </>
+      )}
+
+      {status === "scanning" && (
+        <>
+          <div className="text-8xl mb-8 animate-pulse">⏳</div>
+          <h1 className="text-4xl font-bold">Checking card…</h1>
+        </>
+      )}
+
+      {status === "unregistered" && (
+        <div className="w-full max-w-sm text-center">
+          <div className="text-7xl mb-6">❓</div>
+          <h1 className="text-2xl font-bold mb-2">Card not registered</h1>
+          <p className="text-gray-400 mb-8">
+            Enter your association email to link this card to your SSS account.
+            We&apos;ll send you a one-click verification link.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+          {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+          <form onSubmit={submitEmail} className="space-y-3">
+            <input
+              type="email"
+              placeholder="your@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoFocus
+              className="w-full bg-gray-800 rounded-xl px-4 py-3 text-center text-lg outline-none focus:ring-2 focus:ring-blue-500 select-text"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-40 font-bold py-3 rounded-xl transition-colors"
+            >
+              {submitting ? "Sending…" : "Send verification email"}
+            </button>
+          </form>
+          <button
+            onClick={() => setStatus("idle")}
+            className="mt-4 text-gray-500 hover:text-gray-300 text-sm"
           >
-            Documentation
-          </a>
+            Cancel
+          </button>
         </div>
-      </main>
-    </div>
+      )}
+
+      {status === "email_sent" && (
+        <>
+          <div className="text-7xl mb-6">📧</div>
+          <h1 className="text-2xl font-bold mb-2">Check your email</h1>
+          <p className="text-gray-400 text-center max-w-xs">
+            A verification link has been sent to <strong className="text-white">{email}</strong>.
+            Click it to link your card and open the shop.
+          </p>
+          <p className="text-gray-600 text-sm mt-6">Returning to kiosk in a moment…</p>
+        </>
+      )}
+
+      {status === "error" && (
+        <>
+          <div className="text-8xl mb-8">❌</div>
+          <h1 className="text-3xl font-bold mb-4 text-red-400">Something went wrong</h1>
+          <p className="text-gray-400">{error}</p>
+        </>
+      )}
+
+      {/* WebSocket connection status indicator */}
+      <div className="absolute top-4 right-4 flex items-center gap-2 text-xs">
+        <span
+          className={`w-2 h-2 rounded-full ${
+            wsStatus === "connected"
+              ? "bg-green-500"
+              : wsStatus === "connecting"
+              ? "bg-yellow-500 animate-pulse"
+              : "bg-red-500"
+          }`}
+        />
+        <span className="text-gray-600">
+          {wsStatus === "connected"
+            ? "Reader connected"
+            : wsStatus === "connecting"
+            ? "Connecting…"
+            : "Reader offline"}
+        </span>
+      </div>
+
+      <p className="absolute bottom-6 left-1/2 -translate-x-1/2 text-gray-700 text-xs whitespace-nowrap">
+        SSS &mdash; Stress Snack System
+      </p>
+      <a href="/admin" className="absolute bottom-6 right-6 text-gray-700 text-sm hover:text-gray-500">
+        Admin
+      </a>
+    </main>
   );
 }

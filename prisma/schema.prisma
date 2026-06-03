@@ -1,0 +1,136 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = []
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Member {
+  id           String   @id @default(cuid())
+  congressusId Int      @unique
+  firstName    String
+  lastName     String
+  email        String   @unique
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  cards    Card[]
+  invoices SaleInvoice[]
+  user     User?
+}
+
+model Card {
+  id        String   @id @default(cuid())
+  uid       String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+
+  memberId String
+  member   Member @relation(fields: [memberId], references: [id])
+}
+
+// Short-lived session created on card scan — expires after 10 min
+model ShopSession {
+  id        String   @id @default(cuid())
+  token     String   @unique @default(cuid())
+  memberId  String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model ProductCategory {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  sortOrder Int       @default(0)
+  products  Product[]
+}
+
+model Product {
+  id        String          @id @default(cuid())
+  name      String
+  price     Int // cents
+  stock     Int? // null = unlimited
+  published Boolean         @default(false)
+  archived  Boolean         @default(false)
+  imageUrl  String?
+  sortOrder Int             @default(0)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  categoryId   String
+  category     ProductCategory @relation(fields: [categoryId], references: [id])
+  invoiceLines InvoiceLine[]
+}
+
+model SaleInvoice {
+  id          String        @id @default(cuid())
+  status      InvoiceStatus @default(CONCEPT)
+  totalCents  Int           @default(0)
+  exportedAt          DateTime?
+  congressusInvoiceId Int?
+  createdAt           DateTime      @default(now())
+  confirmedAt DateTime?
+
+  memberId String
+  member   Member        @relation(fields: [memberId], references: [id])
+  lines    InvoiceLine[]
+}
+
+model InvoiceLine {
+  id        String @id @default(cuid())
+  quantity  Int
+  unitCents Int // price locked at time of purchase
+
+  invoiceId String
+  invoice   SaleInvoice @relation(fields: [invoiceId], references: [id])
+  productId String
+  product   Product     @relation(fields: [productId], references: [id])
+}
+
+enum InvoiceStatus {
+  CONCEPT
+  CONFIRMED
+  EXPORTED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(ADMIN)
+  createdAt    DateTime @default(now())
+
+  memberId String? @unique
+  member   Member? @relation(fields: [memberId], references: [id])
+
+  sessions Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique @default(cuid())
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Pending card registration — created when an unregistered card is scanned
+model CardRegistration {
+  id        String   @id @default(cuid())
+  uid       String   // the card UID being registered
+  token     String   @unique @default(cuid())
+  email     String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+}
+
+enum UserRole {
+  ADMIN
+  MEMBER
+}
