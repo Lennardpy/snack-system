@@ -90,13 +90,16 @@ export default function ShopPage() {
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <header className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
-        <h1 className="text-2xl font-bold">SSS</h1>
-        <div className="flex items-center gap-4">
-          <span className="text-gray-600 text-xs hidden sm:block">Stress Snack System</span>
-          <button onClick={() => router.push("/")} className="text-gray-400 hover:text-white text-sm">
-            ← Back
-          </button>
+        <div className="flex items-center gap-3">
+          <Image src="/stress-logo.svg" alt="Stress" width={40} height={40} priority className="select-none" />
+          <div className="leading-tight">
+            <h1 className="text-xl font-bold">SSS</h1>
+            <span className="text-gray-500 text-xs">Stress Snack System</span>
+          </div>
         </div>
+        <button onClick={() => router.push("/")} className="text-gray-400 hover:text-white text-sm">
+          ← Back
+        </button>
       </header>
 
       <div className="flex h-[calc(100vh-64px)]">
@@ -111,9 +114,13 @@ export default function ShopPage() {
                   .map((p) => {
                     const qty = qtyFor(p.id);
                     return (
-                      <div
+                      <button
                         key={p.id}
-                        className="bg-gray-800 rounded-xl overflow-hidden flex flex-col"
+                        type="button"
+                        onClick={() => updateCart(p.id, 1)}
+                        className={`relative text-left bg-gray-800 rounded-xl overflow-hidden flex flex-col transition-all active:scale-[0.97] hover:bg-gray-700 cursor-pointer ring-2 ${
+                          qty > 0 ? "ring-green-500" : "ring-transparent hover:ring-gray-600"
+                        }`}
                       >
                         {/* Product image */}
                         <div className="relative w-full h-28 bg-gray-700 flex-shrink-0">
@@ -122,30 +129,35 @@ export default function ShopPage() {
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-3xl">🍫</div>
                           )}
+                          {/* Quantity badge */}
+                          {qty > 0 && (
+                            <div className="absolute top-2 right-2 min-w-7 h-7 px-1.5 rounded-full bg-green-500 text-white text-sm font-bold flex items-center justify-center shadow-lg">
+                              {qty}
+                            </div>
+                          )}
                         </div>
-                        <div className="p-3 flex flex-col gap-3 flex-1">
-                        <div>
-                          <p className="font-medium">{p.name}</p>
-                          <p className="text-gray-400 text-sm">€{(p.price / 100).toFixed(2)}</p>
+                        <div className="p-3 flex items-center justify-between gap-2 flex-1">
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{p.name}</p>
+                            <p className="text-gray-400 text-sm">€{(p.price / 100).toFixed(2)}</p>
+                          </div>
+                          {/* Remove control — only when in cart */}
+                          {qty > 0 && (
+                            <span
+                              role="button"
+                              tabIndex={-1}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateCart(p.id, -1);
+                              }}
+                              className="flex-shrink-0 w-9 h-9 rounded-full bg-gray-700 hover:bg-red-600 active:scale-90 transition-all flex items-center justify-center text-lg font-bold"
+                              aria-label={`Remove one ${p.name}`}
+                            >
+                              −
+                            </span>
+                          )}
                         </div>
-                        <div className="flex items-center gap-2 mt-auto">
-                          <button
-                            onClick={() => updateCart(p.id, -1)}
-                            disabled={qty === 0}
-                            className="w-8 h-8 rounded-full bg-gray-700 hover:bg-gray-600 disabled:opacity-30 font-bold"
-                          >
-                            −
-                          </button>
-                          <span className="w-6 text-center font-bold">{qty}</span>
-                          <button
-                            onClick={() => updateCart(p.id, 1)}
-                            className="w-8 h-8 rounded-full bg-gray-700 hover:bg-gray-600 font-bold"
-                          >
-                            +
-                          </button>
-                        </div>
-                        </div>
-                      </div>
+                      </button>
                     );
                   })}
               </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 
 type Status = "idle" | "scanning" | "unregistered" | "email_sent" | "error";
 type WsStatus = "connecting" | "connected" | "disconnected";
@@ -150,8 +151,15 @@ export default function KioskPage() {
 
       {status === "idle" && (
         <>
-          <div className="text-8xl mb-8">💳</div>
-          <h1 className="text-4xl font-bold mb-4">Tap your card</h1>
+          <Image
+            src="/stress-logo.svg"
+            alt="Stress"
+            width={160}
+            height={160}
+            priority
+            className="mb-10 select-none animate-pulse"
+          />
+          <h1 className="text-5xl font-bold mb-4">Tap your card</h1>
           <p className="text-gray-400 text-xl">Hold your student card against the reader</p>
         </>
       )}
