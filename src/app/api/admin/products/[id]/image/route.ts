@@ -4,6 +4,10 @@ import { requireAdmin } from "@/lib/auth";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 
+// Images are stored on a Railway persistent volume mounted at /data.
+// Served via GET /api/images/products/[filename].
+const UPLOAD_DIR = process.env.UPLOAD_DIR ?? "/data/uploads/products";
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -24,12 +28,11 @@ export async function POST(
 
   const ext = file.name.split(".").pop() ?? "jpg";
   const filename = `${id}.${ext}`;
-  const uploadDir = path.join(process.cwd(), "public", "uploads", "products");
 
-  await mkdir(uploadDir, { recursive: true });
-  await writeFile(path.join(uploadDir, filename), Buffer.from(await file.arrayBuffer()));
+  await mkdir(UPLOAD_DIR, { recursive: true });
+  await writeFile(path.join(UPLOAD_DIR, filename), Buffer.from(await file.arrayBuffer()));
 
-  const imageUrl = `/uploads/products/${filename}`;
+  const imageUrl = `/api/images/products/${filename}`;
 
   await prisma.product.update({ where: { id }, data: { imageUrl } });
 

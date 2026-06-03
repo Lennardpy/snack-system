@@ -2,9 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   images: {
-    // Allow locally uploaded product images served from /public/uploads/
+    // Product images served via /api/images/products/[filename] (Railway volume)
     localPatterns: [
-      { pathname: "/uploads/**" },
+      { pathname: "/api/images/**" },
     ],
   },
 };
