@@ -8,7 +8,12 @@ function getResend() {
 }
 
 const FROM = process.env.EMAIL_FROM ?? "SSS <noreply@51vo.nl>";
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
+// BASE_URL is server-only (no NEXT_PUBLIC_ prefix) so it is never baked into
+// the client bundle and always reflects the runtime environment variable.
+const BASE_URL =
+  process.env.BASE_URL ??
+  process.env.NEXT_PUBLIC_BASE_URL ??
+  "http://localhost:3000";
 
 export async function sendCardVerificationEmail(
   to: string,
