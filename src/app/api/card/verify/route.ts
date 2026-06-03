@@ -122,15 +122,12 @@ export async function POST(req: NextRequest) {
 
   await prisma.cardRegistration.update({ where: { token }, data: { usedAt: new Date() } });
 
-  // Create a shop session so they land straight in the shop
-  const session = await prisma.shopSession.create({
-    data: {
-      memberId: member.id,
-      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-    },
+  // Show success — do NOT create a shop session here. The shop is only
+  // accessible by physically tapping the card at the kiosk.
+  return new NextResponse(successPage(member.firstName), {
+    status: 200,
+    headers: { "Content-Type": "text/html" },
   });
-
-  return NextResponse.redirect(`${BASE_URL}/shop/${session.token}`);
 }
 
 // ── HTML helpers ──────────────────────────────────────────────────────────────
@@ -171,6 +168,38 @@ function confirmPage(token: string, baseUrl: string) {
       <input type="hidden" name="token" value="${token}" />
       <button type="submit">Yes, link my card</button>
     </form>
+    <p class="footer">SSS &mdash; Stress Snack System</p>
+  </div>
+</body>
+</html>`;
+}
+
+function successPage(firstName: string) {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <title>Card linked — SSS</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: sans-serif; background: #030712; color: white;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; margin: 0; padding: 24px;
+    }
+    .box { text-align: center; max-width: 420px; width: 100%; }
+    .icon { font-size: 4rem; margin-bottom: 16px; }
+    h1 { font-size: 1.5rem; margin: 0 0 8px; }
+    p { color: #9ca3af; margin: 0 0 12px; line-height: 1.5; }
+    .footer { color: #374151; font-size: 12px; margin-top: 32px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="icon">✅</div>
+    <h1>Card linked, ${firstName}!</h1>
+    <p>Your student card is now linked to your SSS account.</p>
+    <p>Tap your card at the kiosk to start shopping.</p>
     <p class="footer">SSS &mdash; Stress Snack System</p>
   </div>
 </body>
