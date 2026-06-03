@@ -60,6 +60,10 @@ model Product {
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
 
+  // Congressus product ID — set when the product is created/synced to Congressus.
+  // Used as product_offer_id when exporting sale invoices.
+  congressusProductId Int? @unique
+
   categoryId   String
   category     ProductCategory @relation(fields: [categoryId], references: [id])
   invoiceLines InvoiceLine[]

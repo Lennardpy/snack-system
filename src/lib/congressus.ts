@@ -3,6 +3,9 @@
 
 const BASE = "https://api.congressus.nl/v30";
 
+// SSS product folder in Congressus (id 5952, name "SSS")
+const SSS_FOLDER_ID = 5952;
+
 // Only sync members with these status IDs:
 // 1845 = The Primary Membership
 // 1844 = The Secondary membership
@@ -65,23 +68,82 @@ export async function fetchAllMembers(): Promise<CongressusMember[]> {
   return members;
 }
 
-// ── Sale Invoices (export) ────────────────────────────────────────────────────
+// ── Products ──────────────────────────────────────────────────────────────────
 
-// The Congressus API requires every invoice line item to reference a
-// product_offer_id. We use a single generic "SSS Snack Purchase" product
-// created in the SSS product folder (id 5952). The item name and price
-// carry the actual purchase detail; the product is just a required anchor.
-// Product ID: 118387 ("SSS Snack Purchase" in folder "SSS")
-const SSS_PRODUCT_OFFER_ID =
-  process.env.CONGRESSUS_PRODUCT_OFFER_ID
-    ? parseInt(process.env.CONGRESSUS_PRODUCT_OFFER_ID, 10)
-    : 118387;
+// Create a product in the SSS folder in Congressus.
+// Returns the real Congressus product ID.
+// NOTE: the POST response returns a stale ID — we verify by querying the folder.
+export async function createCongressusProduct(
+  name: string,
+  priceEuros: number
+): Promise<number> {
+  const res = await fetch(`${BASE}/products`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({
+      folder_id: SSS_FOLDER_ID,
+      name,
+      price: priceEuros,
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(
+      `Congressus create product failed: ${res.status} ${await res.text()}`
+    );
+  }
+
+  const body = await res.json();
+
+  // The POST response may return a stale/wrong ID (known Congressus API bug).
+  // Verify by fetching the product directly; fall back to folder search.
+  if (body.id) {
+    const check = await fetch(`${BASE}/products/${body.id}`, { headers: headers() });
+    if (check.ok) return body.id as number;
+  }
+
+  // Fallback: search the SSS folder for a product matching the name
+  const folderRes = await fetch(
+    `${BASE}/products?folder_id=${SSS_FOLDER_ID}&page_size=200`,
+    { headers: headers() }
+  );
+  if (folderRes.ok) {
+    const folderData: { data: { id: number; name: string }[] } = await folderRes.json();
+    // Match the most recently created product with this name
+    const matches = folderData.data.filter((p) => p.name === name);
+    if (matches.length > 0) return matches[matches.length - 1].id;
+  }
+
+  throw new Error(`Created Congressus product "${name}" but could not determine its ID`);
+}
+
+// Update a product's name and/or price in Congressus.
+export async function updateCongressusProduct(
+  congressusProductId: number,
+  name: string,
+  priceEuros: number
+): Promise<void> {
+  const res = await fetch(`${BASE}/products/${congressusProductId}`, {
+    method: "PATCH",
+    headers: headers(),
+    body: JSON.stringify({ name, price: priceEuros }),
+  });
+
+  if (!res.ok) {
+    throw new Error(
+      `Congressus update product ${congressusProductId} failed: ${res.status} ${await res.text()}`
+    );
+  }
+}
+
+// ── Sale Invoices (export) ────────────────────────────────────────────────────
 
 export interface CreateSaleInvoiceItem {
   name: string;
   description?: string;
   quantity: number;
-  price: number; // euros (decimal), e.g. 1.50
+  price: number;           // euros (decimal), e.g. 1.50
+  productOfferId: number;  // Congressus product_offer_id (required by API)
 }
 
 // Create a sale invoice in Congressus for a member and add line items to it.
@@ -112,14 +174,12 @@ export async function createSaleInvoice(
   const invoice: { id: number } = await invoiceRes.json();
 
   // Step 2: add each line item
-  // product_offer_id is required by the Congressus API. We use a single
-  // generic SSS product; name + price on the item carry the real detail.
   for (const item of items) {
     const itemRes = await fetch(`${BASE}/sale-invoices/${invoice.id}/items`, {
       method: "POST",
       headers: headers(),
       body: JSON.stringify({
-        product_offer_id: SSS_PRODUCT_OFFER_ID,
+        product_offer_id: item.productOfferId,
         name: item.name,
         description: item.description ?? "",
         quantity: item.quantity,
@@ -129,7 +189,7 @@ export async function createSaleInvoice(
 
     if (!itemRes.ok) {
       throw new Error(
-        `Congressus add item failed on invoice ${invoice.id}: ${itemRes.status} ${await itemRes.text()}`
+        `Congressus add item to invoice ${invoice.id} failed: ${itemRes.status} ${await itemRes.text()}`
       );
     }
   }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
+import { createCongressusProduct } from "@/lib/congressus";
 
 export async function GET() {
   const admin = await requireAdmin();
@@ -23,9 +24,25 @@ export async function POST(req: NextRequest) {
 
   const { name, price, categoryId, stock } = await req.json();
 
+  // Create in our DB first
   const product = await prisma.product.create({
     data: { name, price, categoryId, stock: stock ?? null, published: false },
   });
 
-  return NextResponse.json({ product });
+  // Sync to Congressus — create a matching product in the SSS folder
+  try {
+    const congressusProductId = await createCongressusProduct(name, price / 100);
+    await prisma.product.update({
+      where: { id: product.id },
+      data: { congressusProductId },
+    });
+    return NextResponse.json({ product: { ...product, congressusProductId } });
+  } catch (err) {
+    // Don't fail the create — product exists locally, Congressus sync can be retried
+    console.error("Congressus product sync failed:", err);
+    return NextResponse.json({
+      product,
+      warning: `Product created locally but Congressus sync failed: ${(err as Error).message}`,
+    });
+  }
 }

@@ -28,7 +28,11 @@ export default function InvoicesPage() {
     setResult(null);
     const res = await fetch("/api/admin/invoices/export", { method: "POST" });
     const data = await res.json();
-    setResult(`Exported ${data.exported} invoice(s). ${data.failed ? `${data.failed} failed.` : ""}`);
+    const errorDetail = data.errors?.length ? `\nErrors:\n${data.errors.join("\n")}` : "";
+    setResult(
+      `Created ${data.congressusInvoices ?? 0} Congressus invoice(s) covering ${data.exported} purchase(s).` +
+      (data.failed ? ` ${data.failed} failed.${errorDetail}` : "")
+    );
     setExporting(false);
     // Refresh list
     fetch(`/api/admin/invoices?status=${filter}`)
@@ -49,7 +53,11 @@ export default function InvoicesPage() {
         </button>
       </div>
 
-      {result && <p className="mb-4 text-green-400">{result}</p>}
+      {result && (
+        <pre className={`mb-4 text-sm whitespace-pre-wrap rounded-lg p-3 ${result.includes("failed") || result.includes("Errors") ? "bg-red-900/40 text-red-300" : "bg-green-900/40 text-green-300"}`}>
+          {result}
+        </pre>
+      )}
 
       <div className="flex gap-2 mb-6">
         {(["CONFIRMED", "EXPORTED"] as const).map((s) => (
