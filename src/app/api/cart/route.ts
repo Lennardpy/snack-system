@@ -7,6 +7,18 @@ async function resolveSession(token: string) {
   return session;
 }
 
+// DELETE /api/cart?token=xxx — end the shop session (idle timeout / leaving).
+// The unconfirmed CONCEPT invoice is left untouched; it is never charged and is
+// superseded by a fresh one on the next scan. Always returns ok so the kiosk can
+// reset even if the session was already gone.
+export async function DELETE(req: NextRequest) {
+  const token = req.nextUrl.searchParams.get("token");
+  if (token) {
+    await prisma.shopSession.deleteMany({ where: { token } });
+  }
+  return NextResponse.json({ ok: true });
+}
+
 // GET /api/cart?token=xxx — return current cart (concept invoice + lines)
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("token");

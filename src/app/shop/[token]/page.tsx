@@ -25,6 +25,12 @@ interface Invoice {
   lines: InvoiceLine[];
 }
 
+// Idle auto-reset: if nobody interacts, warn near the end then return to the
+// tap screen and end the session — so a member who walks away can't leave their
+// account open for the next person.
+const IDLE_LIMIT_MS = 60_000;   // total inactivity allowed
+const WARN_BEFORE_MS = 15_000;  // show the countdown warning this long before reset
+
 export default function ShopPage() {
   const { token } = useParams<{ token: string }>();
   const router = useRouter();
@@ -58,6 +64,57 @@ export default function ShopPage() {
     if (data.memberFirstName) setMemberFirstName(data.memberFirstName);
   }, [token, router]);
 
+  // ── Idle auto-reset ─────────────────────────────────────────────────────────
+  const [idleWarning, setIdleWarning] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(Math.ceil(WARN_BEFORE_MS / 1000));
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const warnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countdownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const endedRef = useRef(false);
+
+  const clearIdleTimers = useCallback(() => {
+    if (idleTimer.current) clearTimeout(idleTimer.current);
+    if (warnTimer.current) clearTimeout(warnTimer.current);
+    if (countdownTimer.current) clearInterval(countdownTimer.current);
+  }, []);
+
+  const endSession = useCallback(() => {
+    if (endedRef.current) return;
+    endedRef.current = true;
+    clearIdleTimers();
+    // keepalive lets the request complete even as we navigate away
+    fetch(`/api/cart?token=${token}`, { method: "DELETE", keepalive: true }).catch(() => {});
+    router.push("/");
+  }, [token, router, clearIdleTimers]);
+
+  const resetIdle = useCallback(() => {
+    if (endedRef.current) return;
+    setIdleWarning(false);
+    clearIdleTimers();
+    warnTimer.current = setTimeout(() => {
+      setSecondsLeft(Math.ceil(WARN_BEFORE_MS / 1000));
+      setIdleWarning(true);
+      countdownTimer.current = setInterval(() => {
+        setSecondsLeft((s) => (s > 1 ? s - 1 : 1));
+      }, 1000);
+    }, IDLE_LIMIT_MS - WARN_BEFORE_MS);
+    idleTimer.current = setTimeout(endSession, IDLE_LIMIT_MS);
+  }, [clearIdleTimers, endSession]);
+
+  useEffect(() => {
+    // Don't start the idle clock until the welcome overlay clears, and stop it
+    // once an order is confirmed.
+    if (showWelcome || done) return;
+    resetIdle();
+    const onActivity = () => resetIdle();
+    const events = ["pointerdown", "keydown", "touchstart"] as const;
+    events.forEach((e) => window.addEventListener(e, onActivity));
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, onActivity));
+      clearIdleTimers();
+    };
+  }, [showWelcome, done, resetIdle, clearIdleTimers]);
+
   useEffect(() => {
     fetch("/api/products")
       .then((r) => r.json())
@@ -82,6 +139,8 @@ export default function ShopPage() {
       body: JSON.stringify({ token }),
     });
     if (res.ok) {
+      endedRef.current = true; // session already deleted server-side; stop idle reset
+      clearIdleTimers();
       setDone(true);
       setTimeout(() => router.push("/"), 3000);
     } else {
@@ -132,6 +191,26 @@ export default function ShopPage() {
               </p>
             </>
           )}
+        </div>
+      )}
+
+      {/* Idle warning — any tap dismisses it and resets the timer */}
+      {idleWarning && (
+        <div
+          onClick={resetIdle}
+          className="fixed inset-0 z-40 flex flex-col items-center justify-center bg-gray-950/90 backdrop-blur-sm px-6 text-center cursor-pointer"
+        >
+          <div className="text-7xl mb-6">⏳</div>
+          <h2 className="text-3xl font-bold mb-2">Still there?</h2>
+          <p className="text-gray-400 text-lg mb-8">
+            Returning to the start in <strong className="text-white">{secondsLeft}</strong>s…
+          </p>
+          <button
+            onClick={(e) => { e.stopPropagation(); resetIdle(); }}
+            className="bg-green-600 hover:bg-green-500 text-white font-bold px-8 py-4 rounded-xl text-lg"
+          >
+            I&apos;m still shopping
+          </button>
         </div>
       )}
 
