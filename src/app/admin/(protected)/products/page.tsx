@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { isOnSale, effectivePriceCents } from "@/lib/pricing";
+import { discountStage, effectivePriceCents } from "@/lib/pricing";
 
 interface Category { id: string; name: string }
 interface Product {
@@ -286,11 +286,14 @@ export default function ProductsPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="truncate font-medium">{p.name}</p>
-                      {isOnSale(p.expiresAt ? new Date(p.expiresAt) : null) && (
-                        <span className="flex-shrink-0 rounded bg-red-600 px-1.5 py-0.5 text-[11px] font-bold leading-none text-white">
-                          -50%
-                        </span>
-                      )}
+                      {(() => {
+                        const stage = discountStage(p.expiresAt ? new Date(p.expiresAt) : null);
+                        return stage ? (
+                          <span className="flex-shrink-0 rounded bg-red-600 px-1.5 py-0.5 text-[11px] font-bold leading-none text-white">
+                            {stage === "FREE" ? "FREE" : "-50%"}
+                          </span>
+                        ) : null;
+                      })()}
                     </div>
                     <p className="text-sm text-gray-500">
                       {p.stock !== null ? `${p.stock} in stock` : "Unlimited stock"}
@@ -358,10 +361,12 @@ export default function ProductsPage() {
                         title="Click to edit price"
                         className="group flex items-center gap-2 rounded-lg px-3 py-1.5 text-lg font-semibold tabular-nums hover:bg-gray-800"
                       >
-                        {isOnSale(p.expiresAt ? new Date(p.expiresAt) : null) ? (
+                        {discountStage(p.expiresAt ? new Date(p.expiresAt) : null) ? (
                           <span className="flex items-baseline gap-1.5">
                             <span className="text-green-400">
-                              €{(effectivePriceCents(p.price, new Date(p.expiresAt as string)) / 100).toFixed(2)}
+                              {effectivePriceCents(p.price, new Date(p.expiresAt as string)) === 0
+                                ? "Free"
+                                : `€${(effectivePriceCents(p.price, new Date(p.expiresAt as string)) / 100).toFixed(2)}`}
                             </span>
                             <span className="text-sm text-gray-500 line-through">€{(p.price / 100).toFixed(2)}</span>
                           </span>

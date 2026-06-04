@@ -10,6 +10,7 @@ interface Product {
   price: number;
   imageUrl: string | null;
   onSale?: boolean;
+  discount?: "HALF" | "FREE" | null;
   salePrice?: number | null;
   category: { name: string };
 }
@@ -305,9 +306,9 @@ export default function ShopPage() {
                           ) : (
                             <div className="flex h-full w-full items-center justify-center text-3xl">🍫</div>
                           )}
-                          {p.onSale && (
+                          {p.discount && (
                             <div className="absolute left-1.5 top-1.5 rounded-md bg-red-600 px-1.5 py-0.5 text-[11px] font-bold uppercase leading-none text-white shadow">
-                              -50%
+                              {p.discount === "FREE" ? "Free" : "-50%"}
                             </div>
                           )}
                           {qty > 0 && (
@@ -320,9 +321,11 @@ export default function ShopPage() {
                         <div className="flex flex-1 flex-col gap-2 p-2.5">
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold leading-tight">{p.name}</p>
-                            {p.onSale && p.salePrice != null ? (
+                            {p.discount && p.salePrice != null ? (
                               <p className="flex items-baseline gap-1.5 text-xs">
-                                <span className="font-bold text-green-400">€{(p.salePrice / 100).toFixed(2)}</span>
+                                <span className="font-bold text-green-400">
+                                  {p.discount === "FREE" ? "Free" : `€${(p.salePrice / 100).toFixed(2)}`}
+                                </span>
                                 <span className="text-gray-500 line-through">€{(p.price / 100).toFixed(2)}</span>
                               </p>
                             ) : (
