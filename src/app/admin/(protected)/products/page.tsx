@@ -252,6 +252,22 @@ export default function ProductsPage() {
                     </p>
                   </div>
 
+                  {/* Category selector */}
+                  <div className="flex-shrink-0">
+                    <select
+                      value={p.category.id}
+                      onChange={(e) => {
+                        if (e.target.value !== p.category.id) patch(p.id, { categoryId: e.target.value });
+                      }}
+                      title="Change category"
+                      className="rounded-lg bg-gray-800 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
                   {/* Editable price */}
                   <div className="flex-shrink-0">
                     {editingId === p.id ? (

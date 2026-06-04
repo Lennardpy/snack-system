@@ -43,6 +43,8 @@ All figures count **confirmed and exported** purchases in the chosen period.
   can appear on invoices. New products start as **Draft**.
 - **Edit price** — click the price, type a new value, press Enter or **Save**.
   Price changes sync to Congressus.
+- **Change category** — pick a different category from the dropdown on the product
+  row; it moves immediately. Category is SSS-only (it doesn't affect Congressus).
 - **Image** — click the thumbnail to upload a photo (JPG/PNG/WebP/GIF).
 - **Publish / Draft** — only **Published** products appear in the kiosk shop.
 - **Archive** — hides a product you no longer sell.
