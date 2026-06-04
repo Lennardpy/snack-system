@@ -1,48 +1,138 @@
-import { prisma } from "@/lib/prisma";
-import Link from "next/link";
+"use client";
 
-export default async function AdminPage() {
+import { useEffect, useState } from "react";
 
-  const [members, products, pendingInvoices] = await Promise.all([
-    prisma.member.count(),
-    prisma.product.count({ where: { published: true, archived: false } }),
-    prisma.saleInvoice.count({ where: { status: "CONFIRMED" } }),
-  ]);
-
-  return (
-    <main className="min-h-screen bg-gray-950 text-white p-8">
-      <h1 className="text-3xl font-bold mb-1">SSS</h1>
-      <p className="text-gray-600 text-xs mb-8">Stress Snack System</p>
-
-      <div className="grid grid-cols-3 gap-4 mb-10">
-        <Stat label="Members" value={members} />
-        <Stat label="Published products" value={products} />
-        <Stat label="Invoices pending export" value={pendingInvoices} highlight={pendingInvoices > 0} />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4 max-w-lg">
-        <NavCard href="/admin/members" label="Members" desc="View members, sync from Congressus" />
-        <NavCard href="/admin/products" label="Products" desc="Add, edit, publish products" />
-        <NavCard href="/admin/invoices" label="Invoices" desc="Review and export to Congressus" />
-      </div>
-    </main>
-  );
+interface TopProduct { id: string; name: string; quantity: number; revenueCents: number }
+interface Stats {
+  range: string;
+  revenueCents: number;
+  orderCount: number;
+  itemsSold: number;
+  avgOrderCents: number;
+  topProducts: TopProduct[];
+  series: { date: string; revenueCents: number }[];
 }
 
-function Stat({ label, value, highlight }: { label: string; value: number; highlight?: boolean }) {
+const RANGES: { key: string; label: string }[] = [
+  { key: "7d", label: "7 days" },
+  { key: "30d", label: "30 days" },
+  { key: "90d", label: "90 days" },
+  { key: "365d", label: "1 year" },
+  { key: "all", label: "All time" },
+];
+
+const euro = (c: number) => `€${(c / 100).toFixed(2)}`;
+
+export default function DashboardPage() {
+  const [range, setRange] = useState("30d");
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/admin/stats?range=${range}`)
+      .then((r) => r.json())
+      .then((d) => setStats(d))
+      .finally(() => setLoading(false));
+  }, [range]);
+
+  const maxRevenue = Math.max(1, ...(stats?.series.map((s) => s.revenueCents) ?? [1]));
+  const maxQty = Math.max(1, ...(stats?.topProducts.map((p) => p.quantity) ?? [1]));
+
   return (
-    <div className={`rounded-xl p-5 ${highlight ? "bg-yellow-900/40 border border-yellow-700" : "bg-gray-800"}`}>
-      <p className="text-gray-400 text-sm mb-1">{label}</p>
-      <p className="text-3xl font-bold">{value}</p>
+    <div className="p-8">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">Dashboard</h1>
+          <p className="text-gray-500">Sales overview</p>
+        </div>
+        <div className="flex rounded-xl bg-gray-800 p-1">
+          {RANGES.map((r) => (
+            <button
+              key={r.key}
+              onClick={() => setRange(r.key)}
+              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
+                range === r.key ? "bg-blue-600 text-white" : "text-gray-300 hover:text-white"
+              }`}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* KPI cards */}
+      <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <Kpi label="Revenue" value={stats ? euro(stats.revenueCents) : "—"} accent />
+        <Kpi label="Orders" value={stats ? String(stats.orderCount) : "—"} />
+        <Kpi label="Items sold" value={stats ? String(stats.itemsSold) : "—"} />
+        <Kpi label="Avg. order" value={stats ? euro(stats.avgOrderCents) : "—"} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        {/* Revenue chart */}
+        <section className="rounded-2xl border border-gray-800 bg-gray-900 p-6">
+          <h2 className="mb-5 text-lg font-semibold">Revenue over time</h2>
+          {!stats || stats.series.length === 0 ? (
+            <p className="text-gray-500">No sales in this period.</p>
+          ) : (
+            <div className="flex h-48 gap-1">
+              {stats.series.map((s) => (
+                <div key={s.date} className="group relative flex h-full flex-1 flex-col items-center justify-end">
+                  <div
+                    className="w-full rounded-t bg-blue-600 transition-all group-hover:bg-blue-400"
+                    style={{ height: `${(s.revenueCents / maxRevenue) * 100}%`, minHeight: s.revenueCents > 0 ? 2 : 0 }}
+                  />
+                  <div className="pointer-events-none absolute -top-9 z-10 hidden whitespace-nowrap rounded bg-gray-700 px-2 py-1 text-xs group-hover:block">
+                    {new Date(s.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}: {euro(s.revenueCents)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Top products */}
+        <section className="rounded-2xl border border-gray-800 bg-gray-900 p-6">
+          <h2 className="mb-5 text-lg font-semibold">Most popular items</h2>
+          {!stats || stats.topProducts.length === 0 ? (
+            <p className="text-gray-500">No sales in this period.</p>
+          ) : (
+            <ul className="space-y-3">
+              {stats.topProducts.map((p, i) => (
+                <li key={p.id} className="flex items-center gap-3">
+                  <span className="w-5 text-right text-sm font-bold text-gray-500">{i + 1}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-1 flex justify-between gap-2">
+                      <span className="truncate font-medium">{p.name}</span>
+                      <span className="flex-shrink-0 text-sm text-gray-400">
+                        {p.quantity}× · {euro(p.revenueCents)}
+                      </span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-gray-800">
+                      <div
+                        className="h-full rounded-full bg-green-500"
+                        style={{ width: `${(p.quantity / maxQty) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+
+      {loading && <p className="mt-6 text-sm text-gray-600">Loading…</p>}
     </div>
   );
 }
 
-function NavCard({ href, label, desc }: { href: string; label: string; desc: string }) {
+function Kpi({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <Link href={href} className="block bg-gray-800 hover:bg-gray-700 rounded-xl p-5 transition-colors">
-      <p className="font-semibold mb-1">{label}</p>
-      <p className="text-gray-400 text-sm">{desc}</p>
-    </Link>
+    <div className={`rounded-2xl border p-5 ${accent ? "border-green-700/50 bg-green-900/20" : "border-gray-800 bg-gray-900"}`}>
+      <p className="mb-1 text-sm text-gray-400">{label}</p>
+      <p className="text-3xl font-bold tabular-nums">{value}</p>
+    </div>
   );
 }

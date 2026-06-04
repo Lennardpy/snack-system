@@ -21,6 +21,8 @@ export default function ProductsPage() {
   const [form, setForm] = useState({ name: "", price: "", categoryId: "", stock: "" });
   const [saving, setSaving] = useState(false);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editPrice, setEditPrice] = useState("");
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   function load() {
@@ -50,23 +52,26 @@ export default function ProductsPage() {
     load();
   }
 
-  async function togglePublish(product: Product) {
-    await fetch(`/api/admin/products/${product.id}`, {
+  async function patch(id: string, data: Record<string, unknown>) {
+    await fetch(`/api/admin/products/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ published: !product.published }),
+      body: JSON.stringify(data),
     });
     load();
   }
 
-  async function archive(product: Product) {
-    if (!confirm(`Archive "${product.name}"?`)) return;
-    await fetch(`/api/admin/products/${product.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ archived: true }),
-    });
-    load();
+  function startEditPrice(p: Product) {
+    setEditingId(p.id);
+    setEditPrice((p.price / 100).toFixed(2));
+  }
+
+  async function savePrice(p: Product) {
+    const cents = Math.round(parseFloat(editPrice) * 100);
+    setEditingId(null);
+    if (!isNaN(cents) && cents !== p.price && cents >= 0) {
+      await patch(p.id, { price: cents });
+    }
   }
 
   async function uploadImage(product: Product, file: File) {
@@ -79,100 +84,157 @@ export default function ProductsPage() {
   }
 
   const visible = products.filter((p) => !p.archived);
+  const byCategory = categories
+    .map((c) => ({ category: c, items: visible.filter((p) => p.category.id === c.id) }))
+    .filter((g) => g.items.length > 0);
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white p-8">
-      <h1 className="text-3xl font-bold mb-8">Products</h1>
+    <div className="p-8">
+      <h1 className="mb-1 text-3xl font-bold">Products</h1>
+      <p className="mb-6 text-gray-500">{visible.length} active</p>
 
       {/* Add product form */}
-      <form onSubmit={addProduct} className="bg-gray-800 rounded-xl p-5 mb-8 flex flex-wrap gap-3 items-end">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-400">Name</label>
+      <form onSubmit={addProduct} className="mb-8 flex flex-wrap items-end gap-3 rounded-2xl border border-gray-800 bg-gray-900 p-5">
+        <Field label="Name">
           <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
             required placeholder="Stroopwafel"
-            className="bg-gray-700 rounded-lg px-3 py-2 w-48 outline-none focus:ring-2 focus:ring-blue-500" />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-400">Price (€)</label>
+            className="w-48 rounded-lg bg-gray-800 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
+        </Field>
+        <Field label="Price (€)">
           <input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })}
             required placeholder="1.50" type="number" step="0.01" min="0"
-            className="bg-gray-700 rounded-lg px-3 py-2 w-28 outline-none focus:ring-2 focus:ring-blue-500" />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-400">Category</label>
+            className="w-28 rounded-lg bg-gray-800 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
+        </Field>
+        <Field label="Category">
           <select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
-            required className="bg-gray-700 rounded-lg px-3 py-2 w-40 outline-none focus:ring-2 focus:ring-blue-500">
+            required className="w-40 rounded-lg bg-gray-800 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500">
             <option value="">Select…</option>
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-400">Stock (blank = unlimited)</label>
+        </Field>
+        <Field label="Stock (blank = ∞)">
           <input value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })}
             placeholder="—" type="number" min="0"
-            className="bg-gray-700 rounded-lg px-3 py-2 w-28 outline-none focus:ring-2 focus:ring-blue-500" />
-        </div>
+            className="w-28 rounded-lg bg-gray-800 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
+        </Field>
         <button type="submit" disabled={saving}
-          className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 px-5 py-2 rounded-lg font-semibold">
-          Add
+          className="rounded-lg bg-blue-600 px-5 py-2 font-semibold transition-colors hover:bg-blue-500 disabled:opacity-40">
+          Add product
         </button>
       </form>
 
-      {/* Product list */}
-      <div className="space-y-2">
-        {visible.map((p) => (
-          <div key={p.id} className="bg-gray-800 rounded-xl px-5 py-3 flex items-center gap-4">
-            {/* Image thumbnail / upload */}
-            <button
-              onClick={() => fileInputRefs.current[p.id]?.click()}
-              className="relative w-14 h-14 rounded-lg overflow-hidden bg-gray-700 flex-shrink-0 flex items-center justify-center hover:ring-2 hover:ring-blue-500 transition-all group"
-              title="Click to upload image"
-            >
-              {p.imageUrl ? (
-                <Image src={p.imageUrl} alt={p.name} fill className="object-cover" />
-              ) : (
-                <span className="text-gray-500 text-xs group-hover:text-gray-300">📷</span>
-              )}
-              {uploadingId === p.id && (
-                <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                  <span className="text-xs animate-pulse">…</span>
+      {/* Product list grouped by category */}
+      <div className="space-y-8">
+        {byCategory.map(({ category, items }) => (
+          <div key={category.id}>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-400">{category.name}</h2>
+            <div className="space-y-2">
+              {items.map((p) => (
+                <div key={p.id} className="flex items-center gap-4 rounded-2xl border border-gray-800 bg-gray-900 px-4 py-3">
+                  {/* Image thumbnail / upload */}
+                  <button
+                    onClick={() => fileInputRefs.current[p.id]?.click()}
+                    className="group relative flex h-14 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-800 transition-all hover:ring-2 hover:ring-blue-500"
+                    title="Click to upload image"
+                  >
+                    {p.imageUrl ? (
+                      <Image src={p.imageUrl} alt={p.name} fill className="object-cover" />
+                    ) : (
+                      <span className="text-xs text-gray-500 group-hover:text-gray-300">📷</span>
+                    )}
+                    {uploadingId === p.id && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+                        <span className="animate-pulse text-xs">…</span>
+                      </div>
+                    )}
+                  </button>
+                  <input
+                    ref={(el) => { fileInputRefs.current[p.id] = el; }}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) uploadImage(p, file);
+                      e.target.value = "";
+                    }}
+                  />
+
+                  {/* Name + stock */}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{p.name}</p>
+                    <p className="text-sm text-gray-500">
+                      {p.stock !== null ? `${p.stock} in stock` : "Unlimited stock"}
+                    </p>
+                  </div>
+
+                  {/* Editable price */}
+                  <div className="flex-shrink-0">
+                    {editingId === p.id ? (
+                      <div className="flex items-center gap-1">
+                        <span className="text-gray-400">€</span>
+                        <input
+                          autoFocus
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={editPrice}
+                          onChange={(e) => setEditPrice(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") savePrice(p);
+                            if (e.key === "Escape") setEditingId(null);
+                          }}
+                          className="w-24 rounded-lg bg-gray-800 px-2 py-1.5 text-right outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <button onClick={() => savePrice(p)}
+                          className="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-semibold hover:bg-green-500">
+                          Save
+                        </button>
+                        <button onClick={() => setEditingId(null)}
+                          className="px-2 py-1.5 text-sm text-gray-500 hover:text-gray-300">
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => startEditPrice(p)}
+                        title="Click to edit price"
+                        className="group flex items-center gap-2 rounded-lg px-3 py-1.5 text-lg font-semibold tabular-nums hover:bg-gray-800"
+                      >
+                        €{(p.price / 100).toFixed(2)}
+                        <span className="text-xs text-gray-500 group-hover:text-gray-300">✎</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex flex-shrink-0 items-center gap-3">
+                    <button onClick={() => patch(p.id, { published: !p.published })}
+                      className={`rounded-full px-3 py-1 text-sm ${p.published ? "bg-green-800 text-green-200" : "bg-gray-800 text-gray-300"}`}>
+                      {p.published ? "Published" : "Draft"}
+                    </button>
+                    <button
+                      onClick={() => { if (confirm(`Archive "${p.name}"?`)) patch(p.id, { archived: true }); }}
+                      className="text-sm text-gray-500 hover:text-red-400"
+                    >
+                      Archive
+                    </button>
+                  </div>
                 </div>
-              )}
-            </button>
-            <input
-              ref={(el) => { fileInputRefs.current[p.id] = el; }}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) uploadImage(p, file);
-                e.target.value = "";
-              }}
-            />
-
-            {/* Info */}
-            <div className="flex-1 min-w-0">
-              <p className="font-medium truncate">{p.name}</p>
-              <p className="text-gray-400 text-sm">
-                €{(p.price / 100).toFixed(2)} · {p.category.name}
-                {p.stock !== null && ` · ${p.stock} in stock`}
-              </p>
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center gap-3 flex-shrink-0">
-              <button onClick={() => togglePublish(p)}
-                className={`text-sm px-3 py-1 rounded-full ${p.published ? "bg-green-800 text-green-200" : "bg-gray-700 text-gray-300"}`}>
-                {p.published ? "Published" : "Draft"}
-              </button>
-              <button onClick={() => archive(p)} className="text-gray-500 hover:text-red-400 text-sm">
-                Archive
-              </button>
+              ))}
             </div>
           </div>
         ))}
       </div>
-    </main>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-xs text-gray-400">{label}</label>
+      {children}
+    </div>
   );
 }
