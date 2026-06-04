@@ -78,6 +78,22 @@ export default function InvoicesPage() {
     }
   }
 
+  async function clearAll() {
+    const label = filter === "EXPORTED" ? "exported" : "pending (confirmed)";
+    if (!confirm(`Delete ALL ${invoices.length} ${label} invoice(s)? This is permanent and clears them from the dashboard.`)) return;
+    if (!confirm(`Are you sure? This cannot be undone.`)) return;
+    setBusy(true);
+    const res = await fetch(`/api/admin/invoices?status=${filter}`, { method: "DELETE" });
+    const d = await res.json();
+    setBusy(false);
+    if (res.ok) {
+      setInvoices([]);
+      setResult(`Deleted ${d.deleted} ${label} invoice(s).`);
+    } else {
+      alert(d.error ?? "Could not clear invoices.");
+    }
+  }
+
   async function deleteInvoice(inv: Invoice) {
     if (!confirm(`Delete this invoice for ${inv.member.firstName} ${inv.member.lastName} (${euro(inv.totalCents)})?`)) return;
     setBusy(true);
@@ -116,7 +132,7 @@ export default function InvoicesPage() {
         </pre>
       )}
 
-      <div className="mb-6 flex gap-2">
+      <div className="mb-6 flex items-center gap-2">
         {(["CONFIRMED", "EXPORTED"] as const).map((s) => (
           <button
             key={s}
@@ -126,6 +142,15 @@ export default function InvoicesPage() {
             {s === "CONFIRMED" ? "Pending export" : "Exported"}
           </button>
         ))}
+        {invoices.length > 0 && (
+          <button
+            onClick={clearAll}
+            disabled={busy}
+            className="ml-auto rounded-lg border border-red-900 bg-red-900/30 px-4 py-1.5 text-sm font-medium text-red-300 transition-colors hover:bg-red-600 hover:text-white disabled:opacity-40"
+          >
+            Clear all {filter === "EXPORTED" ? "exported" : "pending"} (test data)
+          </button>
+        )}
       </div>
 
       <div className="space-y-3">
