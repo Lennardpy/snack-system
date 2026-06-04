@@ -89,10 +89,14 @@ Clears the session cookie and deletes the DB session.
 
 ### `GET /api/admin/stats?range=7d|30d|90d|365d|all`
 Aggregated sales over the timeframe (based on `CONFIRMED`/`EXPORTED` invoices).
+`activeUsers` is the count of distinct members who purchased in the period.
 ```json
 { "range": "30d", "revenueCents": 1910, "orderCount": 5, "itemsSold": 18,
-  "avgOrderCents": 382,
+  "avgOrderCents": 382, "activeUsers": 4,
   "topProducts": [ { "id": "…", "name": "Mars", "quantity": 9, "revenueCents": 900 } ],
+  "topSpenders": [ { "id": "…", "name": "Jane Doe", "spentCents": 1270, "orderCount": 3 } ],
+  "recentPurchases": [ { "id": "…", "memberName": "Jane Doe", "at": "2026-06-04T14:23:39Z",
+    "totalCents": 175, "items": [ { "name": "Cola", "quantity": 1 } ] } ],
   "series": [ { "date": "2026-06-01", "revenueCents": 455 } ] }
 ```
 

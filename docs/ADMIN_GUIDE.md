@@ -14,6 +14,8 @@ A sales overview with a timeframe selector (**7 days / 30 days / 90 days / 1 yea
 - **Most popular items:** ranked by quantity, with revenue per item.
 - **Top spenders:** the 10 members who spent the most in the period, with their
   total spend and order count.
+- **Recent purchases:** a live feed of the latest orders in the period — which
+  member bought which items, the order total, and how long ago.
 
 All figures count **confirmed and exported** purchases in the chosen period.
 

@@ -4,6 +4,13 @@ import { useEffect, useState } from "react";
 
 interface TopProduct { id: string; name: string; quantity: number; revenueCents: number }
 interface TopSpender { id: string; name: string; spentCents: number; orderCount: number }
+interface RecentPurchase {
+  id: string;
+  memberName: string;
+  at: string;
+  totalCents: number;
+  items: { name: string; quantity: number }[];
+}
 interface Stats {
   range: string;
   revenueCents: number;
@@ -13,6 +20,7 @@ interface Stats {
   activeUsers: number;
   topProducts: TopProduct[];
   topSpenders: TopSpender[];
+  recentPurchases: RecentPurchase[];
   series: { date: string; revenueCents: number }[];
 }
 
@@ -25,6 +33,18 @@ const RANGES: { key: string; label: string }[] = [
 ];
 
 const euro = (c: number) => `€${(c / 100).toFixed(2)}`;
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days} d ago`;
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
 
 export default function DashboardPage() {
   const [range, setRange] = useState("30d");
@@ -151,6 +171,31 @@ export default function DashboardPage() {
                       />
                     </div>
                   </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* Recent purchases */}
+        <section className="rounded-2xl border border-gray-800 bg-gray-900 p-6">
+          <h2 className="mb-5 text-lg font-semibold">Recent purchases</h2>
+          {!stats || stats.recentPurchases.length === 0 ? (
+            <p className="text-gray-500">No purchases in this period.</p>
+          ) : (
+            <ul className="divide-y divide-gray-800">
+              {stats.recentPurchases.map((p) => (
+                <li key={p.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="truncate font-medium">{p.memberName}</span>
+                      <span className="flex-shrink-0 text-xs text-gray-500">{timeAgo(p.at)}</span>
+                    </div>
+                    <p className="truncate text-sm text-gray-400">
+                      {p.items.map((i) => `${i.quantity}× ${i.name}`).join(", ")}
+                    </p>
+                  </div>
+                  <span className="flex-shrink-0 font-semibold tabular-nums">{euro(p.totalCents)}</span>
                 </li>
               ))}
             </ul>

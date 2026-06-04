@@ -77,6 +77,21 @@ export async function GET(req: NextRequest) {
     .slice(0, 10);
   const activeUsers = memberMap.size;
 
+  // Recent purchases feed — the latest orders in the range (who bought what).
+  const recentPurchases = [...invoices]
+    .sort(
+      (a, b) =>
+        (b.confirmedAt ?? b.createdAt).getTime() - (a.confirmedAt ?? a.createdAt).getTime(),
+    )
+    .slice(0, 12)
+    .map((inv) => ({
+      id: inv.id,
+      memberName: `${inv.member.firstName} ${inv.member.lastName}`.trim(),
+      at: (inv.confirmedAt ?? inv.createdAt).toISOString(),
+      totalCents: inv.totalCents,
+      items: inv.lines.map((l) => ({ name: l.product.name, quantity: l.quantity })),
+    }));
+
   // Build a continuous daily series so the chart has no gaps.
   const series: { date: string; revenueCents: number }[] = [];
   if (from) {
@@ -105,6 +120,7 @@ export async function GET(req: NextRequest) {
     activeUsers,
     topProducts,
     topSpenders,
+    recentPurchases,
     series,
   });
 }
