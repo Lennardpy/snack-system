@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   if (!token) {
     return new NextResponse(errorPage("Missing token."), {
       status: 400,
-      headers: { "Content-Type": "text/html" },
+      headers: { "Content-Type": "text/html; charset=utf-8" },
     });
   }
 
@@ -31,28 +31,28 @@ export async function GET(req: NextRequest) {
   if (!registration) {
     return new NextResponse(errorPage("Invalid or expired link."), {
       status: 400,
-      headers: { "Content-Type": "text/html" },
+      headers: { "Content-Type": "text/html; charset=utf-8" },
     });
   }
 
   if (registration.expiresAt < new Date()) {
     return new NextResponse(
       errorPage("This link has expired. Please tap your card again to request a new one."),
-      { status: 400, headers: { "Content-Type": "text/html" } }
+      { status: 400, headers: { "Content-Type": "text/html; charset=utf-8" } }
     );
   }
 
   if (registration.usedAt) {
     return new NextResponse(errorPage("This link has already been used."), {
       status: 400,
-      headers: { "Content-Type": "text/html" },
+      headers: { "Content-Type": "text/html; charset=utf-8" },
     });
   }
 
   // Token is valid — show confirmation page with a POST form
   return new NextResponse(confirmPage(token, BASE_URL), {
     status: 200,
-    headers: { "Content-Type": "text/html" },
+    headers: { "Content-Type": "text/html; charset=utf-8" },
   });
 }
 
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
   if (!token) {
     return new NextResponse(errorPage("Missing token."), {
       status: 400,
-      headers: { "Content-Type": "text/html" },
+      headers: { "Content-Type": "text/html; charset=utf-8" },
     });
   }
 
@@ -75,21 +75,21 @@ export async function POST(req: NextRequest) {
   if (!registration) {
     return new NextResponse(errorPage("Invalid or expired link."), {
       status: 400,
-      headers: { "Content-Type": "text/html" },
+      headers: { "Content-Type": "text/html; charset=utf-8" },
     });
   }
 
   if (registration.expiresAt < new Date()) {
     return new NextResponse(
       errorPage("This link has expired. Please tap your card again to request a new one."),
-      { status: 400, headers: { "Content-Type": "text/html" } }
+      { status: 400, headers: { "Content-Type": "text/html; charset=utf-8" } }
     );
   }
 
   if (registration.usedAt) {
     return new NextResponse(errorPage("This link has already been used."), {
       status: 400,
-      headers: { "Content-Type": "text/html" },
+      headers: { "Content-Type": "text/html; charset=utf-8" },
     });
   }
 
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
   if (!member) {
     return new NextResponse(errorPage("Member account not found."), {
       status: 400,
-      headers: { "Content-Type": "text/html" },
+      headers: { "Content-Type": "text/html; charset=utf-8" },
     });
   }
 
@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
     await prisma.cardRegistration.update({ where: { token }, data: { usedAt: new Date() } });
     return new NextResponse(errorPage("This card is already registered to an account."), {
       status: 409,
-      headers: { "Content-Type": "text/html" },
+      headers: { "Content-Type": "text/html; charset=utf-8" },
     });
   }
 
@@ -126,7 +126,7 @@ export async function POST(req: NextRequest) {
   // accessible by physically tapping the card at the kiosk.
   return new NextResponse(successPage(escapeHtml(member.firstName)), {
     status: 200,
-    headers: { "Content-Type": "text/html" },
+    headers: { "Content-Type": "text/html; charset=utf-8" },
   });
 }
 
@@ -147,6 +147,7 @@ function confirmPage(token: string, baseUrl: string) {
   return `<!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8" />
   <title>Link your card — SSS</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
@@ -189,6 +190,7 @@ function successPage(firstName: string) {
   return `<!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8" />
   <title>Card linked — SSS</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
@@ -221,6 +223,7 @@ function errorPage(message: string) {
   return `<!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8" />
   <title>Card registration — SSS</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
