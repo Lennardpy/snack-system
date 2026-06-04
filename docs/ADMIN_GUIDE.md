@@ -36,8 +36,9 @@ All figures count **confirmed and exported** purchases in the chosen period.
 - **Categories** — at the top of the page, add a new category by typing a name and
   pressing **Add category**. Each chip shows how many products it holds; the **×**
   deletes a category, but only once it's **empty** (move or archive its products
-  first). Categories appear as the section headers and the filter pills in the
-  kiosk shop.
+  first). Use the **‹ ›** arrows on a chip to reorder categories — the order sets
+  both the section order and the filter-pill order in the kiosk shop. Categories
+  appear as the section headers and the filter pills in the kiosk shop.
 - **Add product** — name, price (€), category, and optional stock (blank =
   unlimited). Creating a product also creates a matching Congressus product so it
   can appear on invoices. New products start as **Draft**.

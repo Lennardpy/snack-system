@@ -13,6 +13,26 @@ export async function GET() {
   return NextResponse.json({ categories });
 }
 
+// Reorder categories. Body: { order: string[] } — category ids in the new order.
+export async function PATCH(req: NextRequest) {
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { order } = await req.json();
+  if (!Array.isArray(order) || order.some((id) => typeof id !== "string")) {
+    return NextResponse.json({ error: "order must be an array of ids" }, { status: 400 });
+  }
+
+  await prisma.$transaction(
+    order.map((id, index) =>
+      prisma.productCategory.update({ where: { id }, data: { sortOrder: index } }),
+    ),
+  );
+
+  const categories = await prisma.productCategory.findMany({ orderBy: { sortOrder: "asc" } });
+  return NextResponse.json({ categories });
+}
+
 export async function POST(req: NextRequest) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

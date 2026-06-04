@@ -98,6 +98,26 @@ export default function ProductsPage() {
     }
   }
 
+  async function moveCategory(index: number, dir: -1 | 1) {
+    const target = index + dir;
+    if (target < 0 || target >= categories.length) return;
+    const reordered = [...categories];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    setCategories(reordered); // optimistic
+    setCatError(null);
+    const res = await fetch("/api/admin/categories", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order: reordered.map((c) => c.id) }),
+    });
+    if (res.ok) {
+      load();
+    } else {
+      setCatError("Could not reorder categories");
+      load(); // revert to server state
+    }
+  }
+
   async function deleteCategory(c: Category) {
     const count = products.filter((p) => p.category.id === c.id).length;
     if (count > 0) {
@@ -141,11 +161,27 @@ export default function ProductsPage() {
           {categories.length === 0 && (
             <span className="text-sm text-gray-500">No categories yet — add one below.</span>
           )}
-          {categories.map((c) => {
+          {categories.map((c, i) => {
             const count = products.filter((p) => p.category.id === c.id).length;
             return (
-              <span key={c.id} className="flex items-center gap-2 rounded-full bg-gray-800 py-1.5 pl-4 pr-2 text-sm">
-                <span className="font-medium">{c.name}</span>
+              <span key={c.id} className="flex items-center gap-1 rounded-full bg-gray-800 py-1.5 pl-2 pr-2 text-sm">
+                <button
+                  onClick={() => moveCategory(i, -1)}
+                  disabled={i === 0}
+                  title="Move left"
+                  className="flex h-6 w-6 items-center justify-center rounded-full text-base leading-none text-gray-400 transition-colors hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                >
+                  ‹
+                </button>
+                <button
+                  onClick={() => moveCategory(i, 1)}
+                  disabled={i === categories.length - 1}
+                  title="Move right"
+                  className="flex h-6 w-6 items-center justify-center rounded-full text-base leading-none text-gray-400 transition-colors hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                >
+                  ›
+                </button>
+                <span className="ml-1 font-medium">{c.name}</span>
                 <span className="text-gray-500">{count}</span>
                 <button
                   onClick={() => deleteCategory(c)}
