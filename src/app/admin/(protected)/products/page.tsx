@@ -23,6 +23,9 @@ export default function ProductsPage() {
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editPrice, setEditPrice] = useState("");
+  const [newCategory, setNewCategory] = useState("");
+  const [catBusy, setCatBusy] = useState(false);
+  const [catError, setCatError] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   function load() {
@@ -74,6 +77,44 @@ export default function ProductsPage() {
     }
   }
 
+  async function addCategory(e: React.FormEvent) {
+    e.preventDefault();
+    const name = newCategory.trim();
+    if (!name) return;
+    setCatBusy(true);
+    setCatError(null);
+    const res = await fetch("/api/admin/categories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    setCatBusy(false);
+    if (res.ok) {
+      setNewCategory("");
+      load();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      setCatError(d.error ?? "Could not add category");
+    }
+  }
+
+  async function deleteCategory(c: Category) {
+    const count = products.filter((p) => p.category.id === c.id).length;
+    if (count > 0) {
+      setCatError(`"${c.name}" still has ${count} product${count === 1 ? "" : "s"}. Move or archive them first.`);
+      return;
+    }
+    if (!confirm(`Delete category "${c.name}"?`)) return;
+    setCatError(null);
+    const res = await fetch(`/api/admin/categories/${c.id}`, { method: "DELETE" });
+    if (res.ok) {
+      load();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      setCatError(d.error ?? "Could not delete category");
+    }
+  }
+
   async function uploadImage(product: Product, file: File) {
     setUploadingId(product.id);
     const fd = new FormData();
@@ -92,6 +133,49 @@ export default function ProductsPage() {
     <div className="p-8">
       <h1 className="mb-1 text-3xl font-bold">Products</h1>
       <p className="mb-6 text-gray-500">{visible.length} active</p>
+
+      {/* Categories */}
+      <div className="mb-6 rounded-2xl border border-gray-800 bg-gray-900 p-5">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-400">Categories</h2>
+        <div className="mb-4 flex flex-wrap gap-2">
+          {categories.length === 0 && (
+            <span className="text-sm text-gray-500">No categories yet — add one below.</span>
+          )}
+          {categories.map((c) => {
+            const count = products.filter((p) => p.category.id === c.id).length;
+            return (
+              <span key={c.id} className="flex items-center gap-2 rounded-full bg-gray-800 py-1.5 pl-4 pr-2 text-sm">
+                <span className="font-medium">{c.name}</span>
+                <span className="text-gray-500">{count}</span>
+                <button
+                  onClick={() => deleteCategory(c)}
+                  title={count > 0 ? "Empty this category before deleting" : `Delete "${c.name}"`}
+                  className={`flex h-6 w-6 items-center justify-center rounded-full text-base leading-none transition-colors ${
+                    count > 0
+                      ? "cursor-not-allowed text-gray-600"
+                      : "text-gray-400 hover:bg-red-600 hover:text-white"
+                  }`}
+                >
+                  ×
+                </button>
+              </span>
+            );
+          })}
+        </div>
+        <form onSubmit={addCategory} className="flex flex-wrap items-center gap-3">
+          <input
+            value={newCategory}
+            onChange={(e) => { setNewCategory(e.target.value); setCatError(null); }}
+            placeholder="New category name"
+            className="w-56 rounded-lg bg-gray-800 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button type="submit" disabled={catBusy || !newCategory.trim()}
+            className="rounded-lg bg-gray-700 px-4 py-2 font-semibold transition-colors hover:bg-gray-600 disabled:opacity-40">
+            Add category
+          </button>
+          {catError && <span className="text-sm text-red-400">{catError}</span>}
+        </form>
+      </div>
 
       {/* Add product form */}
       <form onSubmit={addProduct} className="mb-8 flex flex-wrap items-end gap-3 rounded-2xl border border-gray-800 bg-gray-900 p-5">

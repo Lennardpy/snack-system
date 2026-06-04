@@ -39,6 +39,7 @@ export default function ShopPage() {
   const [memberFirstName, setMemberFirstName] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [done, setDone] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<string>("All");
 
   // Welcome animation: name pops out, then the overlay clears to reveal the shop.
   const [showWelcome, setShowWelcome] = useState(true);
@@ -153,6 +154,10 @@ export default function ShopPage() {
   }
 
   const categories = [...new Set(products.map((p) => p.category.name))];
+  const visibleCategories =
+    activeCategory === "All" || !categories.includes(activeCategory)
+      ? categories
+      : [activeCategory];
 
   if (done) {
     return (
@@ -235,9 +240,38 @@ export default function ShopPage() {
       </header>
 
       <div className="flex h-[calc(100vh-72px)]">
-        {/* Product grid */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {categories.map((cat) => (
+        {/* Products column: category selector + scrollable grid */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          {/* Category selector */}
+          <div className="flex flex-shrink-0 gap-2 overflow-x-auto border-b border-gray-800 px-6 py-3">
+            <button
+              onClick={() => setActiveCategory("All")}
+              className={`flex-shrink-0 rounded-full px-5 py-2.5 text-base font-semibold transition-colors active:scale-95 ${
+                activeCategory === "All"
+                  ? "bg-green-600 text-white"
+                  : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+              }`}
+            >
+              All
+            </button>
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setActiveCategory(cat)}
+                className={`flex-shrink-0 rounded-full px-5 py-2.5 text-base font-semibold transition-colors active:scale-95 ${
+                  activeCategory === cat
+                    ? "bg-green-600 text-white"
+                    : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          {/* Product grid */}
+          <div className="flex-1 overflow-y-auto p-6">
+          {visibleCategories.map((cat) => (
             <div key={cat} className="mb-8">
               <h2 className="text-base font-semibold text-gray-400 mb-3 uppercase tracking-wider">{cat}</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -318,6 +352,7 @@ export default function ShopPage() {
               </div>
             </div>
           ))}
+          </div>
         </div>
 
         {/* Cart sidebar */}
