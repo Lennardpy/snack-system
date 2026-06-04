@@ -28,11 +28,19 @@ export async function POST(req: NextRequest) {
     where: { email: email.trim().toLowerCase() },
   });
 
-  // Don't reveal whether the email belongs to a member (or an active one) —
-  // return the same generic success either way to prevent enumeration. If there
-  // is no matching active member, no email is sent.
-  if (!member || !member.active) {
-    return NextResponse.json({ ok: true });
+  // No member with this email — tell the user so they can correct a typo.
+  // (This trades a small amount of email-enumeration resistance for usability;
+  // the endpoint is rate-limited to mitigate abuse.)
+  if (!member) {
+    return NextResponse.json({ code: "EMAIL_NOT_FOUND", error: "Email not found" }, { status: 404 });
+  }
+
+  // Member exists but is inactive — can't register; point them to the board.
+  if (!member.active) {
+    return NextResponse.json(
+      { code: "INACTIVE", error: "This membership is inactive. Please contact the board." },
+      { status: 403 }
+    );
   }
 
   // Delete any previous pending registration for this card

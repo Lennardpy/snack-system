@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 
-type Status = "idle" | "scanning" | "unregistered" | "email_sent" | "error";
+type Status = "idle" | "scanning" | "unregistered" | "email_sent" | "email_not_found" | "error";
 type WsStatus = "connecting" | "connected" | "disconnected";
 
 // Arago Card Reader WebSocket server (runs on the kiosk laptop).
@@ -141,6 +141,9 @@ export default function KioskPage() {
         setStatus("idle");
         setEmail("");
       }, 8000);
+    } else if (data.code === "EMAIL_NOT_FOUND") {
+      // Email doesn't match any member — show a dedicated, helpful screen.
+      setStatus("email_not_found");
     } else {
       setError(data.error ?? "Failed to send email");
     }
@@ -225,6 +228,33 @@ export default function KioskPage() {
           </p>
           <p className="text-gray-600 text-lg mt-8">Returning to kiosk in a moment…</p>
         </>
+      )}
+
+      {status === "email_not_found" && (
+        <div className="w-full max-w-xl text-center">
+          <div className="text-8xl mb-8">🔍</div>
+          <h1 className="text-4xl md:text-5xl font-bold mb-4">Email not found</h1>
+          <p className="text-gray-300 text-xl md:text-2xl mb-3">
+            Did you use the email you log into the Stress website with?
+          </p>
+          <p className="text-gray-500 text-lg md:text-xl mb-10">
+            If this issue persists, contact the board.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              onClick={() => setStatus("unregistered")}
+              className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 font-bold text-xl px-8 py-4 rounded-xl transition-colors"
+            >
+              Try another email
+            </button>
+            <button
+              onClick={() => { setStatus("idle"); setEmail(""); }}
+              className="w-full sm:w-auto text-gray-500 hover:text-gray-300 text-lg px-4 py-4"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
 
       {status === "error" && (
