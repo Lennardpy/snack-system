@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
       (a, b) =>
         (b.confirmedAt ?? b.createdAt).getTime() - (a.confirmedAt ?? a.createdAt).getTime(),
     )
-    .slice(0, 12)
+    .slice(0, 5)
     .map((inv) => ({
       id: inv.id,
       memberName: `${inv.member.firstName} ${inv.member.lastName}`.trim(),
