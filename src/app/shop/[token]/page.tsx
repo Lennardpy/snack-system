@@ -274,7 +274,7 @@ export default function ShopPage() {
           {visibleCategories.map((cat) => (
             <div key={cat} className="mb-8">
               <h2 className="text-base font-semibold text-gray-400 mb-3 uppercase tracking-wider">{cat}</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
                 {products
                   .filter((p) => p.category.name === cat)
                   .map((p) => {
@@ -292,56 +292,56 @@ export default function ShopPage() {
                           }
                         }}
                         aria-label={`Add one ${p.name}`}
-                        className={`relative flex cursor-pointer flex-col overflow-hidden rounded-2xl bg-gray-800 ring-2 transition-all hover:brightness-110 active:scale-[0.98] ${
+                        className={`relative flex cursor-pointer flex-col overflow-hidden rounded-xl bg-gray-800 ring-2 transition-all hover:brightness-110 active:scale-[0.98] ${
                           qty > 0 ? "ring-green-500" : "ring-transparent hover:ring-gray-600"
                         }`}
                       >
-                        {/* Image */}
-                        <div className="relative h-24 w-full flex-shrink-0 bg-gray-700">
+                        {/* Image — contained on white so the whole product shows */}
+                        <div className="relative aspect-square w-full flex-shrink-0 bg-white p-2">
                           {p.imageUrl ? (
-                            <Image src={p.imageUrl} alt={p.name} fill className="object-cover" />
+                            <Image src={p.imageUrl} alt={p.name} fill className="object-contain p-1" />
                           ) : (
-                            <div className="flex h-full w-full items-center justify-center text-4xl">🍫</div>
+                            <div className="flex h-full w-full items-center justify-center text-3xl">🍫</div>
                           )}
                           {qty > 0 && (
-                            <div className="absolute right-2 top-2 flex h-8 min-w-8 items-center justify-center rounded-full bg-green-500 px-2 text-base font-bold text-white shadow-lg">
+                            <div className="absolute right-1.5 top-1.5 flex h-7 min-w-7 items-center justify-center rounded-full bg-green-500 px-1.5 text-sm font-bold text-white shadow-lg">
                               {qty}
                             </div>
                           )}
                         </div>
 
-                        <div className="flex flex-1 flex-col gap-3 p-3">
+                        <div className="flex flex-1 flex-col gap-2 p-2.5">
                           <div className="min-w-0">
-                            <p className="truncate text-lg font-semibold">{p.name}</p>
-                            <p className="text-base text-gray-400">€{(p.price / 100).toFixed(2)}</p>
+                            <p className="truncate text-sm font-semibold leading-tight">{p.name}</p>
+                            <p className="text-xs text-gray-400">€{(p.price / 100).toFixed(2)}</p>
                           </div>
 
-                          {/* Large +/- stepper. Buttons stop propagation so they
-                              don't also trigger the card's add-on-click. */}
+                          {/* +/- stepper. Buttons stop propagation so they don't
+                              also trigger the card's add-on-click. */}
                           <div className="mt-auto">
                             {qty > 0 ? (
-                              <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center justify-between gap-1.5">
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); updateCart(p.id, -1); }}
                                   aria-label={`Remove one ${p.name}`}
-                                  className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-700 text-3xl font-bold leading-none text-white transition-colors hover:bg-red-600 active:scale-90"
+                                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-700 text-2xl font-bold leading-none text-white transition-colors hover:bg-red-600 active:scale-90"
                                 >
                                   −
                                 </button>
-                                <span className="min-w-8 text-center text-2xl font-bold tabular-nums">{qty}</span>
+                                <span className="min-w-6 text-center text-lg font-bold tabular-nums">{qty}</span>
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); updateCart(p.id, 1); }}
                                   aria-label={`Add one ${p.name}`}
-                                  className="flex h-12 w-12 items-center justify-center rounded-xl bg-green-600 text-3xl font-bold leading-none text-white transition-colors hover:bg-green-500 active:scale-90"
+                                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-600 text-2xl font-bold leading-none text-white transition-colors hover:bg-green-500 active:scale-90"
                                 >
                                   +
                                 </button>
                               </div>
                             ) : (
-                              <div className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gray-700 text-lg font-semibold text-white">
-                                <span className="text-2xl leading-none">+</span> Add
+                              <div className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-gray-700 text-sm font-semibold text-white">
+                                <span className="text-lg leading-none">+</span> Add
                               </div>
                             )}
                           </div>
