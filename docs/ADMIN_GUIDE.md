@@ -8,9 +8,12 @@ and Invoices, plus links back to the Kiosk and Log out.
 
 A sales overview with a timeframe selector (**7 days / 30 days / 90 days / 1 year
 / All time**):
-- **KPIs:** Revenue, Orders, Items sold, Average order.
+- **KPIs:** Revenue, Active users, Orders, Items sold, Average order. *Active
+  users* counts the distinct members who made at least one purchase in the period.
 - **Revenue over time:** a daily bar chart (hover a bar for the date and amount).
 - **Most popular items:** ranked by quantity, with revenue per item.
+- **Top spenders:** the 10 members who spent the most in the period, with their
+  total spend and order count.
 
 All figures count **confirmed and exported** purchases in the chosen period.
 

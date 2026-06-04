@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
       status: { in: ["CONFIRMED", "EXPORTED"] },
       ...(from ? { confirmedAt: { gte: from } } : {}),
     },
-    include: { lines: { include: { product: true } } },
+    include: { lines: { include: { product: true } }, member: true },
     orderBy: { confirmedAt: "asc" },
   });
 
@@ -30,6 +30,9 @@ export async function GET(req: NextRequest) {
   // Top products: productId -> { name, quantity, revenueCents }
   const productMap = new Map<string, { name: string; quantity: number; revenueCents: number }>();
 
+  // Spend per member: memberId -> { name, spentCents, orderCount }
+  const memberMap = new Map<string, { name: string; spentCents: number; orderCount: number }>();
+
   // Daily revenue: "YYYY-MM-DD" -> cents
   const dayMap = new Map<string, number>();
 
@@ -38,6 +41,15 @@ export async function GET(req: NextRequest) {
     const d = inv.confirmedAt ?? inv.createdAt;
     const dayKey = d.toISOString().split("T")[0];
     dayMap.set(dayKey, (dayMap.get(dayKey) ?? 0) + inv.totalCents);
+
+    const memberEntry = memberMap.get(inv.memberId) ?? {
+      name: `${inv.member.firstName} ${inv.member.lastName}`.trim(),
+      spentCents: 0,
+      orderCount: 0,
+    };
+    memberEntry.spentCents += inv.totalCents;
+    memberEntry.orderCount += 1;
+    memberMap.set(inv.memberId, memberEntry);
 
     for (const line of inv.lines) {
       itemsSold += line.quantity;
@@ -57,6 +69,13 @@ export async function GET(req: NextRequest) {
     .map(([id, v]) => ({ id, ...v }))
     .sort((a, b) => b.quantity - a.quantity)
     .slice(0, 8);
+
+  // Top spenders + active users (distinct members with a purchase in range).
+  const topSpenders = [...memberMap.entries()]
+    .map(([id, v]) => ({ id, ...v }))
+    .sort((a, b) => b.spentCents - a.spentCents)
+    .slice(0, 10);
+  const activeUsers = memberMap.size;
 
   // Build a continuous daily series so the chart has no gaps.
   const series: { date: string; revenueCents: number }[] = [];
@@ -83,7 +102,9 @@ export async function GET(req: NextRequest) {
     orderCount,
     itemsSold,
     avgOrderCents: orderCount > 0 ? Math.round(revenueCents / orderCount) : 0,
+    activeUsers,
     topProducts,
+    topSpenders,
     series,
   });
 }

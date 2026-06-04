@@ -3,13 +3,16 @@
 import { useEffect, useState } from "react";
 
 interface TopProduct { id: string; name: string; quantity: number; revenueCents: number }
+interface TopSpender { id: string; name: string; spentCents: number; orderCount: number }
 interface Stats {
   range: string;
   revenueCents: number;
   orderCount: number;
   itemsSold: number;
   avgOrderCents: number;
+  activeUsers: number;
   topProducts: TopProduct[];
+  topSpenders: TopSpender[];
   series: { date: string; revenueCents: number }[];
 }
 
@@ -38,6 +41,7 @@ export default function DashboardPage() {
 
   const maxRevenue = Math.max(1, ...(stats?.series.map((s) => s.revenueCents) ?? [1]));
   const maxQty = Math.max(1, ...(stats?.topProducts.map((p) => p.quantity) ?? [1]));
+  const maxSpent = Math.max(1, ...(stats?.topSpenders.map((s) => s.spentCents) ?? [1]));
 
   return (
     <div className="p-8">
@@ -62,8 +66,9 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI cards */}
-      <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
         <Kpi label="Revenue" value={stats ? euro(stats.revenueCents) : "—"} accent />
+        <Kpi label="Active users" value={stats ? String(stats.activeUsers) : "—"} />
         <Kpi label="Orders" value={stats ? String(stats.orderCount) : "—"} />
         <Kpi label="Items sold" value={stats ? String(stats.itemsSold) : "—"} />
         <Kpi label="Avg. order" value={stats ? euro(stats.avgOrderCents) : "—"} />
@@ -113,6 +118,36 @@ export default function DashboardPage() {
                       <div
                         className="h-full rounded-full bg-green-500"
                         style={{ width: `${(p.quantity / maxQty) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* Top spenders */}
+        <section className="rounded-2xl border border-gray-800 bg-gray-900 p-6">
+          <h2 className="mb-5 text-lg font-semibold">Top spenders</h2>
+          {!stats || stats.topSpenders.length === 0 ? (
+            <p className="text-gray-500">No sales in this period.</p>
+          ) : (
+            <ul className="space-y-3">
+              {stats.topSpenders.map((s, i) => (
+                <li key={s.id} className="flex items-center gap-3">
+                  <span className="w-5 text-right text-sm font-bold text-gray-500">{i + 1}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-1 flex justify-between gap-2">
+                      <span className="truncate font-medium">{s.name}</span>
+                      <span className="flex-shrink-0 text-sm text-gray-400">
+                        {euro(s.spentCents)} · {s.orderCount} order{s.orderCount === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-gray-800">
+                      <div
+                        className="h-full rounded-full bg-purple-500"
+                        style={{ width: `${(s.spentCents / maxSpent) * 100}%` }}
                       />
                     </div>
                   </div>
