@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { effectivePriceCents } from "@/lib/pricing";
 
 async function resolveSession(token: string) {
   const session = await prisma.shopSession.findUnique({ where: { token } });
@@ -94,7 +95,9 @@ export async function POST(req: NextRequest) {
         invoiceId: invoice.id,
         productId,
         quantity: delta,
-        unitCents: product.price,
+        // Snapshot the price actually charged — discounted if the product is in
+        // its final week / past its best-before date.
+        unitCents: effectivePriceCents(product.price, product.expiresAt),
       },
     });
   }

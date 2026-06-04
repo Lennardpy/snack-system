@@ -57,6 +57,9 @@ model Product {
   archived  Boolean         @default(false)
   imageUrl  String?
   sortOrder Int             @default(0)
+  // Best-before date. In the final 7 days before this date (and after it) the
+  // product is sold at 50% off. Null = no expiry, never discounted.
+  expiresAt DateTime?
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
 

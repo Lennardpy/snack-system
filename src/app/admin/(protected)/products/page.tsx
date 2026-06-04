@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import { isOnSale, effectivePriceCents } from "@/lib/pricing";
 
 interface Category { id: string; name: string }
 interface Product {
@@ -12,6 +13,7 @@ interface Product {
   published: boolean;
   archived: boolean;
   imageUrl: string | null;
+  expiresAt: string | null;
   category: Category;
 }
 
@@ -282,10 +284,29 @@ export default function ProductsPage() {
 
                   {/* Name + stock */}
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{p.name}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="truncate font-medium">{p.name}</p>
+                      {isOnSale(p.expiresAt ? new Date(p.expiresAt) : null) && (
+                        <span className="flex-shrink-0 rounded bg-red-600 px-1.5 py-0.5 text-[11px] font-bold leading-none text-white">
+                          -50%
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-gray-500">
                       {p.stock !== null ? `${p.stock} in stock` : "Unlimited stock"}
                     </p>
+                  </div>
+
+                  {/* Best-before date */}
+                  <div className="flex-shrink-0">
+                    <label className="mb-0.5 block text-[11px] text-gray-500">Best before</label>
+                    <input
+                      type="date"
+                      value={p.expiresAt ? p.expiresAt.slice(0, 10) : ""}
+                      onChange={(e) => patch(p.id, { expiresAt: e.target.value || null })}
+                      title="Set a best-before date (50% off in its final week and after)"
+                      className="rounded-lg bg-gray-800 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]"
+                    />
                   </div>
 
                   {/* Category selector */}
@@ -337,7 +358,16 @@ export default function ProductsPage() {
                         title="Click to edit price"
                         className="group flex items-center gap-2 rounded-lg px-3 py-1.5 text-lg font-semibold tabular-nums hover:bg-gray-800"
                       >
-                        €{(p.price / 100).toFixed(2)}
+                        {isOnSale(p.expiresAt ? new Date(p.expiresAt) : null) ? (
+                          <span className="flex items-baseline gap-1.5">
+                            <span className="text-green-400">
+                              €{(effectivePriceCents(p.price, new Date(p.expiresAt as string)) / 100).toFixed(2)}
+                            </span>
+                            <span className="text-sm text-gray-500 line-through">€{(p.price / 100).toFixed(2)}</span>
+                          </span>
+                        ) : (
+                          <>€{(p.price / 100).toFixed(2)}</>
+                        )}
                         <span className="text-xs text-gray-500 group-hover:text-gray-300">✎</span>
                       </button>
                     )}

@@ -46,6 +46,13 @@ All figures count **confirmed and exported** purchases in the chosen period.
   Price changes sync to Congressus.
 - **Change category** — pick a different category from the dropdown on the product
   row; it moves immediately. Category is SSS-only (it doesn't affect Congressus).
+- **Best before (expiry discount)** — set a best-before date on the product row.
+  From **7 days before** that date onward — and after it — the product is sold at
+  **50% off** automatically. The kiosk shows a **-50%** badge with the original
+  price struck through, and members are charged (and billed in Congressus) the
+  discounted price. Clear the date to remove the discount. Update the date when a
+  new batch arrives. *Note: products stay on sale after the date — they are not
+  auto-hidden — so archive anything you no longer want sold.*
 - **Image** — click the thumbnail to upload a photo (JPG/PNG/WebP/GIF).
 - **Publish / Draft** — only **Published** products appear in the kiosk shop.
 - **Archive** — hides a product you no longer sell.

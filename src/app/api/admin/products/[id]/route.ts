@@ -13,6 +13,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const existing = await prisma.product.findUnique({ where: { id } });
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+  // Coerce a best-before date string ("" / null clears it) into a Date.
+  if ("expiresAt" in data) {
+    data.expiresAt = data.expiresAt ? new Date(data.expiresAt) : null;
+  }
+
   const product = await prisma.product.update({ where: { id }, data });
 
   // If name or price changed, keep Congressus in sync
