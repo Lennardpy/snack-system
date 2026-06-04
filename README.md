@@ -1,6 +1,6 @@
 # SSS — Stress Snack System
 
-A self-service snack kiosk for the Stress student association. Members tap their
+A self-service snack kiosk for the Stress Study association. Members tap their
 student card on a reader at the kiosk, pick snacks on a touchscreen, and confirm.
 Purchases are batched into monthly invoices and exported to **Congressus** for
 SEPA billing. Rebuilt from the original Mendix app as a Next.js application
