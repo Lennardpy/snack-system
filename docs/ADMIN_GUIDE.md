@@ -49,8 +49,10 @@ All figures count **confirmed and exported** purchases in the chosen period.
 - **Edit stock** — click the stock line under the product name to set a count
   (blank = unlimited). When stock reaches **0** the product is shown greyed-out
   with an **Out of stock** label in the kiosk — but members can **still buy it**
-  (the count is a guide, not a hard block, in case it's wrong). Stock is not
-  decremented automatically; update it when you restock or sell out.
+  (the count is a guide, not a hard block, in case it's wrong). **Stock decreases
+  automatically** as products are bought (by the quantity in each confirmed
+  order); it clamps at 0 and never goes negative, and unlimited products are
+  unaffected. Set the count again when you restock.
 - **Change category** — pick a different category from the dropdown on the product
   row; it moves immediately. Category is SSS-only (it doesn't affect Congressus).
 - **Best before (expiry discount)** — set a best-before date on the product row.
