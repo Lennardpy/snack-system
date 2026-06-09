@@ -25,6 +25,8 @@ export default function ProductsPage() {
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editPrice, setEditPrice] = useState("");
+  const [editStockId, setEditStockId] = useState<string | null>(null);
+  const [editStock, setEditStock] = useState("");
   const [newCategory, setNewCategory] = useState("");
   const [catBusy, setCatBusy] = useState(false);
   const [catError, setCatError] = useState<string | null>(null);
@@ -77,6 +79,19 @@ export default function ProductsPage() {
     if (!isNaN(cents) && cents !== p.price && cents >= 0) {
       await patch(p.id, { price: cents });
     }
+  }
+
+  function startEditStock(p: Product) {
+    setEditStockId(p.id);
+    setEditStock(p.stock != null ? String(p.stock) : "");
+  }
+
+  async function saveStock(p: Product) {
+    setEditStockId(null);
+    const trimmed = editStock.trim();
+    const next = trimmed === "" ? null : Math.max(0, Math.floor(Number(trimmed)));
+    if (trimmed !== "" && Number.isNaN(Number(trimmed))) return;
+    if (next !== p.stock) await patch(p.id, { stock: next });
   }
 
   async function addCategory(e: React.FormEvent) {
@@ -295,9 +310,48 @@ export default function ProductsPage() {
                         ) : null;
                       })()}
                     </div>
-                    <p className="text-sm text-gray-500">
-                      {p.stock !== null ? `${p.stock} in stock` : "Unlimited stock"}
-                    </p>
+                    {editStockId === p.id ? (
+                      <div className="mt-0.5 flex items-center gap-1">
+                        <input
+                          autoFocus
+                          type="number"
+                          min="0"
+                          step="1"
+                          placeholder="∞"
+                          value={editStock}
+                          onChange={(e) => setEditStock(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveStock(p);
+                            if (e.key === "Escape") setEditStockId(null);
+                          }}
+                          className="w-20 rounded-lg bg-gray-800 px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <button onClick={() => saveStock(p)}
+                          className="rounded-lg bg-green-600 px-2 py-1 text-xs font-semibold hover:bg-green-500">
+                          Save
+                        </button>
+                        <button onClick={() => setEditStockId(null)}
+                          className="px-1.5 py-1 text-xs text-gray-500 hover:text-gray-300">
+                          Cancel
+                        </button>
+                        <span className="text-xs text-gray-600">blank = ∞</span>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => startEditStock(p)}
+                        title="Click to edit stock"
+                        className={`group mt-0.5 flex items-center gap-1.5 rounded px-1 text-sm hover:bg-gray-800 ${
+                          p.stock !== null && p.stock <= 0 ? "text-red-400" : "text-gray-500"
+                        }`}
+                      >
+                        {p.stock !== null
+                          ? p.stock <= 0
+                            ? "Out of stock"
+                            : `${p.stock} in stock`
+                          : "Unlimited stock"}
+                        <span className="text-xs text-gray-600 group-hover:text-gray-400">✎</span>
+                      </button>
+                    )}
                   </div>
 
                   {/* Best-before date */}

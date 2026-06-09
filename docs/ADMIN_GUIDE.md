@@ -46,6 +46,11 @@ All figures count **confirmed and exported** purchases in the chosen period.
   can appear on invoices. New products start as **Draft**.
 - **Edit price** — click the price, type a new value, press Enter or **Save**.
   Price changes sync to Congressus.
+- **Edit stock** — click the stock line under the product name to set a count
+  (blank = unlimited). When stock reaches **0** the product is shown greyed-out
+  with an **Out of stock** label in the kiosk — but members can **still buy it**
+  (the count is a guide, not a hard block, in case it's wrong). Stock is not
+  decremented automatically; update it when you restock or sell out.
 - **Change category** — pick a different category from the dropdown on the product
   row; it moves immediately. Category is SSS-only (it doesn't affect Congressus).
 - **Best before (expiry discount)** — set a best-before date on the product row.

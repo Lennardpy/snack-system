@@ -9,6 +9,7 @@ interface Product {
   name: string;
   price: number;
   imageUrl: string | null;
+  stock?: number | null;
   onSale?: boolean;
   discount?: "HALF" | "FREE" | null;
   salePrice?: number | null;
@@ -282,6 +283,7 @@ export default function ShopPage() {
                   .filter((p) => p.category.name === cat)
                   .map((p) => {
                     const qty = qtyFor(p.id);
+                    const outOfStock = p.stock != null && p.stock <= 0;
                     return (
                       <div
                         key={p.id}
@@ -297,14 +299,21 @@ export default function ShopPage() {
                         aria-label={`Add one ${p.name}`}
                         className={`relative flex cursor-pointer flex-col overflow-hidden rounded-xl bg-gray-800 ring-2 transition-all hover:brightness-110 active:scale-[0.98] ${
                           qty > 0 ? "ring-green-500" : "ring-transparent hover:ring-gray-600"
-                        }`}
+                        } ${outOfStock ? "opacity-70" : ""}`}
                       >
                         {/* Image — contained on white so the whole product shows */}
-                        <div className="relative aspect-square w-full flex-shrink-0 bg-white p-2">
+                        <div className={`relative aspect-square w-full flex-shrink-0 bg-white p-2 ${outOfStock ? "grayscale" : ""}`}>
                           {p.imageUrl ? (
                             <Image src={p.imageUrl} alt={p.name} fill className="object-contain p-1" />
                           ) : (
                             <div className="flex h-full w-full items-center justify-center text-3xl">🍫</div>
+                          )}
+                          {outOfStock && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                              <span className="rounded bg-gray-900/90 px-2 py-1 text-xs font-bold uppercase tracking-wide text-white">
+                                Out of stock
+                              </span>
+                            </div>
                           )}
                           {p.discount && (
                             <div className="absolute left-1.5 top-1.5 rounded-md bg-red-600 px-1.5 py-0.5 text-[11px] font-bold uppercase leading-none text-white shadow">
