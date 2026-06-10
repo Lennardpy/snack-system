@@ -35,8 +35,8 @@ Set these on the Railway **service** (not the database plugin).
 | `CONGRESSUS_PRODUCT_OFFER_ID` | – | `118389` | Fallback "SSS purchases Mendix" product offer id used when a product has no offer id. |
 | `RESEND_API_KEY` | ✅ | `re_…` | Resend API key for verification emails. |
 | `EMAIL_FROM` | ✅ | `SSS <noreply@51vo.nl>` | From address (must be a verified Resend domain). |
-| `BASE_URL` | ✅ | `https://snack-system-production.up.railway.app` | **Server-side** public URL. Used in email links and the verify form action. |
-| `NEXT_PUBLIC_BASE_URL` | ✅ | same as `BASE_URL` | Client-visible URL. |
+| `BASE_URL` | ✅ | `https://51vo.nl` | **Server-side** public URL. Used in email links and the verify form action. |
+| `NEXT_PUBLIC_BASE_URL` | ✅ | same as `BASE_URL` (`https://51vo.nl`) | Client-visible URL. |
 | `NEXT_PUBLIC_CARD_READER_WS_URL` | – | `ws://localhost:3000` | WebSocket the kiosk connects to for card taps. Baked into the client bundle at build time. |
 | `UPLOAD_DIR` | – | `/data/uploads/products` | Where product images are written (the volume mount). |
 | `ADMIN_EMAIL` | seed | `secretary@stress.utwente.nl` | Admin login created by `npm run seed`. |
@@ -48,6 +48,17 @@ are evaluated in the browser. Server-side code (email links, the verify form
 action) must use the plain **`BASE_URL`** so links always point at production
 regardless of where the page was opened. Setting only `NEXT_PUBLIC_BASE_URL`
 caused verification emails to link to `localhost` — keep both set and equal.
+
+### Custom domain (`51vo.nl`)
+The app is served from Railway under the custom domain **`https://51vo.nl`**:
+1. Railway → the service → **Settings → Networking → Custom Domain** → add
+   `51vo.nl` (or a subdomain), and create the CNAME record Railway shows at your
+   DNS provider.
+2. Set **`BASE_URL`** and **`NEXT_PUBLIC_BASE_URL`** to `https://51vo.nl` and
+   redeploy. This is what makes the card-verification **emails** and the verify
+   form point at the new domain — adding the domain in Networking alone is **not**
+   enough, because `NEXT_PUBLIC_BASE_URL` is baked into the client at build time.
+3. Keep `EMAIL_FROM` on a Resend-verified domain (already `…@51vo.nl`).
 
 ## Persistent volume (product images)
 

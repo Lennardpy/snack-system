@@ -25,7 +25,7 @@ Physical card ──tap──▶ Arago Card Reader (laptop) ──WebSocket─�
 ## Kiosk laptop setup
 
 1. **Run the production app in a browser**, full-screen/kiosk mode, pointed at the
-   Railway URL (e.g. `https://snack-system-production.up.railway.app`).
+   app's URL (`https://51vo.nl`).
 2. **Run the Arago Card Reader** on the same laptop (follow its repo's
    instructions). Note the WebSocket port it uses.
 3. **Point the kiosk at the reader.** The web page reads
