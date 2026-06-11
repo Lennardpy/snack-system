@@ -7,17 +7,28 @@ import Image from "next/image";
 type Status = "idle" | "scanning" | "unregistered" | "email_sent" | "email_not_found" | "error";
 type WsStatus = "connecting" | "connected" | "disconnected";
 
+// Input mode for card UIDs:
+//   "ws"  — Arago Card Reader broadcasting over a WebSocket (kiosk laptop, default).
+//   "hid" — a USB/Bluetooth NFC reader in keyboard-wedge mode that "types" the UID
+//           followed by Enter. Works in any browser (e.g. iPad Safari), no WebSocket.
+// Resolved from the ?mode= URL query first (per-device), then the build-time env,
+// so one deployment can serve both a laptop kiosk and an iPad kiosk.
+type ReaderMode = "ws" | "hid";
+
 // Arago Card Reader WebSocket server (runs on the kiosk laptop).
 // Default port matches the reader's default (3000).
 // Override via NEXT_PUBLIC_CARD_READER_WS_URL if the reader uses a different port.
 const WS_URL =
   process.env.NEXT_PUBLIC_CARD_READER_WS_URL ?? "ws://localhost:3000";
 const RECONNECT_DELAY_MS = 3000;
+const ENV_MODE: ReaderMode =
+  process.env.NEXT_PUBLIC_CARD_READER_MODE === "hid" ? "hid" : "ws";
 
 export default function KioskPage() {
   const router = useRouter();
   const [status, setStatus] = useState<Status>("idle");
   const [wsStatus, setWsStatus] = useState<WsStatus>("connecting");
+  const [mode, setMode] = useState<ReaderMode | null>(null); // null until resolved
   const [error, setError] = useState("");
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -28,6 +39,15 @@ export default function KioskPage() {
   // Keep a stable ref to the latest handleScan so the WebSocket closure
   // never captures a stale version.
   const handleScanRef = useRef<(uid: string) => void>(() => {});
+  // Current status, read inside the keyboard-wedge listener without resubscribing.
+  const statusRef = useRef<Status>(status);
+  statusRef.current = status;
+
+  // Resolve the reader mode on mount: ?mode=hid|ws wins, else the build-time env.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("mode");
+    setMode(q === "hid" || q === "ws" ? (q as ReaderMode) : ENV_MODE);
+  }, []);
 
   async function handleScan(uid: string) {
     setStatus("scanning");
@@ -65,7 +85,42 @@ export default function KioskPage() {
   // Always keep the ref pointing at the latest closure
   handleScanRef.current = handleScan;
 
+  // ── Keyboard-wedge input (HID NFC readers, e.g. iPad + USB-C/Bluetooth reader) ──
+  // The reader "types" the card UID followed by Enter. We buffer those keystrokes
+  // (only on the idle screen, and not while a form field is focused) and treat the
+  // burst as a scanned UID.
   useEffect(() => {
+    if (!mode) return; // wait until resolved
+    let buffer = "";
+    let lastKeyAt = 0;
+
+    const onKey = (e: KeyboardEvent) => {
+      // Don't intercept real typing (e.g. the email field) or non-idle screens.
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (statusRef.current !== "idle") return;
+
+      const now = Date.now();
+      if (now - lastKeyAt > 500) buffer = ""; // reset if it wasn't a fast burst
+      lastKeyAt = now;
+
+      if (e.key === "Enter") {
+        const uid = buffer.trim();
+        buffer = "";
+        if (uid.length >= 3) handleScanRef.current(uid);
+        return;
+      }
+      if (e.key.length === 1 && /[0-9A-Za-z]/.test(e.key)) buffer += e.key;
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mode]);
+
+  // ── Arago WebSocket input (laptop kiosk). Only connects in "ws" mode. ──
+  useEffect(() => {
+    if (mode !== "ws") return; // HID/iPad kiosks don't use the WebSocket
+
     let destroyed = false;
 
     function connect() {
@@ -119,7 +174,7 @@ export default function KioskPage() {
         wsRef.current.close();
       }
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function submitEmail(e: React.FormEvent) {
     e.preventDefault();
@@ -265,24 +320,34 @@ export default function KioskPage() {
         </>
       )}
 
-      {/* WebSocket connection status indicator */}
+      {/* Reader status indicator. In HID mode there's no connection to monitor —
+          the reader is just a keyboard — so we show a steady "Ready to scan". */}
       <div className="absolute top-4 right-4 flex items-center gap-2 text-xs">
-        <span
-          className={`w-2 h-2 rounded-full ${
-            wsStatus === "connected"
-              ? "bg-green-500"
-              : wsStatus === "connecting"
-              ? "bg-yellow-500 animate-pulse"
-              : "bg-red-500"
-          }`}
-        />
-        <span className="text-gray-600">
-          {wsStatus === "connected"
-            ? "Reader connected"
-            : wsStatus === "connecting"
-            ? "Connecting…"
-            : "Reader offline"}
-        </span>
+        {mode === "hid" ? (
+          <>
+            <span className="w-2 h-2 rounded-full bg-green-500" />
+            <span className="text-gray-600">Ready to scan</span>
+          </>
+        ) : (
+          <>
+            <span
+              className={`w-2 h-2 rounded-full ${
+                wsStatus === "connected"
+                  ? "bg-green-500"
+                  : wsStatus === "connecting"
+                  ? "bg-yellow-500 animate-pulse"
+                  : "bg-red-500"
+              }`}
+            />
+            <span className="text-gray-600">
+              {wsStatus === "connected"
+                ? "Reader connected"
+                : wsStatus === "connecting"
+                ? "Connecting…"
+                : "Reader offline"}
+            </span>
+          </>
+        )}
       </div>
 
       <p className="absolute bottom-6 left-1/2 -translate-x-1/2 text-gray-700 text-xs whitespace-nowrap">

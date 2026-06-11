@@ -37,7 +37,8 @@ Set these on the Railway **service** (not the database plugin).
 | `EMAIL_FROM` | ✅ | `SSS <noreply@51vo.nl>` | From address (must be a verified Resend domain). |
 | `BASE_URL` | ✅ | `https://51vo.nl` | **Server-side** public URL. Used in email links and the verify form action. |
 | `NEXT_PUBLIC_BASE_URL` | ✅ | same as `BASE_URL` (`https://51vo.nl`) | Client-visible URL. |
-| `NEXT_PUBLIC_CARD_READER_WS_URL` | – | `ws://localhost:3000` | WebSocket the kiosk connects to for card taps. Baked into the client bundle at build time. |
+| `NEXT_PUBLIC_CARD_READER_WS_URL` | – | `ws://localhost:3000` | WebSocket the kiosk connects to for card taps (`ws` mode). Baked into the client bundle at build time. |
+| `NEXT_PUBLIC_CARD_READER_MODE` | – | `ws` (or `hid`) | Default input mode: `ws` (Arago WebSocket) or `hid` (keyboard-wedge NFC reader, e.g. iPad). Override per device with the `?mode=` URL query. |
 | `UPLOAD_DIR` | – | `/data/uploads/products` | Where product images are written (the volume mount). |
 | `ADMIN_EMAIL` | seed | `secretary@stress.utwente.nl` | Admin login created by `npm run seed`. |
 | `ADMIN_PASSWORD` | seed | – | Admin password for the seeded user. |

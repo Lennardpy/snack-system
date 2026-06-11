@@ -1,10 +1,45 @@
 # Card Reader & Kiosk Setup
 
-The kiosk reads student cards with the
-[**Arago Card Reader**](https://github.com/SVArago/Arago-Card-Reader), a small
-program that runs on the kiosk laptop and **broadcasts card taps over a
-WebSocket**. The kiosk web page connects to that WebSocket instead of reading
-the card directly.
+The kiosk supports two ways of getting a card UID into the page, chosen per
+device:
+
+| Mode | For | How the UID arrives |
+|------|-----|---------------------|
+| **`ws`** (default) | Laptop kiosk | [**Arago Card Reader**](https://github.com/SVArago/Arago-Card-Reader) broadcasts taps over a **WebSocket** |
+| **`hid`** | **iPad / tablet** kiosk | A USB-C/Bluetooth NFC reader in **keyboard-wedge** mode "types" the UID + Enter |
+
+Both feed the same `handleScan(uid)` → `POST /api/card/scan` flow. Pick the mode
+with the **`?mode=` URL query** (per device) or the `NEXT_PUBLIC_CARD_READER_MODE`
+env var (build default):
+- Laptop: open the app normally (defaults to `ws`).
+- iPad: open **`https://snacks.51vo.nl/?mode=hid`**.
+
+## iPad / tablet kiosk (HID keyboard-wedge)
+
+iPads have **no built-in NFC**, and Safari does not support the Web NFC API, so an
+**external NFC reader is required**. Use a USB-C or Bluetooth reader configured as
+a **keyboard-wedge (HID)**: on each tap it sends the card UID as keystrokes
+followed by Enter. The kiosk page (in `?mode=hid`) listens for that burst on the
+idle screen and treats it as a scan — no WebSocket, works in plain Safari.
+
+Setup:
+1. Pair/connect the HID NFC reader to the iPad and confirm it types the UID into a
+   notes field followed by a newline.
+2. Open **`/?mode=hid`** full-screen (Add to Home Screen / Guided Access works well).
+3. The status dot shows a steady **"Ready to scan"** (there's no connection to
+   monitor — the reader is just a keyboard).
+
+> ⚠️ **UID format must match.** A card is matched by the exact UID stored when it
+> was registered. If some cards are registered on the laptop (Arago) and others on
+> the iPad (HID reader), make sure both output the UID in the **same format**
+> (e.g. uppercase hex, same byte order), or a card registered on one won't be
+> recognised on the other.
+
+## Laptop kiosk (Arago WebSocket)
+
+The Arago Card Reader runs on the kiosk laptop and **broadcasts card taps over a
+WebSocket**; the kiosk web page connects to it instead of reading the card
+directly.
 
 ## How it works
 
