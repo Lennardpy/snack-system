@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { normalizeUid } from "@/lib/card";
 
 // Called when the card reader fires a UID string at the kiosk page.
 // Returns a short-lived shop token the browser navigates to.
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
   }
 
   const card = await prisma.card.findUnique({
-    where: { uid: uid.trim().toUpperCase() },
+    where: { uid: normalizeUid(uid) },
     include: { member: true },
   });
 

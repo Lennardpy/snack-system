@@ -29,11 +29,21 @@ Setup:
 3. The status dot shows a steady **"Ready to scan"** (there's no connection to
    monitor — the reader is just a keyboard).
 
-> ⚠️ **UID format must match.** A card is matched by the exact UID stored when it
-> was registered. If some cards are registered on the laptop (Arago) and others on
-> the iPad (HID reader), make sure both output the UID in the **same format**
-> (e.g. uppercase hex, same byte order), or a card registered on one won't be
-> recognised on the other.
+> ⚠️ **UID format must match across readers.** A card is matched by the UID stored
+> when it was registered, so a UID read on the laptop and the iPad must canonicalise
+> to the same value. `normalizeUid()` (`src/lib/card.ts`) already makes
+> **case, separators, and whitespace** irrelevant (`aa:bb:cc:dd`, `AA-BB-CC-DD`,
+> and `AABBCCDD` all match). What it can't infer from the string alone is **byte
+> order** (`AABBCCDD` vs `DDCCBBAA`) or **decimal vs hex** output.
+>
+> **When the HID reader arrives**, confirm the two agree:
+> 1. Take one known card. Scan it on the **Arago laptop** reader and note the UID
+>    (Members → the card, or the scan logs).
+> 2. Scan the **same** card on the **iPad HID** reader (type into a notes field).
+> 3. If, after ignoring case/separators, the two strings match → done, nothing to do.
+> 4. If they differ by byte order or decimal/hex, either reconfigure the HID reader
+>    to match, **or** add the one-line transform in the marked spot in
+>    `normalizeUid()` — then every device stays in sync automatically.
 
 ## Laptop kiosk (Arago WebSocket)
 

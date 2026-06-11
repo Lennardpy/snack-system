@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendCardVerificationEmail } from "@/lib/email";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { normalizeUid } from "@/lib/card";
 
 export async function POST(req: NextRequest) {
   // Rate-limit per IP to prevent email-enumeration probing and mail-bombing.
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing uid or email" }, { status: 400 });
   }
 
-  const normalised = uid.trim().toUpperCase();
+  const normalised = normalizeUid(uid);
 
   // Check if already registered
   const existing = await prisma.card.findUnique({ where: { uid: normalised } });
