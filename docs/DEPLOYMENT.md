@@ -34,9 +34,10 @@ Set these on the Railway **service** (not the database plugin).
 | `CONGRESSUS_API_TOKEN` | ✅ | `Pxw3…` | Bearer token for Congressus API v30. |
 | `CONGRESSUS_PRODUCT_OFFER_ID` | – | `118389` | Fallback "SSS purchases Mendix" product offer id used when a product has no offer id. |
 | `RESEND_API_KEY` | ✅ | `re_…` | Resend API key for verification emails. |
-| `EMAIL_FROM` | ✅ | `SSS <noreply@51vo.nl>` | From address (must be a verified Resend domain). |
-| `BASE_URL` | ✅ | `https://51vo.nl` | **Server-side** public URL. Used in email links and the verify form action. |
-| `NEXT_PUBLIC_BASE_URL` | ✅ | same as `BASE_URL` (`https://51vo.nl`) | Client-visible URL. |
+| `EMAIL_FROM` | ✅ | `Stress Snack System <snacks@51vo.nl>` | From address (Resend-verified domain). **Not** a `no-reply@` address. |
+| `EMAIL_REPLY_TO` | – | `board@51vo.nl` | Optional reply-to so members can respond / it isn't one-way. |
+| `BASE_URL` | ✅ | `https://snacks.51vo.nl` | **Server-side** public URL. Used in email links and the verify form action. **Must be on the same domain you email from** (51vo.nl) or links get flagged. |
+| `NEXT_PUBLIC_BASE_URL` | ✅ | same as `BASE_URL` (`https://snacks.51vo.nl`) | Client-visible URL. |
 | `NEXT_PUBLIC_CARD_READER_WS_URL` | – | `ws://localhost:3000` | WebSocket the kiosk connects to for card taps (`ws` mode). Baked into the client bundle at build time. |
 | `NEXT_PUBLIC_CARD_READER_MODE` | – | `ws` (or `hid`) | Default input mode: `ws` (Arago WebSocket) or `hid` (keyboard-wedge NFC reader, e.g. iPad). Override per device with the `?mode=` URL query. |
 | `UPLOAD_DIR` | – | `/data/uploads/products` | Where product images are written (the volume mount). |
@@ -60,6 +61,27 @@ The app is served from Railway under the custom domain **`https://51vo.nl`**:
    form point at the new domain — adding the domain in Networking alone is **not**
    enough, because `NEXT_PUBLIC_BASE_URL` is baked into the client at build time.
 3. Keep `EMAIL_FROM` on a Resend-verified domain (already `…@51vo.nl`).
+
+## Email deliverability (verification emails)
+
+Verification emails go through **Resend** from `…@51vo.nl`. To stay out of spam:
+
+- **SPF + DKIM** — set up by Resend's domain verification. Confirmed present:
+  `resend._domainkey.51vo.nl` (DKIM) and `send.51vo.nl` (return-path SPF +
+  feedback MX). Keep the Resend domain **Verified**.
+- **DMARC (required)** — add a TXT record at **`_dmarc.51vo.nl`**:
+  ```
+  v=DMARC1; p=none; rua=mailto:dmarc@51vo.nl; fo=1
+  ```
+  Start with `p=none` (monitor only); once reports look clean, tighten to
+  `p=quarantine` then `p=reject`. DKIM is domain-aligned (`d=51vo.nl`), so DMARC
+  passes. Google/Yahoo/Microsoft now require a DMARC record to exist.
+- **Link domain must match the sender** — the verify link must be on `51vo.nl`,
+  not the Railway domain. This is why `BASE_URL`/`NEXT_PUBLIC_BASE_URL` are set to
+  `https://snacks.51vo.nl`. A link to `*.up.railway.app` from a `@51vo.nl` sender
+  looks like phishing and trips spam filters.
+- **No `no-reply`** — use a real from-address (`snacks@51vo.nl`) and optionally
+  `EMAIL_REPLY_TO`.
 
 ## Persistent volume (product images)
 

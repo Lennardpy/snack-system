@@ -7,7 +7,11 @@ function getResend() {
   return _resend;
 }
 
-const FROM = process.env.EMAIL_FROM ?? "SSS <noreply@51vo.nl>";
+// Use a real, monitored from-address (not "no-reply") — mailbox providers trust
+// it more, and members can reply. Set EMAIL_REPLY_TO to route replies elsewhere
+// (e.g. the board inbox) while keeping a branded from-address.
+const FROM = process.env.EMAIL_FROM ?? "Stress Snack System <snacks@51vo.nl>";
+const REPLY_TO = process.env.EMAIL_REPLY_TO;
 // BASE_URL is server-only (no NEXT_PUBLIC_ prefix) so it is never baked into
 // the client bundle and always reflects the runtime environment variable.
 const BASE_URL =
@@ -25,6 +29,7 @@ export async function sendCardVerificationEmail(
   const { data, error } = await getResend().emails.send({
     from: FROM,
     to,
+    ...(REPLY_TO ? { replyTo: REPLY_TO } : {}),
     subject: "Link your card to your SSS account",
     html: `
       <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
