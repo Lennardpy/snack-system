@@ -17,9 +17,29 @@ model Member {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  cards    Card[]
-  invoices SaleInvoice[]
-  user     User?
+  cards       Card[]
+  invoices    SaleInvoice[]
+  pppInvoices PppInvoice[]
+  roles       MemberRole[]
+  user        User?
+}
+
+// A role/committee a member can belong to, carrying a drink discount applied at
+// the PPP bar. E.g. Board = 100% (free), PilsCie = 50%, Bartenders = 25%.
+// A member may hold several roles; the BEST (highest) discount wins.
+model MemberRole {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  // A role can discount drinks by a percentage and/or a fixed amount per product.
+  // The two stack within a role; across a member's roles the BEST (largest) total
+  // discount per product wins. PilsCie = 75 cents off each drink → discountCents 75.
+  discountPercent Int      @default(0) // 0–100; 100 = free
+  discountCents   Int      @default(0) // fixed cents off per product unit
+  color           String? // optional hex for the admin/POS chip
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  members Member[]
 }
 
 model Card {
@@ -60,6 +80,8 @@ model Product {
   // Best-before date. In the final 7 days before this date (and after it) the
   // product is sold at 50% off. Null = no expiry, never discounted.
   expiresAt DateTime?
+  // VAT rate sent to Congressus on product create/edit. Default 9% (food/drink).
+  vatCategory VatCategory   @default(LOW)
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
 
@@ -115,7 +137,20 @@ model User {
   memberId String? @unique
   member   Member? @relation(fields: [memberId], references: [id])
 
-  sessions Session[]
+  sessions      Session[]
+  passwordSetup PasswordSetupToken?
+}
+
+// One-time link to set an account password (used for inviting bartenders).
+// Intentionally NON-EXPIRING — there is no expiresAt. Consumed once (usedAt set).
+model PasswordSetupToken {
+  id        String    @id @default(cuid())
+  token     String    @unique @default(cuid())
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Session {
@@ -142,4 +177,95 @@ model CardRegistration {
 enum UserRole {
   ADMIN
   MEMBER
+  BARTENDER
+}
+
+// Activity at which drinks are sold (PPP). Soft-close stops new orders.
+enum ActivityStatus {
+  OPEN
+  CLOSED
+}
+
+// Dutch VAT rate buckets sent to Congressus on product create/edit.
+// ZERO = 0%, LOW = 9% (food/drink at cost), STANDARD = 21%.
+enum VatCategory {
+  ZERO
+  LOW
+  STANDARD
+}
+
+// ── PPP — drinks-at-activities POS ────────────────────────────────────────────
+// PPP reuses the existing Member and Card tables as the single source of truth;
+// it has NO member or card tables of its own. Cards linked via the snack kiosk
+// work at the bar with no re-registration.
+
+model PppProductCategory {
+  id        String       @id @default(cuid())
+  name      String       @unique
+  sortOrder Int          @default(0)
+  products  PppProduct[]
+}
+
+model PppProduct {
+  id        String   @id @default(cuid())
+  name      String
+  price     Int // cents
+  // Optional special/promo price (cents). When set, this is what members pay and
+  // ONLY percentage role discounts apply — fixed-cent role discounts are skipped.
+  specialPrice Int?
+  published Boolean  @default(false)
+  archived  Boolean  @default(false)
+  imageUrl  String?
+  sortOrder Int      @default(0)
+  // VAT rate sent to Congressus on product create/edit. Default 9% (drink).
+  vatCategory VatCategory @default(LOW)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Congressus product ID — set when synced to Congressus.
+  congressusProductId      Int? @unique
+  // Congressus product OFFER ID — used as product_offer_id on sale invoice lines.
+  congressusProductOfferId Int? @unique
+
+  categoryId   String
+  category     PppProductCategory @relation(fields: [categoryId], references: [id])
+  invoiceLines PppInvoiceLine[]
+}
+
+model PppActivity {
+  id        String         @id @default(cuid())
+  name      String
+  status    ActivityStatus @default(OPEN)
+  date      DateTime       @default(now())
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  invoices PppInvoice[]
+}
+
+model PppInvoice {
+  id          String        @id @default(cuid())
+  // No CONCEPT stage — a bartender confirm goes straight to CONFIRMED.
+  status      InvoiceStatus @default(CONFIRMED)
+  totalCents  Int           @default(0)
+  confirmedAt DateTime      @default(now())
+  exportedAt          DateTime?
+  congressusInvoiceId Int?
+
+  memberId   String
+  member     Member       @relation(fields: [memberId], references: [id])
+  activityId String
+  activity   PppActivity  @relation(fields: [activityId], references: [id])
+  lines      PppInvoiceLine[]
+}
+
+model PppInvoiceLine {
+  id        String @id @default(cuid())
+  quantity  Int
+  unitCents Int // price locked at time of purchase
+
+  invoiceId String
+  invoice   PppInvoice @relation(fields: [invoiceId], references: [id])
+  productId String
+  product   PppProduct @relation(fields: [productId], references: [id])
 }

@@ -4,11 +4,25 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 
-const LINKS = [
-  { href: "/admin", label: "Dashboard", icon: "📊" },
-  { href: "/admin/members", label: "Members", icon: "👥" },
-  { href: "/admin/products", label: "Products", icon: "🍫" },
-  { href: "/admin/invoices", label: "Invoices", icon: "🧾" },
+const SECTIONS: { title: string | null; links: { href: string; label: string; icon: string }[] }[] = [
+  {
+    title: null,
+    links: [
+      { href: "/admin", label: "Dashboard", icon: "📊" },
+      { href: "/admin/members", label: "Members", icon: "👥" },
+      { href: "/admin/products", label: "Products", icon: "🍫" },
+      { href: "/admin/invoices", label: "Invoices", icon: "🧾" },
+    ],
+  },
+  {
+    title: "PPP — Bar",
+    links: [
+      { href: "/admin/ppp/products", label: "Drinks", icon: "🍺" },
+      { href: "/admin/ppp/activities", label: "Activities", icon: "📅" },
+      { href: "/admin/ppp/roles", label: "Member roles", icon: "🎟️" },
+      { href: "/admin/ppp/bartenders", label: "Bartenders", icon: "🧑‍🍳" },
+    ],
+  },
 ];
 
 export default function AdminNav() {
@@ -31,26 +45,35 @@ export default function AdminNav() {
       </div>
 
       <nav className="flex flex-col gap-1">
-        {LINKS.map((link) => {
-          const active =
-            link.href === "/admin"
-              ? pathname === "/admin"
-              : pathname.startsWith(link.href);
-          return (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                active
-                  ? "bg-blue-600 text-white"
-                  : "text-gray-300 hover:bg-gray-800 hover:text-white"
-              }`}
-            >
-              <span className="text-lg">{link.icon}</span>
-              {link.label}
-            </Link>
-          );
-        })}
+        {SECTIONS.map((section) => (
+          <div key={section.title ?? "main"} className={section.title ? "mt-4" : ""}>
+            {section.title && (
+              <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-gray-600">
+                {section.title}
+              </p>
+            )}
+            {section.links.map((link) => {
+              const active =
+                link.href === "/admin"
+                  ? pathname === "/admin"
+                  : pathname.startsWith(link.href);
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                    active
+                      ? "bg-blue-600 text-white"
+                      : "text-gray-300 hover:bg-gray-800 hover:text-white"
+                  }`}
+                >
+                  <span className="text-lg">{link.icon}</span>
+                  {link.label}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       <div className="mt-auto flex flex-col gap-1">
@@ -59,6 +82,12 @@ export default function AdminNav() {
           className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
         >
           <span className="text-lg">🖥️</span> Kiosk
+        </Link>
+        <Link
+          href="/ppp"
+          className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
+        >
+          <span className="text-lg">🍺</span> PPP POS
         </Link>
         <button
           onClick={logout}

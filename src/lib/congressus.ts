@@ -173,6 +173,65 @@ export async function updateCongressusProduct(
   }
 }
 
+// ── PPP products (drinks) ─────────────────────────────────────────────────────
+//
+// PPP drinks live in a SEPARATE Congressus folder from SSS snacks: "PPP"
+// (id 8804, path webshop/ppp), created via the API parallel to SSS (5952).
+// Overridable with CONGRESSUS_PPP_FOLDER_ID.
+const PPP_FOLDER_ID = parseInt(process.env.CONGRESSUS_PPP_FOLDER_ID ?? "8804", 10);
+
+export type VatCategory = "ZERO" | "LOW" | "STANDARD";
+
+// VAT is intentionally NOT pushed to Congressus. The Congressus product API
+// CANNOT set VAT — confirmed by exhaustively probing the live API (folder 8804):
+// every validly-typed `vat_category`/`vat_percentage` payload returns HTTP 500
+// (server crash); `vat_category.id` is rejected ("Unknown field") and scalars give
+// "Invalid input type". Sending VAT would 500 the create and prevent the product
+// from being made at all, so we omit it. VAT is kept on our side only
+// (PppProduct.vatCategory) and must be set per-product in the Congressus UI.
+//   LOW → VL (9%), STANDARD → VH (21%), ZERO → none.
+export async function createPppCongressusProduct(
+  name: string,
+  priceEuros: number,
+  _vatCategory: VatCategory = "LOW"
+): Promise<{ offerId: number | null }> {
+  const res = await fetch(`${BASE}/products`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({
+      folder_id: PPP_FOLDER_ID,
+      name,
+      price: priceEuros,
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(
+      `Congressus create PPP product failed: ${res.status} ${await res.text()}`
+    );
+  }
+
+  // Resolve the real offer ID from the PPP folder listing (same quirk as SSS).
+  const folderRes = await fetch(
+    `${BASE}/products?folder_id=${PPP_FOLDER_ID}&page_size=100`,
+    { headers: headers() }
+  );
+  if (!folderRes.ok) {
+    throw new Error(
+      `Congressus PPP folder fetch failed: ${folderRes.status} ${await folderRes.text()}`
+    );
+  }
+  const data: { data: CongressusFolderProduct[] } = await folderRes.json();
+  const matches = data.data.filter((p) => p.name === name && !p.is_archived);
+  if (matches.length === 0) {
+    throw new Error(`Created PPP product "${name}" but could not find it in the PPP folder`);
+  }
+  const best = matches.reduce((a, b) =>
+    a.product_offer_id > b.product_offer_id ? a : b
+  );
+  return { offerId: best.product_offer_id };
+}
+
 // ── Sale Invoices (export) ────────────────────────────────────────────────────
 
 // Congressus product used as a fallback when a product has no offer ID mapped.

@@ -3,135 +3,183 @@ import { prisma } from "@/lib/prisma";
 import { createSaleInvoice, InvoiceLineItem } from "@/lib/congressus";
 import { requireAdmin } from "@/lib/auth";
 
-export async function POST() {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+// The export creates TWO separate Congressus sale invoices per member per month —
+// one for SSS snacks, one for PPP drinks — from the same admin "Export" action.
+// Both reuse createSaleInvoice() (and its Mendix fallback for lines without a
+// Congressus offer id).
 
-  // Fetch all confirmed invoices with their lines and member info
-  const confirmed = await prisma.saleInvoice.findMany({
-    where: { status: "CONFIRMED" },
-    include: {
-      member: true,
-      lines: { include: { product: true } },
-    },
-    orderBy: { confirmedAt: "asc" },
+interface ExpLine {
+  aggKey: string; // de-dup key within a member-month
+  description: string; // becomes the Congressus line description / productName
+  quantity: number;
+  unitCents: number;
+  congressusOfferId: number | null;
+}
+interface ExpInvoice {
+  id: string;
+  memberId: string;
+  congressusMemberId: number;
+  memberName: string;
+  when: Date;
+  lines: ExpLine[];
+}
+interface ExportOutcome {
+  exported: number; // source invoices marked EXPORTED
+  congressusInvoices: number; // Congressus invoices created
+  failed: number;
+  errors: string[];
+}
+
+function monthName(yearMonth: string): string {
+  const [year, month] = yearMonth.split("-");
+  return new Date(Number(year), Number(month) - 1, 1).toLocaleString("nl-NL", {
+    month: "long",
+    year: "numeric",
   });
+}
 
-  if (confirmed.length === 0) {
-    return NextResponse.json({ ok: true, exported: 0, congressusInvoices: 0 });
-  }
+// Group by member × calendar month, aggregate lines, and create one Congressus
+// invoice per group. `markExported` lets each source table update its own rows.
+async function runExport(
+  invoices: ExpInvoice[],
+  referencePrefix: string,
+  markExported: (invoiceIds: string[], congressusInvoiceId: number) => Promise<void>
+): Promise<ExportOutcome> {
+  const out: ExportOutcome = { exported: 0, congressusInvoices: 0, failed: 0, errors: [] };
 
-  // ── Group by member × calendar month ──────────────────────────────────────
   type Group = {
-    memberId: string;
     congressusMemberId: number;
     memberName: string;
-    yearMonth: string; // "2026-01"
+    yearMonth: string;
     invoiceIds: string[];
-    // Aggregate quantities per product for clean invoice lines
-    lineMap: Map<string, {
-      productName: string;
-      quantity: number;
-      unitCents: number;
-      congressusOfferId: number | null;
-    }>;
+    lineMap: Map<string, InvoiceLineItem>;
   };
-
   const groups = new Map<string, Group>();
 
-  for (const invoice of confirmed) {
-    const d = invoice.confirmedAt ?? invoice.createdAt;
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const yearMonth = `${year}-${month}`;
-    const key = `${invoice.memberId}-${yearMonth}`;
-
+  for (const inv of invoices) {
+    const d = inv.when;
+    const yearMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const key = `${inv.memberId}-${yearMonth}`;
     if (!groups.has(key)) {
       groups.set(key, {
-        memberId: invoice.memberId,
-        congressusMemberId: invoice.member.congressusId,
-        memberName: `${invoice.member.firstName} ${invoice.member.lastName}`,
+        congressusMemberId: inv.congressusMemberId,
+        memberName: inv.memberName,
         yearMonth,
         invoiceIds: [],
         lineMap: new Map(),
       });
     }
-
-    const group = groups.get(key)!;
-    group.invoiceIds.push(invoice.id);
-
-    // Merge invoice lines — aggregate quantities per product (at same unitCents)
-    for (const line of invoice.lines) {
-      const lineKey = `${line.productId}-${line.unitCents}`;
-      if (group.lineMap.has(lineKey)) {
-        group.lineMap.get(lineKey)!.quantity += line.quantity;
+    const g = groups.get(key)!;
+    g.invoiceIds.push(inv.id);
+    for (const line of inv.lines) {
+      const existing = g.lineMap.get(line.aggKey);
+      if (existing) {
+        existing.quantity += line.quantity;
       } else {
-        group.lineMap.set(lineKey, {
-          productName: line.product.name,
+        g.lineMap.set(line.aggKey, {
+          productName: line.description,
           quantity: line.quantity,
           unitCents: line.unitCents,
-          congressusOfferId: line.product.congressusProductOfferId ?? null,
+          congressusOfferId: line.congressusOfferId,
         });
       }
     }
   }
 
-  // ── Export each group as one Congressus invoice ────────────────────────────
-  const results = {
-    ok: true,
-    exported: 0,            // SSS invoices marked EXPORTED
-    congressusInvoices: 0,  // Congressus invoices created
-    failed: 0,
-    errors: [] as string[],
-  };
-
-  for (const group of groups.values()) {
-    // Human-readable month name for the invoice reference
-    const [year, month] = group.yearMonth.split("-");
-    const monthName = new Date(Number(year), Number(month) - 1, 1).toLocaleString("nl-NL", {
-      month: "long",
-      year: "numeric",
-    });
-    const reference = `SSS ${monthName}`;
-
-    const lines: InvoiceLineItem[] = Array.from(group.lineMap.values());
-
+  for (const g of groups.values()) {
+    const reference = `${referencePrefix} ${monthName(g.yearMonth)}`;
+    const lines = Array.from(g.lineMap.values());
     try {
-      const congressusInvoiceId = await createSaleInvoice(
-        group.congressusMemberId,
-        lines,
-        reference
-      );
-
-      // Mark all SSS invoices in this group as exported
-      await prisma.saleInvoice.updateMany({
-        where: { id: { in: group.invoiceIds } },
-        data: {
-          status: "EXPORTED",
-          exportedAt: new Date(),
-          congressusInvoiceId,
-        },
-      });
-
-      results.exported += group.invoiceIds.length;
-      results.congressusInvoices++;
-
-      const hasRealProducts = lines.some((l) => l.congressusOfferId !== null);
-      const fallbackCount = lines.filter((l) => l.congressusOfferId === null).length;
+      const congressusInvoiceId = await createSaleInvoice(g.congressusMemberId, lines, reference);
+      await markExported(g.invoiceIds, congressusInvoiceId);
+      out.exported += g.invoiceIds.length;
+      out.congressusInvoices++;
       console.log(
-        `Exported ${group.invoiceIds.length} invoice(s) for ${group.memberName} (${group.yearMonth}) → Congressus #${congressusInvoiceId}` +
-        (hasRealProducts ? ` [${lines.length - fallbackCount} product line(s)]` : "") +
-        (fallbackCount > 0 ? ` [${fallbackCount} fallback line(s) without offer ID]` : "")
+        `[${referencePrefix}] Exported ${g.invoiceIds.length} invoice(s) for ${g.memberName} (${g.yearMonth}) → Congressus #${congressusInvoiceId}`
       );
     } catch (err) {
-      results.failed++;
-      results.ok = false;
-      results.errors.push(
-        `${group.memberName} (${group.yearMonth}): ${(err as Error).message}`
-      );
-      console.error(`Export failed for ${group.memberName} (${group.yearMonth}):`, err);
+      out.failed++;
+      out.errors.push(`${referencePrefix} — ${g.memberName} (${g.yearMonth}): ${(err as Error).message}`);
+      console.error(`[${referencePrefix}] Export failed for ${g.memberName} (${g.yearMonth}):`, err);
     }
   }
 
-  return NextResponse.json(results);
+  return out;
+}
+
+export async function POST() {
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // ── SSS snacks ──────────────────────────────────────────────────────────────
+  const sssInvoices = await prisma.saleInvoice.findMany({
+    where: { status: "CONFIRMED" },
+    include: { member: true, lines: { include: { product: true } } },
+    orderBy: { confirmedAt: "asc" },
+  });
+  const sssExp: ExpInvoice[] = sssInvoices.map((inv) => ({
+    id: inv.id,
+    memberId: inv.memberId,
+    congressusMemberId: inv.member.congressusId,
+    memberName: `${inv.member.firstName} ${inv.member.lastName}`,
+    when: inv.confirmedAt ?? inv.createdAt,
+    lines: inv.lines.map((l) => ({
+      aggKey: `${l.productId}-${l.unitCents}`,
+      description: l.product.name,
+      quantity: l.quantity,
+      unitCents: l.unitCents,
+      congressusOfferId: l.product.congressusProductOfferId ?? null,
+    })),
+  }));
+  const sss = await runExport(sssExp, "SSS", (ids, cid) =>
+    prisma.saleInvoice
+      .updateMany({
+        where: { id: { in: ids } },
+        data: { status: "EXPORTED", exportedAt: new Date(), congressusInvoiceId: cid },
+      })
+      .then(() => undefined)
+  );
+
+  // ── PPP drinks ───────────────────────────────────────────────────────────────
+  // Each line's description includes the activity name (e.g. "Pils – Borrel 28 jun"),
+  // and same product at different activities stays on separate lines.
+  const pppInvoices = await prisma.pppInvoice.findMany({
+    where: { status: "CONFIRMED" },
+    include: { member: true, activity: true, lines: { include: { product: true } } },
+    orderBy: { confirmedAt: "asc" },
+  });
+  const pppExp: ExpInvoice[] = pppInvoices.map((inv) => ({
+    id: inv.id,
+    memberId: inv.memberId,
+    congressusMemberId: inv.member.congressusId,
+    memberName: `${inv.member.firstName} ${inv.member.lastName}`,
+    when: inv.confirmedAt,
+    lines: inv.lines.map((l) => ({
+      aggKey: `${l.productId}-${l.unitCents}-${inv.activityId}`,
+      description: `${l.product.name} – ${inv.activity.name}`,
+      quantity: l.quantity,
+      unitCents: l.unitCents,
+      congressusOfferId: l.product.congressusProductOfferId ?? null,
+    })),
+  }));
+  const ppp = await runExport(pppExp, "PPP", (ids, cid) =>
+    prisma.pppInvoice
+      .updateMany({
+        where: { id: { in: ids } },
+        data: { status: "EXPORTED", exportedAt: new Date(), congressusInvoiceId: cid },
+      })
+      .then(() => undefined)
+  );
+
+  return NextResponse.json({
+    ok: sss.failed === 0 && ppp.failed === 0,
+    // Combined totals (kept for the existing invoices page).
+    exported: sss.exported + ppp.exported,
+    congressusInvoices: sss.congressusInvoices + ppp.congressusInvoices,
+    failed: sss.failed + ppp.failed,
+    errors: [...sss.errors, ...ppp.errors],
+    // Per-system breakdown.
+    sss,
+    ppp,
+  });
 }

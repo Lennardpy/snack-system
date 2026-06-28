@@ -43,8 +43,12 @@ export default function InvoicesPage() {
     const res = await fetch("/api/admin/invoices/export", { method: "POST" });
     const data = await res.json();
     const errorDetail = data.errors?.length ? `\nErrors:\n${data.errors.join("\n")}` : "";
+    const split =
+      data.sss || data.ppp
+        ? ` (SSS: ${data.sss?.congressusInvoices ?? 0}, PPP: ${data.ppp?.congressusInvoices ?? 0})`
+        : "";
     setResult(
-      `Created ${data.congressusInvoices ?? 0} Congressus invoice(s) covering ${data.exported} purchase(s).` +
+      `Created ${data.congressusInvoices ?? 0} Congressus invoice(s)${split} covering ${data.exported} purchase(s).` +
       (data.failed ? ` ${data.failed} failed.${errorDetail}` : "")
     );
     setExporting(false);

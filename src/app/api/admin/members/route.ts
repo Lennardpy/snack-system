@@ -7,7 +7,10 @@ export async function GET() {
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const members = await prisma.member.findMany({
-    include: { cards: true },
+    include: {
+      cards: true,
+      roles: { select: { id: true, name: true, discountPercent: true, discountCents: true, color: true } },
+    },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
   });
 

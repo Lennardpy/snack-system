@@ -58,3 +58,42 @@ export async function sendCardVerificationEmail(
 
   console.log("Resend sent:", data?.id);
 }
+
+// Invite email sent when an admin creates a bartender account. The link lets the
+// bartender set their own password and does NOT expire.
+export async function sendBartenderInviteEmail(to: string, token: string) {
+  const link = `${BASE_URL}/set-password?token=${token}`;
+
+  const { data, error } = await getResend().emails.send({
+    from: FROM,
+    to,
+    ...(REPLY_TO ? { replyTo: REPLY_TO } : {}),
+    subject: "Set up your SSS bartender account",
+    html: `
+      <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2>Welcome to the bar 🍺</h2>
+        <p>An admin created a bartender account for you on the SSS / PPP system.</p>
+        <p>Click the button below to choose your password. This link does not expire,
+           so you can use it whenever you're ready.</p>
+        <p style="margin: 32px 0;">
+          <a href="${link}"
+             style="background: #d97706; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+            Set my password
+          </a>
+        </p>
+        <p style="color: #9ca3af; font-size: 14px;">
+          After setting a password you can sign in at the PPP bar POS.
+        </p>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+        <p style="color: #9ca3af; font-size: 12px;">SSS &mdash; Stress Snack System</p>
+      </div>
+    `,
+  });
+
+  if (error) {
+    console.error("Resend error:", JSON.stringify(error));
+    throw new Error(`Email failed: ${error.message}`);
+  }
+
+  console.log("Resend sent (invite):", data?.id);
+}

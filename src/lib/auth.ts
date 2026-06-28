@@ -20,3 +20,13 @@ export async function requireAdmin() {
   if (!session || session.user.role !== "ADMIN") return null;
   return session.user;
 }
+
+// PPP routes: bartenders operate the bar POS; admins can do everything a
+// bartender can. Returns the user, or null if not signed in with a sufficient role.
+export async function requireBartender() {
+  const session = await getSession();
+  if (!session) return null;
+  const { role } = session.user;
+  if (role !== "ADMIN" && role !== "BARTENDER") return null;
+  return session.user;
+}

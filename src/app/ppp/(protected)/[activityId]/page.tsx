@@ -1,0 +1,471 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useCardReader } from "@/lib/useCardReader";
+import { productDiscountedUnitPrice, productUnitPrice, formatRoleDiscount } from "@/lib/roles";
+
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+  specialPrice: number | null;
+  imageUrl: string | null;
+  category: { id: string; name: string; sortOrder: number };
+}
+
+interface Activity {
+  id: string;
+  name: string;
+  status: "OPEN" | "CLOSED";
+}
+
+interface HistoryInvoice {
+  id: string;
+  totalCents: number;
+  confirmedAt: string;
+  member: { firstName: string; lastName: string };
+  lines: { quantity: number; unitCents: number; product: { name: string } }[];
+}
+
+interface MemberRoleInfo {
+  name: string;
+  discountPercent: number;
+  discountCents: number;
+  color: string | null;
+}
+type MemberState =
+  | { kind: "idle" }
+  | { kind: "scanning" }
+  | {
+      kind: "found";
+      id: string;
+      firstName: string;
+      lastName: string;
+      roles: MemberRoleInfo[];
+    }
+  | { kind: "error"; message: string };
+
+const WS_URL =
+  process.env.NEXT_PUBLIC_PPP_CARD_READER_WS_URL ?? "ws://localhost:3000";
+const ENV_MODE = process.env.NEXT_PUBLIC_PPP_CARD_READER_MODE === "ws" ? "ws" : "hid";
+
+const euro = (cents: number) => `€${(cents / 100).toFixed(2)}`;
+
+export default function PosPage() {
+  const router = useRouter();
+  const { activityId } = useParams<{ activityId: string }>();
+
+  const [activity, setActivity] = useState<Activity | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [activeCat, setActiveCat] = useState<string>("all");
+  const [cart, setCart] = useState<Record<string, number>>({});
+  const [member, setMember] = useState<MemberState>({ kind: "idle" });
+  const [tab, setTab] = useState<"cart" | "history">("cart");
+  const [history, setHistory] = useState<HistoryInvoice[]>([]);
+  const [confirming, setConfirming] = useState(false);
+  const [toast, setToast] = useState("");
+
+  const productById = useMemo(
+    () => new Map(products.map((p) => [p.id, p])),
+    [products]
+  );
+
+  const isOpen = activity?.status === "OPEN";
+
+  // ── Data loading ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    (async () => {
+      const [aRes, pRes] = await Promise.all([
+        fetch("/api/ppp/activities"),
+        fetch("/api/ppp/products"),
+      ]);
+      if (aRes.ok) {
+        const d = await aRes.json();
+        const found = (d.activities as (Activity & { id: string })[]).find(
+          (a) => a.id === activityId
+        );
+        setActivity(found ?? null);
+      }
+      if (pRes.ok) {
+        const d = await pRes.json();
+        setProducts(d.products);
+      }
+    })();
+  }, [activityId]);
+
+  const loadHistory = useCallback(async () => {
+    const res = await fetch(`/api/ppp/invoices?activityId=${activityId}`);
+    if (res.ok) {
+      const d = await res.json();
+      setHistory(d.invoices);
+    }
+  }, [activityId]);
+
+  // Poll order history every 10s while on the page.
+  useEffect(() => {
+    loadHistory();
+    const t = setInterval(loadHistory, 10_000);
+    return () => clearInterval(t);
+  }, [loadHistory]);
+
+  // ── Card scanning ───────────────────────────────────────────────────────────
+  const handleScan = useCallback(async (uid: string) => {
+    setMember({ kind: "scanning" });
+    try {
+      const res = await fetch("/api/ppp/card/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid }),
+      });
+      const d = await res.json();
+      if (res.ok) {
+        setMember({
+          kind: "found",
+          id: d.memberId,
+          firstName: d.firstName,
+          lastName: d.lastName,
+          roles: d.roles ?? [],
+        });
+      } else {
+        setMember({ kind: "error", message: d.error ?? "Scan failed" });
+      }
+    } catch {
+      setMember({ kind: "error", message: "Connection error" });
+    }
+  }, []);
+
+  const { mode, wsStatus } = useCardReader({
+    onScan: handleScan,
+    wsUrl: WS_URL,
+    envMode: ENV_MODE,
+    enabled: isOpen && !confirming,
+  });
+
+  // ── Cart ops ────────────────────────────────────────────────────────────────
+  const add = (id: string) => setCart((c) => ({ ...c, [id]: (c[id] ?? 0) + 1 }));
+  const dec = (id: string) =>
+    setCart((c) => {
+      const next = (c[id] ?? 0) - 1;
+      const copy = { ...c };
+      if (next <= 0) delete copy[id];
+      else copy[id] = next;
+      return copy;
+    });
+  const clearCart = () => setCart({});
+
+  const cartLines = useMemo(
+    () =>
+      Object.entries(cart)
+        .map(([id, qty]) => ({ product: productById.get(id), qty }))
+        .filter((l): l is { product: Product; qty: number } => !!l.product),
+    [cart, productById]
+  );
+  const memberRoles = member.kind === "found" ? member.roles : [];
+  // "Gross" = effective price (special if set) before role discounts; total = after.
+  const grossCents = cartLines.reduce((s, l) => s + productUnitPrice(l.product) * l.qty, 0);
+  const totalCents = cartLines.reduce(
+    (s, l) => s + productDiscountedUnitPrice(l.product, memberRoles) * l.qty,
+    0
+  );
+  const hasDiscount = totalCents < grossCents;
+  const itemCount = cartLines.reduce((s, l) => s + l.qty, 0);
+
+  const flashToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), 3000);
+  };
+
+  async function confirmOrder() {
+    if (member.kind !== "found" || cartLines.length === 0) return;
+    setConfirming(true);
+    const res = await fetch("/api/ppp/invoices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        memberId: member.id,
+        activityId,
+        lines: cartLines.map((l) => ({ productId: l.product.id, quantity: l.qty })),
+      }),
+    });
+    setConfirming(false);
+    if (res.ok) {
+      flashToast(`Charged ${member.firstName} ${euro(totalCents)}`);
+      setCart({});
+      setMember({ kind: "idle" });
+      loadHistory();
+    } else {
+      const d = await res.json();
+      flashToast(d.error ?? "Could not confirm order");
+    }
+  }
+
+  // ── Category tabs ───────────────────────────────────────────────────────────
+  const categories = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; sortOrder: number }>();
+    for (const p of products) map.set(p.category.id, p.category);
+    return [...map.values()].sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [products]);
+
+  const visible = activeCat === "all" ? products : products.filter((p) => p.category.id === activeCat);
+
+  const memberRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <div className="flex h-screen flex-col">
+      {/* Header */}
+      <header className="flex items-center justify-between border-b border-gray-800 px-5 py-3">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.push("/ppp")}
+            className="text-gray-400 hover:text-white"
+            aria-label="Back to activities"
+          >
+            ←
+          </button>
+          <h1 className="font-bold">{activity?.name ?? "…"}</h1>
+          {activity && !isOpen && (
+            <span className="rounded-full bg-gray-700/40 px-2 py-0.5 text-xs text-gray-400">
+              Closed
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          {mode === "hid" ? (
+            <>
+              <span className="h-2 w-2 rounded-full bg-green-500" />
+              Ready to scan
+            </>
+          ) : (
+            <>
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  wsStatus === "connected"
+                    ? "bg-green-500"
+                    : wsStatus === "connecting"
+                    ? "animate-pulse bg-yellow-500"
+                    : "bg-red-500"
+                }`}
+              />
+              {wsStatus === "connected" ? "Reader connected" : wsStatus === "connecting" ? "Connecting…" : "Reader offline"}
+            </>
+          )}
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+        {/* Left: products */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex flex-wrap gap-2 border-b border-gray-800 px-4 py-3">
+            <CatPill active={activeCat === "all"} onClick={() => setActiveCat("all")}>
+              All
+            </CatPill>
+            {categories.map((c) => (
+              <CatPill key={c.id} active={activeCat === c.id} onClick={() => setActiveCat(c.id)}>
+                {c.name}
+              </CatPill>
+            ))}
+          </div>
+          <div className="grid flex-1 auto-rows-min grid-cols-2 gap-3 overflow-y-auto p-4 sm:grid-cols-3 lg:grid-cols-4">
+            {visible.length === 0 ? (
+              <p className="col-span-full text-sm text-gray-500">
+                No published drinks. Add some under Admin → PPP Products.
+              </p>
+            ) : (
+              visible.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => add(p.id)}
+                  disabled={!isOpen}
+                  className="flex flex-col items-center rounded-xl border border-gray-800 bg-gray-900 p-3 text-center transition-colors hover:border-amber-600 disabled:opacity-40"
+                >
+                  <span className="text-sm font-semibold">{p.name}</span>
+                  {p.specialPrice != null ? (
+                    <span className="mt-1 flex items-baseline gap-1 text-xs">
+                      <span className="text-gray-500 line-through">{euro(p.price)}</span>
+                      <span className="font-semibold text-amber-400">{euro(p.specialPrice)}</span>
+                    </span>
+                  ) : (
+                    <span className="mt-1 text-xs text-gray-400">{euro(p.price)}</span>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Right: cart + history */}
+        <aside className="flex w-80 flex-col border-l border-gray-800">
+          <div className="flex border-b border-gray-800 text-sm">
+            <TabBtn active={tab === "cart"} onClick={() => setTab("cart")}>
+              Cart{itemCount > 0 ? ` (${itemCount})` : ""}
+            </TabBtn>
+            <TabBtn active={tab === "history"} onClick={() => setTab("history")}>
+              History
+            </TabBtn>
+          </div>
+
+          {tab === "cart" ? (
+            <>
+              {/* Member chip */}
+              <div ref={memberRef} className="border-b border-gray-800 p-4">
+                {member.kind === "found" ? (
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-gray-500">Charging</p>
+                        <p className="font-semibold">
+                          {member.firstName} {member.lastName}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setMember({ kind: "idle" })}
+                        className="text-xs text-gray-500 hover:text-gray-300"
+                      >
+                        Change
+                      </button>
+                    </div>
+                    {member.roles.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {member.roles.map((r) => (
+                          <span
+                            key={r.name}
+                            className={`rounded-lg px-2 py-1 text-xs font-medium ${
+                              r.discountPercent >= 100
+                                ? "bg-green-500/15 text-green-400"
+                                : "bg-amber-500/15 text-amber-300"
+                            }`}
+                          >
+                            {r.name} — {r.discountPercent >= 100 ? "drinks free" : formatRoleDiscount(r)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : member.kind === "scanning" ? (
+                  <p className="text-sm text-amber-400">Reading card…</p>
+                ) : member.kind === "error" ? (
+                  <p className="text-sm text-red-400">{member.message} — tap again</p>
+                ) : (
+                  <p className="text-sm text-gray-500">Tap a member card to charge</p>
+                )}
+              </div>
+
+              {/* Cart lines */}
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                {cartLines.length === 0 ? (
+                  <p className="text-sm text-gray-600">Cart is empty</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {cartLines.map((l) => (
+                      <li key={l.product.id} className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 flex-1 truncate text-sm">{l.product.name}</span>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => dec(l.product.id)} className="h-6 w-6 rounded bg-gray-800 hover:bg-gray-700">
+                            −
+                          </button>
+                          <span className="w-5 text-center text-sm">{l.qty}</span>
+                          <button onClick={() => add(l.product.id)} className="h-6 w-6 rounded bg-gray-800 hover:bg-gray-700">
+                            +
+                          </button>
+                          <span className="w-14 text-right text-sm text-gray-400">
+                            {euro(productDiscountedUnitPrice(l.product, memberRoles) * l.qty)}
+                          </span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {/* Totals + actions */}
+              <div className="border-t border-gray-800 p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <span className="text-sm text-gray-400">Total</span>
+                  <span className="flex items-baseline gap-2">
+                    {hasDiscount && (
+                      <span className="text-sm text-gray-500 line-through">{euro(grossCents)}</span>
+                    )}
+                    <span className="text-lg font-bold">{euro(totalCents)}</span>
+                  </span>
+                </div>
+                <button
+                  onClick={confirmOrder}
+                  disabled={member.kind !== "found" || cartLines.length === 0 || confirming || !isOpen}
+                  className="mb-2 w-full rounded-xl bg-amber-600 py-3 font-bold transition-colors hover:bg-amber-500 disabled:opacity-40"
+                >
+                  {confirming
+                    ? "Confirming…"
+                    : member.kind === "found"
+                    ? `Confirm — ${member.firstName}`
+                    : "Scan a card to confirm"}
+                </button>
+                <button
+                  onClick={clearCart}
+                  disabled={cartLines.length === 0}
+                  className="w-full rounded-xl border border-gray-700 py-2 text-sm text-gray-400 transition-colors hover:text-white disabled:opacity-40"
+                >
+                  Clear cart
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              {history.length === 0 ? (
+                <p className="text-sm text-gray-600">No orders yet</p>
+              ) : (
+                <ul className="space-y-3">
+                  {history.map((inv) => (
+                    <li key={inv.id} className="rounded-lg border border-gray-800 p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold">
+                          {inv.member.firstName} {inv.member.lastName}
+                        </span>
+                        <span className="text-sm text-gray-400">{euro(inv.totalCents)}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {inv.lines.map((l) => `${l.quantity}× ${l.product.name}`).join(", ")}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </aside>
+      </div>
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-xl bg-amber-600 px-5 py-3 font-medium shadow-lg">
+          {toast}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CatPill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+        active ? "bg-amber-600 text-white" : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex-1 py-3 font-medium transition-colors ${
+        active ? "border-b-2 border-amber-500 text-white" : "text-gray-500 hover:text-gray-300"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}

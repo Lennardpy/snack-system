@@ -2,6 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { formatRoleDiscount } from "@/lib/roles";
+
+interface Role {
+  id: string;
+  name: string;
+  discountPercent: number;
+  discountCents: number;
+  color: string | null;
+}
 
 interface Member {
   id: string;
@@ -11,23 +20,51 @@ interface Member {
   email: string;
   active: boolean;
   cards: { uid: string; name: string | null }[];
+  roles: Role[];
+}
+
+function RoleChip({ role }: { role: Role }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"
+      style={
+        role.color
+          ? { borderColor: role.color, color: role.color }
+          : { borderColor: "#9333ea66", color: "#c4b5fd" }
+      }
+    >
+      {role.name}
+      <span className="opacity-70">{formatRoleDiscount(role)}</span>
+    </span>
+  );
 }
 
 export default function MembersPage() {
   const router = useRouter();
   const [members, setMembers] = useState<Member[]>([]);
+  const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [savingRoles, setSavingRoles] = useState(false);
 
   function load() {
     fetch("/api/admin/members")
       .then((r) => r.json())
       .then((d) => setMembers(d.members ?? []));
   }
+  function loadRoles() {
+    fetch("/api/admin/ppp/roles")
+      .then((r) => r.json())
+      .then((d) => setAllRoles(d.roles ?? []));
+  }
 
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+    loadRoles();
+  }, []);
 
   async function sync() {
     setSyncing(true);
@@ -64,6 +101,24 @@ export default function MembersPage() {
     }
   }
 
+  async function toggleRole(member: Member, roleId: string) {
+    const has = member.roles.some((r) => r.id === roleId);
+    const nextIds = has
+      ? member.roles.filter((r) => r.id !== roleId).map((r) => r.id)
+      : [...member.roles.map((r) => r.id), roleId];
+    setSavingRoles(true);
+    const res = await fetch(`/api/admin/members/${member.id}/roles`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ roleIds: nextIds }),
+    });
+    setSavingRoles(false);
+    if (res.ok) {
+      const { roles } = await res.json();
+      setMembers((prev) => prev.map((x) => (x.id === member.id ? { ...x, roles } : x)));
+    }
+  }
+
   const filtered = members.filter((m) =>
     `${m.firstName} ${m.lastName} ${m.email}`.toLowerCase().includes(search.toLowerCase())
   );
@@ -75,13 +130,21 @@ export default function MembersPage() {
           <h1 className="text-3xl font-bold">Members</h1>
           <p className="text-gray-500">{members.length} total</p>
         </div>
-        <button
-          onClick={sync}
-          disabled={syncing}
-          className="rounded-xl bg-blue-600 px-5 py-2.5 font-semibold transition-colors hover:bg-blue-500 disabled:opacity-40"
-        >
-          {syncing ? "Syncing…" : "Sync from Congressus"}
-        </button>
+        <div className="flex items-center gap-2">
+          <a
+            href="/admin/ppp/roles"
+            className="rounded-xl border border-gray-700 px-4 py-2.5 text-sm font-medium text-gray-300 transition-colors hover:bg-gray-800"
+          >
+            🎟️ Manage roles
+          </a>
+          <button
+            onClick={sync}
+            disabled={syncing}
+            className="rounded-xl bg-blue-600 px-5 py-2.5 font-semibold transition-colors hover:bg-blue-500 disabled:opacity-40"
+          >
+            {syncing ? "Syncing…" : "Sync from Congressus"}
+          </button>
+        </div>
       </div>
 
       {syncResult && (
@@ -98,44 +161,97 @@ export default function MembersPage() {
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {filtered.map((m) => (
-          <div
-            key={m.id}
-            className="flex items-center justify-between gap-4 rounded-2xl border border-gray-800 bg-gray-900 p-4"
-          >
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-gray-700 text-sm font-bold">
-                {m.firstName[0]}{m.lastName[0]}
+          <div key={m.id} className="rounded-2xl border border-gray-800 bg-gray-900 p-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-gray-700 text-sm font-bold">
+                  {m.firstName[0]}{m.lastName[0]}
+                </div>
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 font-semibold">
+                    <span className="truncate">{m.firstName} {m.lastName}</span>
+                    {!m.active && (
+                      <span className="flex-shrink-0 rounded-full bg-red-900/50 px-2 py-0.5 text-xs text-red-300">Inactive</span>
+                    )}
+                  </p>
+                  <p className="truncate text-sm text-gray-400">{m.email}</p>
+                  <p className="text-xs text-gray-600">{m.cards.length} card(s) linked</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="flex items-center gap-2 font-semibold">
-                  <span className="truncate">{m.firstName} {m.lastName}</span>
-                  {!m.active && (
-                    <span className="flex-shrink-0 rounded-full bg-red-900/50 px-2 py-0.5 text-xs text-red-300">Inactive</span>
-                  )}
-                </p>
-                <p className="truncate text-sm text-gray-400">{m.email}</p>
-                <p className="text-xs text-gray-600">{m.cards.length} card(s) linked</p>
+
+              <div className="flex flex-shrink-0 items-center gap-2">
+                <button
+                  onClick={() => setEditingId(editingId === m.id ? null : m.id)}
+                  title="Assign roles / discounts"
+                  className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    editingId === m.id ? "bg-amber-600 text-white" : "bg-gray-800 text-gray-200 hover:bg-amber-600"
+                  }`}
+                >
+                  🎟️ Roles
+                </button>
+                <button
+                  onClick={() => enterStore(m)}
+                  disabled={busyId === m.id}
+                  title="Open the kiosk shop as this member"
+                  className="rounded-lg bg-gray-800 px-3 py-2 text-sm font-medium text-gray-200 transition-colors hover:bg-blue-600 disabled:opacity-40"
+                >
+                  🛒 Enter store
+                </button>
+                <button
+                  onClick={() => remove(m)}
+                  disabled={busyId === m.id}
+                  title="Delete member"
+                  className="rounded-lg bg-gray-800 px-3 py-2 text-sm font-medium text-gray-400 transition-colors hover:bg-red-600 hover:text-white disabled:opacity-40"
+                >
+                  Delete
+                </button>
               </div>
             </div>
 
-            <div className="flex flex-shrink-0 items-center gap-2">
-              <button
-                onClick={() => enterStore(m)}
-                disabled={busyId === m.id}
-                title="Open the kiosk shop as this member"
-                className="rounded-lg bg-gray-800 px-3 py-2 text-sm font-medium text-gray-200 transition-colors hover:bg-blue-600 disabled:opacity-40"
-              >
-                🛒 Enter store
-              </button>
-              <button
-                onClick={() => remove(m)}
-                disabled={busyId === m.id}
-                title="Delete member"
-                className="rounded-lg bg-gray-800 px-3 py-2 text-sm font-medium text-gray-400 transition-colors hover:bg-red-600 hover:text-white disabled:opacity-40"
-              >
-                Delete
-              </button>
-            </div>
+            {/* Current role chips */}
+            {m.roles.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1.5 pl-14">
+                {m.roles.map((r) => (
+                  <RoleChip key={r.id} role={r} />
+                ))}
+              </div>
+            )}
+
+            {/* Inline role editor */}
+            {editingId === m.id && (
+              <div className="mt-3 rounded-xl border border-gray-800 bg-gray-950/60 p-3">
+                {allRoles.length === 0 ? (
+                  <p className="text-sm text-gray-500">
+                    No roles defined yet.{" "}
+                    <a href="/admin/ppp/roles" className="text-amber-400 underline">
+                      Create roles
+                    </a>{" "}
+                    first.
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {allRoles.map((role) => {
+                      const active = m.roles.some((r) => r.id === role.id);
+                      return (
+                        <button
+                          key={role.id}
+                          onClick={() => toggleRole(m, role.id)}
+                          disabled={savingRoles}
+                          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
+                            active
+                              ? "border-amber-500 bg-amber-600/20 text-amber-300"
+                              : "border-gray-700 text-gray-400 hover:border-gray-500"
+                          }`}
+                        >
+                          {active ? "✓ " : ""}
+                          {role.name} ({formatRoleDiscount(role)})
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ))}
         {filtered.length === 0 && <p className="text-gray-500">No members found.</p>}
