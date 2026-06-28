@@ -28,10 +28,11 @@ export async function POST(req: NextRequest) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { name, price, specialPrice, categoryId, vatCategory } = await req.json();
+  const { name, price, specialPrice, categoryId, vatCategory, color } = await req.json();
   if (!name || typeof price !== "number" || !categoryId) {
     return NextResponse.json({ error: "name, price and categoryId are required" }, { status: 400 });
   }
+  const colorVal = typeof color === "string" && color.trim() ? color.trim() : null;
   const special =
     specialPrice === null || specialPrice === undefined || specialPrice === ""
       ? null
@@ -47,6 +48,7 @@ export async function POST(req: NextRequest) {
       specialPrice: special,
       categoryId,
       vatCategory: vat,
+      color: colorVal,
       published: false,
     },
   });

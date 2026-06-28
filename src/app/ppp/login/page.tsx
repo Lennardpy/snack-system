@@ -1,7 +1,11 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, Suspense, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useCardReader } from "@/lib/useCardReader";
+
+const WS_URL = process.env.NEXT_PUBLIC_PPP_CARD_READER_WS_URL ?? "ws://localhost:3000";
+const ENV_MODE = process.env.NEXT_PUBLIC_PPP_CARD_READER_MODE === "ws" ? "ws" : "hid";
 
 function LoginForm() {
   const router = useRouter();
@@ -12,6 +16,7 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [scanning, setScanning] = useState(false);
 
   async function login(e: React.FormEvent) {
     e.preventDefault();
@@ -35,28 +40,96 @@ function LoginForm() {
     }
   }
 
+  // Card login — a tapped card whose member is linked to a bartender/admin account.
+  const handleCardScan = useCallback(
+    async (uid: string) => {
+      setScanning(true);
+      setError("");
+      try {
+        const res = await fetch("/api/auth/card-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ uid }),
+        });
+        if (res.ok) {
+          router.push(from);
+          router.refresh();
+          return;
+        }
+        const d = await res.json();
+        setError(d.error ?? "Card login failed");
+      } catch {
+        setError("Connection error");
+      }
+      setScanning(false);
+    },
+    [from, router]
+  );
+
+  const { mode, wsStatus } = useCardReader({
+    onScan: handleCardScan,
+    wsUrl: WS_URL,
+    envMode: ENV_MODE,
+    enabled: !scanning,
+  });
+
   return (
-    <form onSubmit={login} className="w-full max-w-sm space-y-4">
-      <h1 className="text-2xl font-bold mb-1">PPP</h1>
-      <p className="text-gray-400 text-xs mb-6">Bar POS — bartender sign-in</p>
-      {error && <p className="text-red-400 text-sm">{error}</p>}
-      <input
-        type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-        placeholder="Email" required autoFocus
-        className="w-full bg-gray-800 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-amber-500"
-      />
-      <input
-        type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-        placeholder="Password" required
-        className="w-full bg-gray-800 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-amber-500"
-      />
-      <button
-        type="submit" disabled={loading}
-        className="w-full bg-amber-600 hover:bg-amber-500 disabled:opacity-40 font-bold py-3 rounded-xl transition-colors"
-      >
-        {loading ? "Logging in…" : "Login"}
-      </button>
-    </form>
+    <div className="w-full max-w-sm space-y-5">
+      <div>
+        <h1 className="text-2xl font-bold">PPP</h1>
+        <p className="text-gray-400 text-xs">Bar POS — sign in with email / password or scan your card</p>
+      </div>
+
+      {error && <p className="text-sm text-red-400">{error}</p>}
+
+      <form onSubmit={login} className="space-y-4">
+        <input
+          type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email" required autoFocus
+          className="w-full rounded-lg bg-gray-800 px-4 py-3 outline-none focus:ring-2 focus:ring-amber-500"
+        />
+        <input
+          type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+          placeholder="Password" required
+          className="w-full rounded-lg bg-gray-800 px-4 py-3 outline-none focus:ring-2 focus:ring-amber-500"
+        />
+        <button
+          type="submit" disabled={loading}
+          className="w-full rounded-xl bg-amber-600 py-3 font-bold transition-colors hover:bg-amber-500 disabled:opacity-40"
+        >
+          {loading ? "Logging in…" : "Login"}
+        </button>
+      </form>
+
+      {/* Card login */}
+      <div className="flex items-center gap-3 text-xs text-gray-600">
+        <span className="h-px flex-1 bg-gray-800" /> or <span className="h-px flex-1 bg-gray-800" />
+      </div>
+      <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 text-center">
+        <p className="text-4xl">🪪</p>
+        <p className="mt-2 font-medium">{scanning ? "Reading card…" : "Scan your card"}</p>
+        <div className="mt-2 flex items-center justify-center gap-2 text-xs text-gray-500">
+          {mode === "hid" ? (
+            <>
+              <span className="h-2 w-2 rounded-full bg-green-500" /> Ready to scan
+            </>
+          ) : (
+            <>
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  wsStatus === "connected"
+                    ? "bg-green-500"
+                    : wsStatus === "connecting"
+                    ? "animate-pulse bg-yellow-500"
+                    : "bg-red-500"
+                }`}
+              />
+              {wsStatus === "connected" ? "Reader connected" : wsStatus === "connecting" ? "Connecting…" : "Reader offline"}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

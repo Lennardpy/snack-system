@@ -11,6 +11,7 @@ interface Product {
   price: number;
   specialPrice: number | null;
   imageUrl: string | null;
+  color: string | null;
   category: { id: string; name: string; sortOrder: number };
 }
 
@@ -256,7 +257,7 @@ export default function PosPage() {
       <div className="flex min-h-0 flex-1">
         {/* Left: products */}
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex flex-wrap gap-2 border-b border-gray-800 px-4 py-3">
+          <div className="flex flex-wrap gap-2.5 border-b border-gray-800 px-5 py-4">
             <CatPill active={activeCat === "all"} onClick={() => setActiveCat("all")}>
               All
             </CatPill>
@@ -266,37 +267,51 @@ export default function PosPage() {
               </CatPill>
             ))}
           </div>
-          <div className="grid flex-1 auto-rows-min grid-cols-2 gap-3 overflow-y-auto p-4 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="grid flex-1 auto-rows-min grid-cols-2 gap-4 overflow-y-auto p-5 sm:grid-cols-3 lg:grid-cols-4">
             {visible.length === 0 ? (
-              <p className="col-span-full text-sm text-gray-500">
+              <p className="col-span-full text-base text-gray-500">
                 No published drinks. Add some under Admin → PPP Products.
               </p>
             ) : (
-              visible.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => add(p.id)}
-                  disabled={!isOpen}
-                  className="flex flex-col items-center rounded-xl border border-gray-800 bg-gray-900 p-3 text-center transition-colors hover:border-amber-600 disabled:opacity-40"
-                >
-                  <span className="text-sm font-semibold">{p.name}</span>
-                  {p.specialPrice != null ? (
-                    <span className="mt-1 flex items-baseline gap-1 text-xs">
-                      <span className="text-gray-500 line-through">{euro(p.price)}</span>
-                      <span className="font-semibold text-amber-400">{euro(p.specialPrice)}</span>
-                    </span>
-                  ) : (
-                    <span className="mt-1 text-xs text-gray-400">{euro(p.price)}</span>
-                  )}
-                </button>
-              ))
+              visible.map((p) => {
+                const colored = !!p.color;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => add(p.id)}
+                    disabled={!isOpen}
+                    style={p.color ? { backgroundColor: p.color } : undefined}
+                    className={`flex min-h-[7rem] flex-col items-center justify-center rounded-2xl border p-4 text-center shadow-sm transition-transform active:scale-95 disabled:opacity-40 ${
+                      colored
+                        ? "border-white/15 text-white hover:brightness-110"
+                        : "border-gray-800 bg-gray-900 hover:border-amber-600"
+                    }`}
+                  >
+                    <span className="text-xl font-bold leading-tight">{p.name}</span>
+                    {p.specialPrice != null ? (
+                      <span className="mt-2 flex items-baseline gap-1.5 text-base">
+                        <span className={colored ? "text-white/60 line-through" : "text-gray-500 line-through"}>
+                          {euro(p.price)}
+                        </span>
+                        <span className={colored ? "font-bold text-white" : "font-bold text-amber-400"}>
+                          {euro(p.specialPrice)}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className={`mt-2 text-base ${colored ? "text-white/90" : "text-gray-400"}`}>
+                        {euro(p.price)}
+                      </span>
+                    )}
+                  </button>
+                );
+              })
             )}
           </div>
         </div>
 
         {/* Right: cart + history */}
-        <aside className="flex w-80 flex-col border-l border-gray-800">
-          <div className="flex border-b border-gray-800 text-sm">
+        <aside className="flex w-96 flex-col border-l border-gray-800">
+          <div className="flex border-b border-gray-800 text-base">
             <TabBtn active={tab === "cart"} onClick={() => setTab("cart")}>
               Cart{itemCount > 0 ? ` (${itemCount})` : ""}
             </TabBtn>
@@ -307,6 +322,18 @@ export default function PosPage() {
 
           {tab === "cart" ? (
             <>
+              {/* Clear cart — kept at the top for quick reset */}
+              {cartLines.length > 0 && (
+                <div className="flex items-center justify-between border-b border-gray-800 px-4 py-2.5">
+                  <span className="text-sm text-gray-400">{itemCount} item{itemCount === 1 ? "" : "s"}</span>
+                  <button
+                    onClick={clearCart}
+                    className="rounded-lg bg-gray-800 px-4 py-2 text-sm font-semibold text-gray-300 transition-colors hover:bg-red-600 hover:text-white"
+                  >
+                    Clear cart
+                  </button>
+                </div>
+              )}
               {/* Member chip */}
               <div ref={memberRef} className="border-b border-gray-800 p-4">
                 {member.kind === "found" ? (
@@ -314,13 +341,13 @@ export default function PosPage() {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-xs text-gray-500">Charging</p>
-                        <p className="font-semibold">
+                        <p className="text-lg font-bold">
                           {member.firstName} {member.lastName}
                         </p>
                       </div>
                       <button
                         onClick={() => setMember({ kind: "idle" })}
-                        className="text-xs text-gray-500 hover:text-gray-300"
+                        className="rounded-lg bg-gray-800 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700"
                       >
                         Change
                       </button>
@@ -356,19 +383,19 @@ export default function PosPage() {
                 {cartLines.length === 0 ? (
                   <p className="text-sm text-gray-600">Cart is empty</p>
                 ) : (
-                  <ul className="space-y-2">
+                  <ul className="space-y-3">
                     {cartLines.map((l) => (
                       <li key={l.product.id} className="flex items-center justify-between gap-2">
-                        <span className="min-w-0 flex-1 truncate text-sm">{l.product.name}</span>
+                        <span className="min-w-0 flex-1 truncate text-base font-medium">{l.product.name}</span>
                         <div className="flex items-center gap-2">
-                          <button onClick={() => dec(l.product.id)} className="h-6 w-6 rounded bg-gray-800 hover:bg-gray-700">
+                          <button onClick={() => dec(l.product.id)} className="h-10 w-10 rounded-lg bg-gray-800 text-2xl leading-none hover:bg-gray-700 active:scale-95">
                             −
                           </button>
-                          <span className="w-5 text-center text-sm">{l.qty}</span>
-                          <button onClick={() => add(l.product.id)} className="h-6 w-6 rounded bg-gray-800 hover:bg-gray-700">
+                          <span className="w-7 text-center text-lg font-bold tabular-nums">{l.qty}</span>
+                          <button onClick={() => add(l.product.id)} className="h-10 w-10 rounded-lg bg-gray-800 text-2xl leading-none hover:bg-gray-700 active:scale-95">
                             +
                           </button>
-                          <span className="w-14 text-right text-sm text-gray-400">
+                          <span className="w-16 text-right text-base text-gray-400 tabular-nums">
                             {euro(productDiscountedUnitPrice(l.product, memberRoles) * l.qty)}
                           </span>
                         </div>
@@ -378,34 +405,27 @@ export default function PosPage() {
                 )}
               </div>
 
-              {/* Totals + actions */}
+              {/* Totals + confirm */}
               <div className="border-t border-gray-800 p-4">
                 <div className="mb-3 flex items-center justify-between">
-                  <span className="text-sm text-gray-400">Total</span>
+                  <span className="text-base text-gray-400">Total</span>
                   <span className="flex items-baseline gap-2">
                     {hasDiscount && (
-                      <span className="text-sm text-gray-500 line-through">{euro(grossCents)}</span>
+                      <span className="text-base text-gray-500 line-through">{euro(grossCents)}</span>
                     )}
-                    <span className="text-lg font-bold">{euro(totalCents)}</span>
+                    <span className="text-3xl font-extrabold tabular-nums">{euro(totalCents)}</span>
                   </span>
                 </div>
                 <button
                   onClick={confirmOrder}
                   disabled={member.kind !== "found" || cartLines.length === 0 || confirming || !isOpen}
-                  className="mb-2 w-full rounded-xl bg-amber-600 py-3 font-bold transition-colors hover:bg-amber-500 disabled:opacity-40"
+                  className="w-full rounded-2xl bg-amber-600 py-5 text-xl font-bold transition-colors hover:bg-amber-500 active:scale-[0.99] disabled:opacity-40"
                 >
                   {confirming
                     ? "Confirming…"
                     : member.kind === "found"
                     ? `Confirm — ${member.firstName}`
                     : "Scan a card to confirm"}
-                </button>
-                <button
-                  onClick={clearCart}
-                  disabled={cartLines.length === 0}
-                  className="w-full rounded-xl border border-gray-700 py-2 text-sm text-gray-400 transition-colors hover:text-white disabled:opacity-40"
-                >
-                  Clear cart
                 </button>
               </div>
             </>
@@ -448,7 +468,7 @@ function CatPill({ active, onClick, children }: { active: boolean; onClick: () =
   return (
     <button
       onClick={onClick}
-      className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+      className={`rounded-full px-5 py-2.5 text-base font-semibold transition-colors active:scale-95 ${
         active ? "bg-amber-600 text-white" : "bg-gray-800 text-gray-300 hover:bg-gray-700"
       }`}
     >
@@ -461,7 +481,7 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
   return (
     <button
       onClick={onClick}
-      className={`flex-1 py-3 font-medium transition-colors ${
+      className={`flex-1 py-4 font-semibold transition-colors ${
         active ? "border-b-2 border-amber-500 text-white" : "text-gray-500 hover:text-gray-300"
       }`}
     >

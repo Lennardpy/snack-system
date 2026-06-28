@@ -216,6 +216,8 @@ model PppProduct {
   published Boolean  @default(false)
   archived  Boolean  @default(false)
   imageUrl  String?
+  // Optional tile background colour (hex) shown on the POS.
+  color     String?
   sortOrder Int      @default(0)
   // VAT rate sent to Congressus on product create/edit. Default 9% (drink).
   vatCategory VatCategory @default(LOW)

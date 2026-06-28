@@ -25,6 +25,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     specialPrice?: number | null;
     categoryId?: string;
     vatCategory?: Vat;
+    color?: string | null;
     published?: boolean;
     archived?: boolean;
     sortOrder?: number;
@@ -48,6 +49,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         : Math.max(0, Math.round(Number(body.specialPrice)));
   }
   if (body.categoryId !== undefined) data.categoryId = String(body.categoryId);
+  if (body.color !== undefined) {
+    data.color = typeof body.color === "string" && body.color.trim() ? body.color.trim() : null;
+  }
   if (body.vatCategory !== undefined) {
     if (!VAT.includes(body.vatCategory)) {
       return NextResponse.json({ error: "Invalid vatCategory" }, { status: 400 });

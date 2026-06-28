@@ -18,6 +18,9 @@ export async function GET() {
       email: true,
       createdAt: true,
       passwordSetup: { select: { usedAt: true } },
+      member: {
+        select: { id: true, firstName: true, lastName: true, email: true, cards: { select: { id: true } } },
+      },
     },
   });
 
@@ -27,6 +30,14 @@ export async function GET() {
     email: u.email,
     createdAt: u.createdAt,
     passwordSet: !u.passwordSetup || u.passwordSetup.usedAt != null,
+    member: u.member
+      ? {
+          id: u.member.id,
+          name: `${u.member.firstName} ${u.member.lastName}`.trim(),
+          email: u.member.email,
+          cardCount: u.member.cards.length,
+        }
+      : null,
   }));
 
   return NextResponse.json({ bartenders });

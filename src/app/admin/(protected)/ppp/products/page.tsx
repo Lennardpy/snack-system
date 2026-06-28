@@ -1,9 +1,38 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { PPP_COLORS } from "@/lib/ppp-colors";
 
 type Vat = "ZERO" | "LOW" | "STANDARD";
 const VAT_LABEL: Record<Vat, string> = { ZERO: "0%", LOW: "9%", STANDARD: "21%" };
+
+// Swatch row: click to pick a colour, click the active one (or ✕) to clear.
+function ColorSwatches({ value, onChange }: { value: string | null; onChange: (c: string | null) => void }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => onChange(null)}
+        title="No colour"
+        className={`flex h-7 w-7 items-center justify-center rounded-full border text-xs ${
+          value == null ? "border-white text-white" : "border-gray-600 text-gray-500"
+        }`}
+      >
+        ✕
+      </button>
+      {PPP_COLORS.map((c) => (
+        <button
+          key={c.value}
+          type="button"
+          onClick={() => onChange(c.value)}
+          title={c.name}
+          style={{ backgroundColor: c.value }}
+          className={`h-7 w-7 rounded-full border-2 ${value === c.value ? "border-white" : "border-transparent"}`}
+        />
+      ))}
+    </div>
+  );
+}
 
 interface Category {
   id: string;
@@ -16,6 +45,7 @@ interface Product {
   price: number;
   specialPrice: number | null;
   vatCategory: Vat;
+  color: string | null;
   published: boolean;
   archived: boolean;
   categoryId: string;
@@ -37,6 +67,7 @@ export default function PppProductsPage() {
   const [price, setPrice] = useState("");
   const [special, setSpecial] = useState("");
   const [vat, setVat] = useState<Vat>("LOW");
+  const [color, setColor] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -95,6 +126,7 @@ export default function PppProductsPage() {
         specialPrice: toCents(special),
         categoryId,
         vatCategory: vat,
+        color,
       }),
     });
     setBusy(false);
@@ -102,6 +134,7 @@ export default function PppProductsPage() {
       setName("");
       setPrice("");
       setSpecial("");
+      setColor(null);
       load();
     } else {
       setError((await res.json()).error ?? "Could not create drink");
@@ -197,6 +230,11 @@ export default function PppProductsPage() {
                 ))}
               </select>
             </Field>
+            <Field label="Tile colour">
+              <div className="py-2">
+                <ColorSwatches value={color} onChange={setColor} />
+              </div>
+            </Field>
             <button
               type="submit" disabled={busy || !name.trim() || price.trim() === ""}
               className="rounded-xl bg-amber-600 px-5 py-2 font-semibold transition-colors hover:bg-amber-500 disabled:opacity-40"
@@ -257,6 +295,7 @@ function ProductRow({
   const [price, setPrice] = useState(euro(product.price));
   const [special, setSpecial] = useState(product.specialPrice == null ? "" : euro(product.specialPrice));
   const [vat, setVat] = useState<Vat>(product.vatCategory);
+  const [color, setColor] = useState<string | null>(product.color);
   const [saving, setSaving] = useState(false);
 
   const dirty =
@@ -264,7 +303,8 @@ function ProductRow({
     categoryId !== product.categoryId ||
     toCents(price) !== product.price ||
     toCents(special) !== product.specialPrice ||
-    vat !== product.vatCategory;
+    vat !== product.vatCategory ||
+    color !== product.color;
 
   async function patch(body: Record<string, unknown>) {
     setSaving(true);
@@ -310,11 +350,12 @@ function ProductRow({
       >
         {(["ZERO", "LOW", "STANDARD"] as Vat[]).map((v) => <option key={v} value={v}>{VAT_LABEL[v]}</option>)}
       </select>
+      <ColorSwatches value={color} onChange={setColor} />
 
       <div className="ml-auto flex items-center gap-2">
         {dirty && (
           <button
-            onClick={() => patch({ name, categoryId, price: toCents(price), specialPrice: toCents(special) === null ? null : toCents(special), vatCategory: vat })}
+            onClick={() => patch({ name, categoryId, price: toCents(price), specialPrice: toCents(special) === null ? null : toCents(special), vatCategory: vat, color })}
             disabled={saving}
             className="rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium hover:bg-amber-500 disabled:opacity-40"
           >

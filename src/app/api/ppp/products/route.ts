@@ -17,6 +17,7 @@ export async function GET() {
       price: true,
       specialPrice: true,
       imageUrl: true,
+      color: true,
       categoryId: true,
       category: { select: { id: true, name: true, sortOrder: true } },
     },

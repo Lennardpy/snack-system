@@ -17,6 +17,7 @@ const SECTIONS: { title: string | null; links: { href: string; label: string; ic
   {
     title: "PPP — Bar",
     links: [
+      { href: "/admin/ppp/dashboard", label: "Dashboard", icon: "📊" },
       { href: "/admin/ppp/products", label: "Drinks", icon: "🍺" },
       { href: "/admin/ppp/activities", label: "Activities", icon: "📅" },
       { href: "/admin/ppp/invoices", label: "Invoices", icon: "🧾" },
