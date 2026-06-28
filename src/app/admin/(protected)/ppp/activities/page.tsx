@@ -147,6 +147,12 @@ export default function AdminActivitiesPage() {
                   </p>
                 </div>
                 <div className="flex flex-shrink-0 items-center gap-2">
+                  <a
+                    href={`/admin/ppp/activities/${a.id}`}
+                    className="rounded-lg bg-amber-600/90 px-3 py-2 text-sm font-medium text-white hover:bg-amber-500"
+                  >
+                    🍺 Specials
+                  </a>
                   <button
                     onClick={() => toggleOrders(a)}
                     className="rounded-lg bg-gray-800 px-3 py-2 text-sm text-gray-200 hover:bg-gray-700"

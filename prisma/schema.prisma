@@ -229,9 +229,10 @@ model PppProduct {
   // Congressus product OFFER ID — used as product_offer_id on sale invoice lines.
   congressusProductOfferId Int? @unique
 
-  categoryId   String
-  category     PppProductCategory @relation(fields: [categoryId], references: [id])
-  invoiceLines PppInvoiceLine[]
+  categoryId        String
+  category          PppProductCategory @relation(fields: [categoryId], references: [id])
+  invoiceLines      PppInvoiceLine[]
+  activityDiscounts PppActivityDiscount[]
 }
 
 model PppActivity {
@@ -239,10 +240,29 @@ model PppActivity {
   name      String
   status    ActivityStatus @default(OPEN)
   date      DateTime       @default(now())
+  // Whether this activity's per-drink specials are currently applied. Bartenders
+  // flip this off in the POS when a special "runs out" mid-borrel.
+  discountsActive Boolean  @default(true)
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
 
-  invoices PppInvoice[]
+  invoices  PppInvoice[]
+  discounts PppActivityDiscount[]
+}
+
+// A drink special for one activity: this product sells at `priceCents` during the
+// activity (e.g. Flügel €1.00 on Flügel Friday) while discounts are active.
+model PppActivityDiscount {
+  id         String   @id @default(cuid())
+  priceCents Int
+  createdAt  DateTime @default(now())
+
+  activityId String
+  activity   PppActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  productId  String
+  product    PppProduct  @relation(fields: [productId], references: [id])
+
+  @@unique([activityId, productId])
 }
 
 model PppInvoice {

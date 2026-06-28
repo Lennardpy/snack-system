@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireBartender } from "@/lib/auth";
-import { productDiscountedUnitPrice } from "@/lib/roles";
+import { activityDiscountedUnitPrice } from "@/lib/roles";
 
 // Live order history for an activity. Query: ?activityId=
 export async function GET(req: NextRequest) {
@@ -68,12 +68,19 @@ export async function POST(req: NextRequest) {
   if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });
   if (!member.active) return NextResponse.json({ error: "Member inactive" }, { status: 403 });
 
-  // Activity must exist and be open to new orders.
-  const activity = await prisma.pppActivity.findUnique({ where: { id: activityId } });
+  // Activity must exist and be open to new orders. Pull its drink specials so we
+  // can price them authoritatively (only when the activity's discounts are active).
+  const activity = await prisma.pppActivity.findUnique({
+    where: { id: activityId },
+    include: { discounts: { select: { productId: true, priceCents: true } } },
+  });
   if (!activity) return NextResponse.json({ error: "Activity not found" }, { status: 404 });
   if (activity.status !== "OPEN") {
     return NextResponse.json({ error: "Activity is closed" }, { status: 409 });
   }
+  const specialMap = new Map(
+    activity.discountsActive ? activity.discounts.map((d) => [d.productId, d.priceCents]) : []
+  );
 
   // Authoritative prices from the DB (never trust client-supplied prices).
   const products = await prisma.pppProduct.findMany({
@@ -92,9 +99,9 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    // Snapshot the discounted unit price onto the line. A special price uses the
-    // special amount and skips fixed-cent role discounts (percentages still apply).
-    const unitCents = productDiscountedUnitPrice(product, member.roles);
+    // Snapshot the discounted unit price: activity special (if active) > product
+    // special > price, then role discounts (fixed-cent skipped on any special).
+    const unitCents = activityDiscountedUnitPrice(product, specialMap.get(productId) ?? null, member.roles);
     lineData.push({ productId, quantity, unitCents });
     totalCents += unitCents * quantity;
   }

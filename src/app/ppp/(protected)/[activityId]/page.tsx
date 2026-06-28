@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useCardReader } from "@/lib/useCardReader";
-import { productDiscountedUnitPrice, productUnitPrice, formatRoleDiscount } from "@/lib/roles";
+import { activityDiscountedUnitPrice, activityUnitPrice, formatRoleDiscount } from "@/lib/roles";
 
 interface Product {
   id: string;
@@ -19,6 +19,8 @@ interface Activity {
   id: string;
   name: string;
   status: "OPEN" | "CLOSED";
+  discountsActive: boolean;
+  discounts: { productId: string; priceCents: number }[];
 }
 
 interface HistoryInvoice {
@@ -34,6 +36,13 @@ interface MemberRoleInfo {
   discountPercent: number;
   discountCents: number;
   color: string | null;
+}
+interface Customer {
+  memberId: string;
+  firstName: string;
+  lastName: string;
+  orderCount: number;
+  roles: MemberRoleInfo[];
 }
 type MemberState =
   | { kind: "idle" }
@@ -64,6 +73,7 @@ export default function PosPage() {
   const [member, setMember] = useState<MemberState>({ kind: "idle" });
   const [tab, setTab] = useState<"cart" | "history">("cart");
   const [history, setHistory] = useState<HistoryInvoice[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [confirming, setConfirming] = useState(false);
   const [toast, setToast] = useState("");
 
@@ -78,37 +88,55 @@ export default function PosPage() {
   useEffect(() => {
     (async () => {
       const [aRes, pRes] = await Promise.all([
-        fetch("/api/ppp/activities"),
+        fetch(`/api/ppp/activities/${activityId}`),
         fetch("/api/ppp/products"),
       ]);
-      if (aRes.ok) {
-        const d = await aRes.json();
-        const found = (d.activities as (Activity & { id: string })[]).find(
-          (a) => a.id === activityId
-        );
-        setActivity(found ?? null);
-      }
-      if (pRes.ok) {
-        const d = await pRes.json();
-        setProducts(d.products);
-      }
+      if (aRes.ok) setActivity((await aRes.json()).activity);
+      if (pRes.ok) setProducts((await pRes.json()).products);
     })();
   }, [activityId]);
 
+  // Activity drink specials, keyed by product (only when discounts are active).
+  const discountsActive = activity?.discountsActive ?? false;
+  const specialMap = useMemo(
+    () => new Map((activity?.discounts ?? []).map((d) => [d.productId, d.priceCents])),
+    [activity]
+  );
+  const specialFor = useCallback(
+    (productId: string): number | null => (discountsActive ? specialMap.get(productId) ?? null : null),
+    [discountsActive, specialMap]
+  );
+
+  async function toggleSpecials() {
+    if (!activity) return;
+    const next = !activity.discountsActive;
+    setActivity({ ...activity, discountsActive: next }); // optimistic
+    await fetch(`/api/ppp/activities/${activityId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ discountsActive: next }),
+    });
+  }
+
   const loadHistory = useCallback(async () => {
-    const res = await fetch(`/api/ppp/invoices?activityId=${activityId}`);
-    if (res.ok) {
-      const d = await res.json();
-      setHistory(d.invoices);
-    }
+    const [hRes, cRes] = await Promise.all([
+      fetch(`/api/ppp/invoices?activityId=${activityId}`),
+      fetch(`/api/ppp/activities/${activityId}/customers`),
+    ]);
+    if (hRes.ok) setHistory((await hRes.json()).invoices);
+    if (cRes.ok) setCustomers((await cRes.json()).customers);
   }, [activityId]);
 
-  // Poll order history every 10s while on the page.
+  // Poll order history + customers every 10s while on the page.
   useEffect(() => {
     loadHistory();
     const t = setInterval(loadHistory, 10_000);
     return () => clearInterval(t);
   }, [loadHistory]);
+
+  // Pick a returning customer without scanning their card.
+  const selectCustomer = (c: Customer) =>
+    setMember({ kind: "found", id: c.memberId, firstName: c.firstName, lastName: c.lastName, roles: c.roles });
 
   // ── Card scanning ───────────────────────────────────────────────────────────
   const handleScan = useCallback(async (uid: string) => {
@@ -164,9 +192,12 @@ export default function PosPage() {
   );
   const memberRoles = member.kind === "found" ? member.roles : [];
   // "Gross" = effective price (special if set) before role discounts; total = after.
-  const grossCents = cartLines.reduce((s, l) => s + productUnitPrice(l.product) * l.qty, 0);
+  const grossCents = cartLines.reduce(
+    (s, l) => s + activityUnitPrice(l.product, specialFor(l.product.id)) * l.qty,
+    0
+  );
   const totalCents = cartLines.reduce(
-    (s, l) => s + productDiscountedUnitPrice(l.product, memberRoles) * l.qty,
+    (s, l) => s + activityDiscountedUnitPrice(l.product, specialFor(l.product.id), memberRoles) * l.qty,
     0
   );
   const hasDiscount = totalCents < grossCents;
@@ -231,7 +262,21 @@ export default function PosPage() {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 text-xs text-gray-500">
+        <div className="flex items-center gap-4">
+          {/* Specials toggle — bartenders flip this off when a special runs out. */}
+          {specialMap.size > 0 && (
+            <button
+              onClick={toggleSpecials}
+              className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
+                discountsActive ? "bg-amber-600 text-white" : "bg-gray-800 text-gray-400"
+              }`}
+              title="Toggle the borrel's drink specials"
+            >
+              <span className={`h-2.5 w-2.5 rounded-full ${discountsActive ? "bg-white" : "bg-gray-500"}`} />
+              Specials {discountsActive ? "ON" : "OFF"}
+            </button>
+          )}
+          <div className="flex items-center gap-2 text-xs text-gray-500">
           {mode === "hid" ? (
             <>
               <span className="h-2 w-2 rounded-full bg-green-500" />
@@ -251,6 +296,7 @@ export default function PosPage() {
               {wsStatus === "connected" ? "Reader connected" : wsStatus === "connecting" ? "Connecting…" : "Reader offline"}
             </>
           )}
+          </div>
         </div>
       </header>
 
@@ -275,26 +321,34 @@ export default function PosPage() {
             ) : (
               visible.map((p) => {
                 const colored = !!p.color;
+                const effective = activityUnitPrice(p, specialFor(p.id));
+                const isSpecial = effective !== p.price;
+                const onBorrelSpecial = specialFor(p.id) != null;
                 return (
                   <button
                     key={p.id}
                     onClick={() => add(p.id)}
                     disabled={!isOpen}
                     style={p.color ? { backgroundColor: p.color } : undefined}
-                    className={`flex min-h-[7rem] flex-col items-center justify-center rounded-2xl border p-4 text-center shadow-sm transition-transform active:scale-95 disabled:opacity-40 ${
+                    className={`relative flex min-h-[7rem] flex-col items-center justify-center rounded-2xl border p-4 text-center shadow-sm transition-transform active:scale-95 disabled:opacity-40 ${
                       colored
                         ? "border-white/15 text-white hover:brightness-110"
                         : "border-gray-800 bg-gray-900 hover:border-amber-600"
                     }`}
                   >
+                    {onBorrelSpecial && (
+                      <span className="absolute right-1.5 top-1.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-black">
+                        SPECIAL
+                      </span>
+                    )}
                     <span className="text-xl font-bold leading-tight">{p.name}</span>
-                    {p.specialPrice != null ? (
+                    {isSpecial ? (
                       <span className="mt-2 flex items-baseline gap-1.5 text-base">
                         <span className={colored ? "text-white/60 line-through" : "text-gray-500 line-through"}>
                           {euro(p.price)}
                         </span>
                         <span className={colored ? "font-bold text-white" : "font-bold text-amber-400"}>
-                          {euro(p.specialPrice)}
+                          {euro(effective)}
                         </span>
                       </span>
                     ) : (
@@ -307,6 +361,42 @@ export default function PosPage() {
               })
             )}
           </div>
+
+          {/* Regulars — tap to charge without scanning, most orders first */}
+          {customers.length > 0 && (
+            <div className="border-t border-gray-800 px-4 py-3">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
+                Regulars — tap to charge (no scan)
+              </p>
+              <div className="flex gap-3 overflow-x-auto pb-1">
+                {customers.map((c) => {
+                  const selected = member.kind === "found" && member.id === c.memberId;
+                  const initials = `${c.firstName[0] ?? ""}${c.lastName[0] ?? ""}`.toUpperCase();
+                  return (
+                    <button
+                      key={c.memberId}
+                      onClick={() => selectCustomer(c)}
+                      className="flex flex-shrink-0 flex-col items-center gap-1.5 active:scale-95"
+                    >
+                      <span
+                        className={`relative flex h-16 w-16 items-center justify-center rounded-full border-2 text-lg font-bold transition-colors ${
+                          selected
+                            ? "border-amber-400 bg-amber-600/30 text-amber-100"
+                            : "border-gray-700 bg-gray-800 text-gray-200 hover:border-amber-500"
+                        }`}
+                      >
+                        {initials}
+                        <span className="absolute -right-1 -top-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-amber-600 px-1 text-xs font-bold text-white">
+                          {c.orderCount}
+                        </span>
+                      </span>
+                      <span className="max-w-[4.5rem] truncate text-xs text-gray-300">{c.firstName}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right: cart + history */}
@@ -396,7 +486,7 @@ export default function PosPage() {
                             +
                           </button>
                           <span className="w-16 text-right text-base text-gray-400 tabular-nums">
-                            {euro(productDiscountedUnitPrice(l.product, memberRoles) * l.qty)}
+                            {euro(activityDiscountedUnitPrice(l.product, specialFor(l.product.id), memberRoles) * l.qty)}
                           </span>
                         </div>
                       </li>

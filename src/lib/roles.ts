@@ -72,6 +72,29 @@ export function productDiscountedUnitPrice(p: PricedProduct, roles: RoleDiscount
   return discountedUnitPrice(productUnitPrice(p), roles, p.specialPrice != null);
 }
 
+// Activity-aware pricing. An activity drink special (when active) overrides the
+// product's price/specialPrice. Any special — activity OR product — counts as a
+// "special", so only percentage role discounts apply (fixed cents skipped).
+//   activitySpecialCents: the activity's special price for this product, or null
+//   (also pass null when the activity's discounts are toggled off).
+export function activityUnitPrice(p: PricedProduct, activitySpecialCents: number | null): number {
+  return activitySpecialCents ?? p.specialPrice ?? p.price;
+}
+export function activityIsSpecial(p: PricedProduct, activitySpecialCents: number | null): boolean {
+  return activitySpecialCents != null || p.specialPrice != null;
+}
+export function activityDiscountedUnitPrice(
+  p: PricedProduct,
+  activitySpecialCents: number | null,
+  roles: RoleDiscount[]
+): number {
+  return discountedUnitPrice(
+    activityUnitPrice(p, activitySpecialCents),
+    roles,
+    activityIsSpecial(p, activitySpecialCents)
+  );
+}
+
 // Short human label for a single role's discount, e.g. "free", "-25%",
 // "-€0.75", or "-25% + -€0.50". Used on chips across the admin + POS.
 export function formatRoleDiscount(role: RoleDiscount): string {
