@@ -40,16 +40,16 @@ export default function InvoicesPage() {
   async function runExport() {
     setExporting(true);
     setResult(null);
-    const res = await fetch("/api/admin/invoices/export", { method: "POST" });
+    const res = await fetch("/api/admin/invoices/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope: "sss" }),
+    });
     const data = await res.json();
     const errorDetail = data.errors?.length ? `\nErrors:\n${data.errors.join("\n")}` : "";
-    const split =
-      data.sss || data.ppp
-        ? ` (SSS: ${data.sss?.congressusInvoices ?? 0}, PPP: ${data.ppp?.congressusInvoices ?? 0})`
-        : "";
     setResult(
-      `Created ${data.congressusInvoices ?? 0} Congressus invoice(s)${split} covering ${data.exported} purchase(s).` +
-      (data.failed ? ` ${data.failed} failed.${errorDetail}` : "")
+      `Created ${data.sss?.congressusInvoices ?? data.congressusInvoices ?? 0} SSS Congressus invoice(s) covering ${data.sss?.exported ?? data.exported} purchase(s).` +
+      (data.sss?.failed ? ` ${data.sss.failed} failed.${errorDetail}` : "")
     );
     setExporting(false);
     load();
@@ -118,15 +118,15 @@ export default function InvoicesPage() {
     <div className="p-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Invoices</h1>
-          <p className="text-gray-500">{invoices.length} {filter.toLowerCase()}</p>
+          <h1 className="text-3xl font-bold">SSS invoices</h1>
+          <p className="text-gray-500">Snack purchases · {invoices.length} {filter.toLowerCase()}</p>
         </div>
         <button
           onClick={runExport}
           disabled={exporting}
           className="rounded-xl bg-green-600 px-5 py-2.5 font-semibold transition-colors hover:bg-green-500 disabled:opacity-40"
         >
-          {exporting ? "Exporting…" : "Export to Congressus"}
+          {exporting ? "Exporting…" : "Export SSS to Congressus"}
         </button>
       </div>
 

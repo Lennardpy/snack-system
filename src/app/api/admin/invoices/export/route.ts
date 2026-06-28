@@ -107,11 +107,25 @@ async function runExport(
   return out;
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  // Optional { scope: "sss" | "ppp" | "all" } so each invoices page exports only
+  // its own type. Defaults to "all" (e.g. an empty body) for back-compat.
+  let scope: "sss" | "ppp" | "all" = "all";
+  try {
+    const body = await req.json();
+    if (body?.scope === "sss" || body?.scope === "ppp") scope = body.scope;
+  } catch {
+    /* no body → export all */
+  }
+
+  const EMPTY: ExportOutcome = { exported: 0, congressusInvoices: 0, failed: 0, errors: [] };
+
   // ── SSS snacks ──────────────────────────────────────────────────────────────
+  let sss = EMPTY;
+  if (scope !== "ppp") {
   const sssInvoices = await prisma.saleInvoice.findMany({
     where: { status: "CONFIRMED" },
     include: { member: true, lines: { include: { product: true } } },
@@ -131,7 +145,7 @@ export async function POST() {
       congressusOfferId: l.product.congressusProductOfferId ?? null,
     })),
   }));
-  const sss = await runExport(sssExp, "SSS", (ids, cid) =>
+  sss = await runExport(sssExp, "SSS", (ids, cid) =>
     prisma.saleInvoice
       .updateMany({
         where: { id: { in: ids } },
@@ -139,8 +153,11 @@ export async function POST() {
       })
       .then(() => undefined)
   );
+  }
 
   // ── PPP drinks ───────────────────────────────────────────────────────────────
+  let ppp = EMPTY;
+  if (scope !== "sss") {
   // Each line's description includes the activity name (e.g. "Pils – Borrel 28 jun"),
   // and same product at different activities stays on separate lines.
   const pppInvoices = await prisma.pppInvoice.findMany({
@@ -162,7 +179,7 @@ export async function POST() {
       congressusOfferId: l.product.congressusProductOfferId ?? null,
     })),
   }));
-  const ppp = await runExport(pppExp, "PPP", (ids, cid) =>
+  ppp = await runExport(pppExp, "PPP", (ids, cid) =>
     prisma.pppInvoice
       .updateMany({
         where: { id: { in: ids } },
@@ -170,6 +187,7 @@ export async function POST() {
       })
       .then(() => undefined)
   );
+  }
 
   return NextResponse.json({
     ok: sss.failed === 0 && ppp.failed === 0,
