@@ -17,6 +17,7 @@ SECTIONS=(
   "docs/CARD_READER.md"
   "docs/CONGRESSUS.md"
   "docs/ADMIN_GUIDE.md"
+  "docs/PPP.md"
   "docs/SECURITY.md"
 )
 

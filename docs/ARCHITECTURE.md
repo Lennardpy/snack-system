@@ -2,12 +2,15 @@
 
 ## Overview
 
-SSS is a single Next.js application (App Router) that serves three audiences from
+SSS is a single Next.js application (App Router) that serves several audiences from
 one deployment:
 
 1. **The kiosk** — a touchscreen in the association room, driving the tap-to-shop flow.
 2. **Members' phones** — only for the one-time card-linking email verification.
 3. **The board (admins)** — the management panel.
+4. **Bartenders** — the **PPP** bar POS for selling drinks at activities
+   (`/ppp/*`), reusing the same members, cards, auth, and Congressus client. See
+   [PPP.md](PPP.md).
 
 It talks to three external systems: a **PostgreSQL** database, the **Congressus**
 membership/billing API, and **Resend** for transactional email. On the kiosk

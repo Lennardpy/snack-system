@@ -5,9 +5,13 @@ and monthly sale-invoices (out). Client code lives in `src/lib/congressus.ts`.
 
 - **Base URL:** `https://api.congressus.nl/v30`
 - **Auth:** `Authorization: Bearer ${CONGRESSUS_API_TOKEN}` (a generic API token)
-- **SSS product folder id:** `5952`
+- **SSS product folder id:** `5952` · **PPP (drinks) folder id:** `8804`
 - **Imported member statuses:** `1845` (Primary), `1844` (Secondary)
 - **Invoice workflow id:** `605` (Contribution)
+
+> The bar subsystem (PPP) reuses this same client. See [PPP.md](PPP.md). PPP
+> products live in folder **`8804`** (`webshop/ppp`), and the export produces a
+> **separate** Congressus invoice (`"PPP <month>"`) — see below.
 
 ## Members (Congressus → SSS)
 
@@ -69,6 +73,30 @@ charged `total_cents` times. It is used whenever a product has no Congressus off
 id, so an export can never fail just because one product wasn't synced. Once all
 products have offer ids, invoices show real product line items instead.
 
+## PPP (drinks) — folder, VAT, two-invoice export
+
+The bar subsystem syncs the same way, into its own folder.
+
+- **PPP folder `8804`** (`webshop/ppp`) — created via `POST /v30/product-folders`,
+  parallel to SSS. Hardcoded default in `createPppCongressusProduct()`, overridable
+  with `CONGRESSUS_PPP_FOLDER_ID`. New drinks sync here and store their offer id.
+- **VAT is NOT sent** — the product API **cannot** set VAT. Every write shape was
+  probed against the live API: `vat_category: {name|percentage}` and
+  `vat_percentage` all return **HTTP 500**; `vat_category: {id}` is rejected
+  ("Unknown field"); scalars give "Invalid input type". So PPP products are created
+  without VAT (like all SSS products, which are unset). VAT is kept locally on
+  `PppProduct.vatCategory`; set it in the Congressus UI if required. (Read shape:
+  `vat_category: { id, name, percentage }`; org categories are VL = 9 %, VH = 21 %,
+  no 0 %.)
+- **Product update endpoint** is `PUT /v30/products/{id}` (and `DELETE`); `PATCH`
+  returns 404. `{id}` is the **offer id** (object `id`), not the product entity id.
+- **Two separate invoices** — `POST /api/admin/invoices/export { scope }`
+  (`sss`|`ppp`|`all`) groups `CONFIRMED` invoices by member × month and creates one
+  Congressus sale-invoice per group **per system**: `"SSS <month>"` from
+  `SaleInvoice`, `"PPP <month>"` from `PppInvoice`. PPP line descriptions append the
+  activity name (`"Pils – Borrel 28 jun"`). Both reuse `createSaleInvoice()` and the
+  Mendix fallback. Source rows are marked `EXPORTED` with the returned id.
+
 ## Quick reference of quirks
 
 | Symptom | Cause | Handling |
@@ -77,3 +105,5 @@ products have offer ids, invoices show real product line items instead.
 | `POST /sale-invoices` → **500** | `items` array omitted | always send `items` in the create call |
 | `GET /products/{id}` → **404** | endpoint not usable with these ids | read products from the folder listing |
 | `422 page_size` | `page_size > 100` | cap at 100 |
+| Product VAT won't set (**500**) | API can't write `vat_category` / `vat_percentage` | omit VAT; set it in the Congressus UI |
+| Product `PATCH` → **404** | products use `PUT`/`DELETE`, not `PATCH` | use `PUT /products/{offerId}` |

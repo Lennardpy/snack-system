@@ -3,6 +3,10 @@
 All routes live under `src/app/api/`. Money is in integer **cents**. JSON unless
 noted. Errors are `{ "error": "message" }` with an appropriate status.
 
+> Covers the SSS snack kiosk + admin. The **PPP bar** routes (`/api/ppp/*`,
+> `/api/admin/ppp/*`, `/api/auth/card-login`, `/api/auth/set-password`) are listed
+> in [PPP.md](PPP.md#api-reference-ppp).
+
 Authorisation classes:
 - **Public** — no auth.
 - **Shop token** — requires a valid `ShopSession` token (passed in the body or `?token=`).

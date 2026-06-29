@@ -156,19 +156,40 @@ export async function updateCongressusProduct(
   name: string,
   priceEuros: number
 ): Promise<void> {
-  const folderProducts = await fetchSSSFolderProducts();
-  const product = folderProducts.find((p) => p.product_offer_id === congressusOfferId);
-  if (!product) {
-    throw new Error(`Congressus product with offer ID ${congressusOfferId} not found in SSS folder`);
+  // Products are updated with PUT /products/{id} — NOT PATCH (which returns 404),
+  // and {id} is the product OFFER id (the object's `id`), not the product entity
+  // id. (The old PATCH-on-product_id call silently failed, so edits never synced.)
+  //
+  // PUT replaces the resource, so we GET the current object and resend it with
+  // name/price changed to avoid dropping fields like folder/published. VAT is
+  // deliberately omitted — the API 500s on any vat_category write (see
+  // CONGRESSUS.md), and SSS products carry no VAT anyway.
+  const getRes = await fetch(`${BASE}/products/${congressusOfferId}`, { headers: headers() });
+  if (!getRes.ok) {
+    throw new Error(
+      `Congressus get product ${congressusOfferId} failed: ${getRes.status} ${await getRes.text()}`
+    );
   }
-  const res = await fetch(`${BASE}/products/${product.product_id}`, {
-    method: "PATCH",
+  const current: {
+    folder?: { id: number };
+    published?: boolean;
+    is_archived?: boolean;
+  } = await getRes.json();
+
+  const res = await fetch(`${BASE}/products/${congressusOfferId}`, {
+    method: "PUT",
     headers: headers(),
-    body: JSON.stringify({ name, price: priceEuros }),
+    body: JSON.stringify({
+      folder_id: current.folder?.id ?? SSS_FOLDER_ID,
+      name,
+      price: priceEuros,
+      published: current.published ?? true,
+      is_archived: current.is_archived ?? false,
+    }),
   });
   if (!res.ok) {
     throw new Error(
-      `Congressus update product ${product.product_id} failed: ${res.status} ${await res.text()}`
+      `Congressus update product ${congressusOfferId} failed: ${res.status} ${await res.text()}`
     );
   }
 }

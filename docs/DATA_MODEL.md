@@ -3,6 +3,10 @@
 Defined in `prisma/schema.prisma`. PostgreSQL via Prisma 7 (`@prisma/adapter-pg`).
 All money is stored as **integer cents**.
 
+> This document covers the SSS snack kiosk. The **PPP bar subsystem** adds
+> `Ppp*` models, `MemberRole`, `PasswordSetupToken`, and reuses `Member`/`Card`/
+> `User.memberId` — see [PPP.md](PPP.md#data-model-ppp).
+
 ## Entity overview
 
 ```

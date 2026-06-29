@@ -15,6 +15,7 @@ running on Railway.
 - **Tap-to-shop kiosk** — NFC student card opens a personal, time-limited shop session.
 - **Self-service card linking** — unrecognised cards are linked to a member via a one-click email verification (no admin needed).
 - **Admin panel** — dashboard with revenue/popularity over a selectable timeframe, member management, product & price management, and invoice editing/export.
+- **PPP bar POS** — a bartender-operated point-of-sale for drinks at activities: member roles & discounts, per-borrel drink specials (e.g. Flügel Friday), a touch UI with one-tap "regulars", card-login for bartenders, and a separate monthly Congressus invoice. See [docs/PPP.md](docs/PPP.md).
 - **Congressus integration** — members, products, and monthly invoices sync to Congressus.
 - **Built for a shared physical kiosk** — idle auto-reset, rate limiting, and a strict "data only behind a valid session" security model.
 
