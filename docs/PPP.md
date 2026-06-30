@@ -19,8 +19,8 @@ session/auth model, the same Congressus client, and the same card-reader hook.
 | Path | Who | Purpose |
 |------|-----|---------|
 | `/ppp/login` | public | Bartender sign-in: email/password **or scan a linked card** |
-| `/ppp` | bartender/admin | Activity selector — open an existing borrel or create one |
-| `/ppp/<activityId>` | bartender/admin | The POS screen (cart, scan, regulars, specials toggle) |
+| `/ppp` | bartender/admin | Activity selector — auto-imports scheduled borrels from Alexia, open one or create your own; **Log out** |
+| `/ppp/<activityId>` | bartender/admin | The POS screen (cart, scan, regulars, specials toggle, **Log out**) |
 | `/admin/ppp/*` | admin | Management: dashboard, drinks, activities, roles, bartenders, invoices |
 
 Roles: `requireBartender()` allows `BARTENDER` **or** `ADMIN`. Admin-only PPP
@@ -38,7 +38,7 @@ A two-column touch UI plus a bottom "regulars" bar:
   line items with big `− qty +` steppers, the live total (struck gross + final),
   and a large **Confirm** button. **Clear cart** sits at the top of the cart.
 - **Header** — back, activity name/status, a **Specials ON/OFF** toggle (when the
-  activity has specials), and the reader status dot.
+  activity has specials), the reader status dot, and a **Log out** button.
 - **Bottom (left column)** — **Regulars**: large circular buttons of members who
   have ordered at this borrel, most orders first. Tap one to charge them **without
   scanning** a card.
@@ -91,6 +91,15 @@ isSpecial = base came from an activity or product special
 price  = base − bestRoleDiscount(base, roles, ignoreFixed = isSpecial)   (never < 0)
 ```
 
+### Discount reporting (budget per borrel)
+Each invoice line **snapshots** its list price and the activity-special price that
+applied (`PppInvoiceLine.listCents` / `specialCents`), so the discount given can be
+reported accurately even after a special is toggled off mid-borrel. Two totals
+(`sumLineDiscounts` in `roles.ts`) are shown on the admin Activities list, the
+activity detail page, and **in a banner when an activity is closed**:
+- **Specials discount** — only the activity drink specials: Σ (list − special) × qty.
+- **Total discount given** — everything (specials + roles/free drinks): Σ (list − charged) × qty.
+
 ## Bartender accounts
 
 Managed under **Admin → PPP → Bartenders**.
@@ -112,8 +121,8 @@ Managed under **Admin → PPP → Bartenders**.
 |------|------|
 | **Dashboard** | Financials (revenue, drinks sold, orders, borrels, drinkers, avg) + rankings: **top borrels** by revenue, **top drinkers** by drinks, most popular drinks. Range selector. |
 | **Drinks** | PPP catalog: categories, create/edit/publish/archive drinks with price, **special price**, VAT, and a 5-colour **tile colour** picker. |
-| **Activities** | List borrels (create, close/reopen, rename, revenue + order counts, order list). Each links to its detail page. |
-| **Activity detail** (`/admin/ppp/activities/[id]`) | Manage the borrel's **drink specials** (pick a drink, set a special price). Shows whether specials are currently active (toggled in the POS). |
+| **Activities** | List borrels (auto-synced from Alexia + manual), close/reopen, rename, revenue + order counts + **discount given** (specials / total), order list. **Closing** shows the discount totals. Each links to its detail page. |
+| **Activity detail** (`/admin/ppp/activities/[id]`) | Manage the borrel's **drink specials** (pick a drink, set a special price) — can be done in advance for a future borrel. Shows order count + the two discount totals, and whether specials are active. |
 | **Member roles** | Create/edit roles with a `%` and/or `€` discount. Highest wins. |
 | **Bartenders** | Invite by email, set-password link, link to a member for card login, delete. |
 | **Invoices** | PPP orders grouped by borrel; status filter; **Export PPP to Congressus**; delete/clear test data. |
@@ -140,6 +149,29 @@ PPP drinks live in their own Congressus folder, separate from SSS snacks. See
   activities/prices stays on separate lines. Both reuse `createSaleInvoice()` and
   the Mendix fallback for lines without an offer id.
 
+## Alexia integration (scheduled borrels)
+
+The drinks committee schedules borrels in **Alexia** (Inter-Actief's system,
+`alex.ia.utwente.nl`). PPP imports them so bartenders don't retype names and admins
+can prepare specials in advance. Logic in `src/lib/alexia.ts`.
+
+- **Public, no auth** — Alexia's `event.upcoming_list` JSON-RPC method is public:
+  `POST https://alex.ia.utwente.nl/api/1/` with
+  `{"jsonrpc":"2.0","method":"event.upcoming_list","params":[true],"id":1}`. Events
+  carry `name`, `organizer`, `locations`, `starts_at`, `ends_at` — but **no id**.
+- **Auto-sync** — `POST /api/ppp/alexia/sync` keeps only `organizer === "Stress"`
+  and **find-or-creates** a `PppActivity` for each (date = `starts_at`), matched by
+  **name + calendar day** (no id exists). It runs when a bartender lands on `/ppp`
+  **and** when an admin opens **Admin → PPP → Activities**, so new borrels appear
+  automatically and the admin can pre-set specials on future ones.
+- **Idempotent + fail-soft** — re-syncing creates nothing new; any Alexia
+  error/timeout just yields no import and PPP keeps working.
+- **Caveat** — because matching is name + day, **renaming** an auto-imported
+  activity makes the next sync re-create the original (a duplicate). A stable Alexia
+  reference field would need a schema change.
+
+Configurable via `ALEXIA_API_URL` and `ALEXIA_ORGANIZER` (default `Stress`).
+
 ## Data model (PPP)
 
 See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
@@ -147,7 +179,8 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
 - `PppProductCategory`, `PppProduct` (price, `specialPrice?`, `color?`,
   `vatCategory`, Congressus ids), `PppActivity` (`status`, `discountsActive`),
   `PppActivityDiscount` (per-activity per-product special price),
-  `PppInvoice` (defaults to CONFIRMED, no CONCEPT), `PppInvoiceLine`.
+  `PppInvoice` (defaults to CONFIRMED, no CONCEPT), `PppInvoiceLine` (`unitCents`
+  charged + `listCents?` / `specialCents?` snapshots for discount reporting).
 - `MemberRole` (`discountPercent`, `discountCents`) ↔ `Member` (many-to-many).
 - `PasswordSetupToken` (bartender invites; non-expiring, single-use).
 - Reuses `User.memberId` to link a bartender to a member; reuses `Member` / `Card`
@@ -162,6 +195,7 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
 | GET/POST | `/api/ppp/activities` | List / create activities |
 | GET/PATCH | `/api/ppp/activities/[id]` | Activity + specials + `discountsActive` / toggle, close, rename |
 | GET | `/api/ppp/activities/[id]/customers` | Regulars (members who ordered, most first) |
+| POST | `/api/ppp/alexia/sync` | Import upcoming Stress borrels from Alexia |
 | GET | `/api/ppp/products` | Published drinks for the POS |
 | POST | `/api/ppp/card/scan` | UID → member (name + roles) for charging |
 | GET/POST | `/api/ppp/invoices` | Order history (`?activityId=`) / confirm an order |
@@ -185,6 +219,8 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
 | `NEXT_PUBLIC_PPP_CARD_READER_MODE` | `ws` (prod) | POS/login reader mode (`ws` or `hid`). |
 | `NEXT_PUBLIC_PPP_CARD_READER_WS_URL` | `ws://localhost:3000` | POS WebSocket reader address. |
 | `CONGRESSUS_PPP_FOLDER_ID` | `8804` | Overrides the PPP Congressus product folder. |
+| `ALEXIA_API_URL` | `https://alex.ia.utwente.nl/api/1/` | Alexia JSON-RPC endpoint for borrel sync. |
+| `ALEXIA_ORGANIZER` | `Stress` | Only import borrels with this organiser. |
 
 Bartender invite + card-verification emails reuse `EMAIL_FROM` / `BASE_URL` (see
 [DEPLOYMENT.md](DEPLOYMENT.md)).

@@ -43,6 +43,8 @@ Set these on the Railway **service** (not the database plugin).
 | `NEXT_PUBLIC_PPP_CARD_READER_MODE` | – | `ws` (or `hid`) | PPP bar POS / login reader mode (independent of the kiosk). Currently `ws`. |
 | `NEXT_PUBLIC_PPP_CARD_READER_WS_URL` | – | `ws://localhost:3000` | PPP POS WebSocket reader address. Baked at build time. |
 | `CONGRESSUS_PPP_FOLDER_ID` | – | `8804` | Overrides the PPP (drinks) Congressus product folder. See [PPP.md](PPP.md). |
+| `ALEXIA_API_URL` | – | `https://alex.ia.utwente.nl/api/1/` | Alexia JSON-RPC endpoint used to auto-import scheduled borrels (public, no auth). |
+| `ALEXIA_ORGANIZER` | – | `Stress` | Only borrels with this organiser are imported. |
 | `UPLOAD_DIR` | – | `/data/uploads/products` | Where product images are written (the volume mount). |
 | `ADMIN_EMAIL` | seed | `secretary@stress.utwente.nl` | Admin login created by `npm run seed`. |
 | `ADMIN_PASSWORD` | seed | – | Admin password for the seeded user. |
