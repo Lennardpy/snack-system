@@ -21,6 +21,7 @@ export default function ActivityDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [activity, setActivity] = useState<Activity | null>(null);
   const [products, setProducts] = useState<ProductLite[]>([]);
+  const [discount, setDiscount] = useState({ specials: 0, total: 0, orders: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -35,6 +36,11 @@ export default function ActivityDetailPage() {
       const d = await res.json();
       setActivity(d.activity);
       setProducts(d.products);
+      setDiscount({
+        specials: d.specialsDiscountCents ?? 0,
+        total: d.totalDiscountCents ?? 0,
+        orders: d.orderCount ?? 0,
+      });
     }
     setLoading(false);
   }, [id]);
@@ -124,6 +130,13 @@ export default function ActivityDetailPage() {
         </div>
       </div>
 
+      {/* Budget / discount given this borrel */}
+      <div className="mb-6 grid max-w-2xl grid-cols-3 gap-3">
+        <Stat label="Orders" value={String(discount.orders)} />
+        <Stat label="Specials discount" value={euro(discount.specials)} hint="drink specials only" />
+        <Stat label="Total discount given" value={euro(discount.total)} hint="incl. roles / free drinks" accent />
+      </div>
+
       <section className="max-w-2xl rounded-2xl border border-gray-800 bg-gray-900 p-6">
         <div className="mb-1 flex items-center justify-between">
           <h2 className="text-lg font-semibold">Drink specials</h2>
@@ -198,6 +211,16 @@ export default function ActivityDetailPage() {
           </ul>
         )}
       </section>
+    </div>
+  );
+}
+
+function Stat({ label, value, hint, accent }: { label: string; value: string; hint?: string; accent?: boolean }) {
+  return (
+    <div className={`rounded-2xl border p-4 ${accent ? "border-amber-700/40 bg-amber-900/15" : "border-gray-800 bg-gray-900"}`}>
+      <p className="text-xs text-gray-400">{label}</p>
+      <p className="text-2xl font-bold tabular-nums">{value}</p>
+      {hint && <p className="text-[11px] text-gray-600">{hint}</p>}
     </div>
   );
 }

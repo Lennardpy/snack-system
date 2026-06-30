@@ -89,7 +89,13 @@ export async function POST(req: NextRequest) {
   });
   const productById = new Map(products.map((p) => [p.id, p]));
 
-  const lineData: { productId: string; quantity: number; unitCents: number }[] = [];
+  const lineData: {
+    productId: string;
+    quantity: number;
+    unitCents: number;
+    listCents: number;
+    specialCents: number | null;
+  }[] = [];
   let totalCents = 0;
   for (const [productId, quantity] of qtyByProduct) {
     const product = productById.get(productId);
@@ -101,8 +107,17 @@ export async function POST(req: NextRequest) {
     }
     // Snapshot the discounted unit price: activity special (if active) > product
     // special > price, then role discounts (fixed-cent skipped on any special).
-    const unitCents = activityDiscountedUnitPrice(product, specialMap.get(productId) ?? null, member.roles);
-    lineData.push({ productId, quantity, unitCents });
+    const activitySpecial = specialMap.get(productId) ?? null;
+    const unitCents = activityDiscountedUnitPrice(product, activitySpecial, member.roles);
+    // Snapshots for budget/discount reporting at close: the normal list price and
+    // the activity drink-special price that applied (null if no activity special).
+    lineData.push({
+      productId,
+      quantity,
+      unitCents,
+      listCents: product.price,
+      specialCents: activitySpecial,
+    });
     totalCents += unitCents * quantity;
   }
 

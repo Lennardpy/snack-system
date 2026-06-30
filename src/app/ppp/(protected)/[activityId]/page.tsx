@@ -107,6 +107,13 @@ export default function PosPage() {
     [discountsActive, specialMap]
   );
 
+  async function logout() {
+    if (!confirm("Log out of the bar POS?")) return;
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/ppp/login");
+    router.refresh();
+  }
+
   async function toggleSpecials() {
     if (!activity) return;
     const next = !activity.discountsActive;
@@ -297,6 +304,12 @@ export default function PosPage() {
             </>
           )}
           </div>
+          <button
+            onClick={logout}
+            className="rounded-lg border border-gray-700 px-3 py-1.5 text-sm text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
+          >
+            Log out
+          </button>
         </div>
       </header>
 

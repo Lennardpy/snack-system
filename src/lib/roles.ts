@@ -95,6 +95,29 @@ export function activityDiscountedUnitPrice(
   );
 }
 
+// ── Discount/budget reporting ─────────────────────────────────────────────────
+// Sum the discount given across PPP invoice lines, split into:
+//   • specialsCents — only the activity drink specials (list → special price)
+//   • totalCents    — everything (specials + role/free-drink discounts): list → charged
+// Uses the per-line snapshots; falls back to the current product price for old rows.
+export interface DiscountLine {
+  quantity: number;
+  unitCents: number;
+  listCents: number | null;
+  specialCents: number | null;
+  product: { price: number };
+}
+export function sumLineDiscounts(lines: DiscountLine[]): { specialsCents: number; totalCents: number } {
+  let specialsCents = 0;
+  let totalCents = 0;
+  for (const l of lines) {
+    const list = l.listCents ?? l.product.price;
+    totalCents += Math.max(0, list - l.unitCents) * l.quantity;
+    if (l.specialCents != null) specialsCents += Math.max(0, list - l.specialCents) * l.quantity;
+  }
+  return { specialsCents, totalCents };
+}
+
 // Short human label for a single role's discount, e.g. "free", "-25%",
 // "-€0.75", or "-25% + -€0.50". Used on chips across the admin + POS.
 export function formatRoleDiscount(role: RoleDiscount): string {

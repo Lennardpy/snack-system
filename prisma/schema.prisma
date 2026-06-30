@@ -284,7 +284,10 @@ model PppInvoice {
 model PppInvoiceLine {
   id        String @id @default(cuid())
   quantity  Int
-  unitCents Int // price locked at time of purchase
+  unitCents Int // final price charged per unit (after specials + role discounts)
+  // Snapshots for discount/budget reporting (nullable for pre-feature rows):
+  listCents    Int? // the product's normal list price at sale time
+  specialCents Int? // the activity drink-special price applied, or null if none
 
   invoiceId String
   invoice   PppInvoice @relation(fields: [invoiceId], references: [id])

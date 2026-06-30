@@ -2,18 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireBartender } from "@/lib/auth";
 
-// List activities, OPEN ones first, newest first within each group.
+// List activities for the bartender selector. OPEN first, and since auto-imported
+// Alexia borrels are all upcoming, OPEN ones are sorted SOONEST first (so today's
+// borrel sits at the top); CLOSED ones most-recent first.
 export async function GET() {
   const user = await requireBartender();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const activities = await prisma.pppActivity.findMany({
-    orderBy: { date: "desc" },
     include: { _count: { select: { invoices: true } } },
   });
 
-  // OPEN before CLOSED, preserving the date ordering within each group.
-  activities.sort((a, b) => Number(a.status === "CLOSED") - Number(b.status === "CLOSED"));
+  activities.sort((a, b) => {
+    if (a.status !== b.status) return a.status === "OPEN" ? -1 : 1;
+    const da = a.date.getTime();
+    const db = b.date.getTime();
+    return a.status === "OPEN" ? da - db : db - da; // OPEN asc, CLOSED desc
+  });
 
   return NextResponse.json({ activities });
 }

@@ -9,6 +9,8 @@ interface Activity {
   date: string;
   orderCount: number;
   revenueCents: number;
+  specialsDiscountCents: number;
+  totalDiscountCents: number;
 }
 
 interface OrderLine {
@@ -35,8 +37,17 @@ export default function AdminActivitiesPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [actingId, setActingId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function load() {
+    // Import any newly-scheduled Stress borrels from Alexia first, so they appear
+    // here for the admin to pre-set specials on (fail-soft).
+    const sync = await fetch("/api/ppp/alexia/sync", { method: "POST" })
+      .then((r) => (r.ok ? r.json() : { imported: 0 }))
+      .catch(() => ({ imported: 0 }));
+    if (sync.imported > 0) {
+      setNotice(`Imported ${sync.imported} new borrel${sync.imported === 1 ? "" : "s"} from Alexia.`);
+    }
     const res = await fetch("/api/admin/ppp/activities");
     if (res.ok) setActivities((await res.json()).activities);
     setLoading(false);
@@ -75,6 +86,26 @@ export default function AdminActivitiesPage() {
     setActingId(null);
     if (res.ok) load();
     else alert((await res.json()).error ?? "Update failed");
+  }
+
+  // Closing a borrel surfaces the discount given (budget spent on specials + total).
+  async function closeActivity(a: Activity) {
+    setActingId(a.id);
+    const res = await fetch(`/api/ppp/activities/${a.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "CLOSED" }),
+    });
+    setActingId(null);
+    if (res.ok) {
+      setNotice(
+        `Closed "${a.name}". Specials discount: ${euro(a.specialsDiscountCents)} · ` +
+          `Total discount given: ${euro(a.totalDiscountCents)}.`
+      );
+      load();
+    } else {
+      alert((await res.json()).error ?? "Could not close");
+    }
   }
 
   async function toggleOrders(a: Activity) {
@@ -118,6 +149,12 @@ export default function AdminActivitiesPage() {
         </button>
       </form>
       {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
+      {notice && (
+        <p className="mb-4 flex items-center justify-between gap-3 rounded-lg bg-amber-900/30 px-4 py-2 text-sm text-amber-200">
+          <span>{notice}</span>
+          <button onClick={() => setNotice(null)} className="text-amber-400/70 hover:text-amber-200">✕</button>
+        </p>
+      )}
 
       {loading ? (
         <p className="text-gray-500">Loading…</p>
@@ -145,6 +182,12 @@ export default function AdminActivitiesPage() {
                     {new Date(a.date).toLocaleDateString()} · {a.orderCount} order
                     {a.orderCount === 1 ? "" : "s"} · {euro(a.revenueCents)}
                   </p>
+                  {a.totalDiscountCents > 0 && (
+                    <p className="text-xs text-gray-600">
+                      Discount given · specials {euro(a.specialsDiscountCents)} · total{" "}
+                      <span className="text-amber-400/80">{euro(a.totalDiscountCents)}</span>
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-shrink-0 items-center gap-2">
                   <a
@@ -167,7 +210,7 @@ export default function AdminActivitiesPage() {
                     Rename
                   </button>
                   <button
-                    onClick={() => patch(a.id, { status: a.status === "OPEN" ? "CLOSED" : "OPEN" })}
+                    onClick={() => (a.status === "OPEN" ? closeActivity(a) : patch(a.id, { status: "OPEN" }))}
                     disabled={actingId === a.id}
                     className={`rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-40 ${
                       a.status === "OPEN"

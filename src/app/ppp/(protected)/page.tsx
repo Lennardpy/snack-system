@@ -20,17 +20,23 @@ export default function ActivitySelectorPage() {
   const [error, setError] = useState("");
 
   async function load() {
+    // Auto-import any new Stress borrels from Alexia first (fail-soft), so the
+    // list always reflects what the bar committee has scheduled.
+    await fetch("/api/ppp/alexia/sync", { method: "POST" }).catch(() => {});
     const res = await fetch("/api/ppp/activities");
-    if (res.ok) {
-      const d = await res.json();
-      setActivities(d.activities);
-    }
+    if (res.ok) setActivities((await res.json()).activities);
     setLoading(false);
   }
 
   useEffect(() => {
     load();
   }, []);
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/ppp/login");
+    router.refresh();
+  }
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
@@ -60,9 +66,17 @@ export default function ActivitySelectorPage() {
           <h1 className="text-3xl font-bold">PPP Bar POS</h1>
           <p className="text-sm text-gray-400">Pick an activity or start a new one</p>
         </div>
-        <a href="/admin" className="text-sm text-gray-500 hover:text-gray-300">
-          Admin
-        </a>
+        <div className="flex items-center gap-3">
+          <a href="/admin" className="text-sm text-gray-500 hover:text-gray-300">
+            Admin
+          </a>
+          <button
+            onClick={logout}
+            className="rounded-lg border border-gray-700 px-3 py-1.5 text-sm text-gray-300 transition-colors hover:bg-gray-800 hover:text-white"
+          >
+            Log out
+          </button>
+        </div>
       </div>
 
       <form onSubmit={create} className="mb-8 flex gap-3">
