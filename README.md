@@ -1,13 +1,22 @@
-# SSS — Stress Snack System
+# SSS — Stress Snack System (+ PPP bar POS)
 
-A self-service snack kiosk for the Stress Study association. Members tap their
-student card on a reader at the kiosk, pick snacks on a touchscreen, and confirm.
-Purchases are batched into monthly invoices and exported to **Congressus** for
-SEPA billing. Rebuilt from the original Mendix app as a Next.js application
-running on Railway.
+A card-based ordering system for the Stress study association, in two parts that
+share members, cards, auth, and the Congressus billing integration:
+
+- **SSS** — a self-service **snack kiosk**. Members tap their student card, pick
+  snacks on a touchscreen, and confirm.
+- **PPP** — a bartender-operated **bar POS** for drinks at activities ("borrels"):
+  member roles & discounts, per-borrel drink specials, a touch UI, and bartender
+  accounts. See **[docs/PPP.md](docs/PPP.md)**.
+
+Purchases from each are batched into **separate** monthly invoices and exported to
+**Congressus** for SEPA billing. Rebuilt from the original Mendix app as a Next.js
+application running on Railway.
 
 ```
-  Student card ──tap──▶ Kiosk shop ──confirm──▶ Invoice ──monthly──▶ Congressus (SEPA)
+  Student card ──tap──▶ Snack kiosk (SSS) ──confirm──▶ ┐
+                                                       ├──▶ monthly Congressus invoices (SEPA)
+  Member card  ──tap──▶ Bar POS (PPP)    ──confirm──▶ ┘
 ```
 
 ## Highlights
@@ -44,6 +53,7 @@ running on Railway.
 | [docs/CARD_READER.md](docs/CARD_READER.md) | Setting up the Arago reader and the kiosk laptop |
 | [docs/CONGRESSUS.md](docs/CONGRESSUS.md) | How members, products, and invoices map to Congressus (and its API quirks) |
 | [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) | Day-to-day operations for board members |
+| [docs/PPP.md](docs/PPP.md) | The **PPP bar POS**: pricing/discounts, specials, bartenders, card login, Alexia borrel sync, two-invoice export |
 | [docs/SECURITY.md](docs/SECURITY.md) | The security model and the decisions behind it |
 
 ## Quick start (local development)
@@ -64,8 +74,9 @@ npm run seed                   # create the admin user + product categories
 npm run dev                    # http://localhost:3000
 ```
 
-- Kiosk: `http://localhost:3000`
+- Kiosk (SSS): `http://localhost:3000`
 - Admin: `http://localhost:3000/admin` (credentials from `ADMIN_EMAIL` / `ADMIN_PASSWORD`)
+- Bar POS (PPP): `http://localhost:3000/ppp` (bartender or admin login)
 
 > Without a physical card reader the kiosk's status dot will show "Reader
 > offline". You can still exercise the shop by creating a shop session manually —
@@ -77,28 +88,35 @@ npm run dev                    # http://localhost:3000
 src/
   app/
     page.tsx                     Kiosk idle/tap screen (WebSocket to card reader)
-    shop/[token]/page.tsx        The shop (per shop-session token)
+    shop/[token]/page.tsx        The snack shop (per shop-session token)
+    set-password/                Bartender set-password page
+    ppp/                         PPP bar POS — login · selector · [activityId] POS
     admin/
       login/                     Admin login
       (protected)/               Auth-gated admin panel + sidebar shell
-        page.tsx                 Dashboard
+        page.tsx                 SSS dashboard
         members/ products/ invoices/
+        ppp/                     PPP admin — dashboard · products · activities · roles · bartenders · invoices
     api/
       card/                      scan · register · verify
-      cart/  orders/             shopping + checkout
+      cart/  orders/             snack shopping + checkout
       products/                  public product list (kiosk)
       images/products/[file]     serves product images from the volume
-      auth/                      login · logout
-      admin/                     all admin endpoints (requireAdmin)
+      auth/                      login · logout · card-login · set-password
+      admin/                     SSS admin endpoints (requireAdmin)
+      ppp/                       PPP bartender endpoints (activities, invoices, card scan, alexia/sync)
       health/                    healthcheck
   lib/
     prisma.ts      Prisma client (pg adapter)
-    auth.ts        Session + requireAdmin
-    congressus.ts  Congressus API client
+    auth.ts        Session + requireAdmin / requireBartender
+    congressus.ts  Congressus API client (SSS + PPP)
+    roles.ts       PPP role/special pricing + discount maths
+    alexia.ts      Alexia borrel sync (public event API)
+    useCardReader.ts  Shared HID/WebSocket card-reader hook
     email.ts       Resend email
     rate-limit.ts  In-memory rate limiter
 prisma/
-  schema.prisma    Data model
+  schema.prisma    Data model (SSS + PPP)
   migrations/       SQL migrations
   seed.ts          Admin user + categories
 ```
