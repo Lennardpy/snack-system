@@ -73,6 +73,9 @@ export default function PosPage() {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [member, setMember] = useState<MemberState>({ kind: "idle" });
   const [tab, setTab] = useState<"cart" | "history">("cart");
+  // On phones the products grid and the cart don't fit side-by-side, so we show
+  // one at a time and switch with a bottom tab bar. Ignored at lg+ (both shown).
+  const [mobileView, setMobileView] = useState<"products" | "cart">("products");
   const [history, setHistory] = useState<HistoryInvoice[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [confirming, setConfirming] = useState(false);
@@ -143,8 +146,10 @@ export default function PosPage() {
   }, [loadHistory]);
 
   // Pick a returning customer without scanning their card.
-  const selectCustomer = (c: Customer) =>
+  const selectCustomer = (c: Customer) => {
     setMember({ kind: "found", id: c.memberId, firstName: c.firstName, lastName: c.lastName, roles: c.roles });
+    setMobileView("cart"); // jump to the cart to confirm (no-op on desktop)
+  };
 
   // ── Card scanning ───────────────────────────────────────────────────────────
   const handleScan = useCallback(async (uid: string) => {
@@ -164,6 +169,7 @@ export default function PosPage() {
           lastName: d.lastName,
           roles: d.roles ?? [],
         });
+        setMobileView("cart"); // a scanned card means we're about to confirm
       } else {
         setMember({ kind: "error", message: d.error ?? "Scan failed" });
       }
@@ -233,6 +239,7 @@ export default function PosPage() {
       flashToast(`Charged ${member.firstName} ${euro(totalCents)}`);
       setCart({});
       setMember({ kind: "idle" });
+      setMobileView("products"); // back to the drinks grid for the next round
       loadHistory();
     } else {
       const d = await res.json();
@@ -252,10 +259,10 @@ export default function PosPage() {
   const memberRef = useRef<HTMLDivElement>(null);
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-dvh flex-col">
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-gray-800 px-5 py-3">
-        <div className="flex items-center gap-3">
+      <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-gray-800 px-3 py-2.5 lg:px-5 lg:py-3">
+        <div className="flex min-w-0 items-center gap-3">
           <button
             onClick={() => router.push("/ppp")}
             className="text-gray-400 hover:text-white"
@@ -263,14 +270,14 @@ export default function PosPage() {
           >
             ←
           </button>
-          <h1 className="font-bold">{activity?.name ?? "…"}</h1>
+          <h1 className="truncate font-bold">{activity?.name ?? "…"}</h1>
           {activity && !isOpen && (
             <span className="rounded-full bg-gray-700/40 px-2 py-0.5 text-xs text-gray-400">
               Closed
             </span>
           )}
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 lg:gap-4">
           {/* Specials toggle — bartenders flip this off when a special runs out. */}
           {specialMap.size > 0 && (
             <button
@@ -334,8 +341,12 @@ export default function PosPage() {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        {/* Left: products */}
-        <div className="flex min-w-0 flex-1 flex-col">
+        {/* Left: products (full-width on phones; hidden there when viewing cart) */}
+        <div
+          className={`min-w-0 flex-1 flex-col ${
+            mobileView === "cart" ? "hidden lg:flex" : "flex"
+          }`}
+        >
           <div className="flex flex-wrap gap-2.5 border-b border-gray-800 px-5 py-4">
             <CatPill active={activeCat === "all"} onClick={() => setActiveCat("all")}>
               All
@@ -432,8 +443,12 @@ export default function PosPage() {
           )}
         </div>
 
-        {/* Right: cart + history */}
-        <aside className="flex w-96 flex-col border-l border-gray-800">
+        {/* Right: cart + history (full-width on phones; hidden there when viewing drinks) */}
+        <aside
+          className={`w-full flex-col border-gray-800 lg:w-96 lg:border-l ${
+            mobileView === "products" ? "hidden lg:flex" : "flex"
+          }`}
+        >
           <div className="flex border-b border-gray-800 text-base">
             <TabBtn active={tab === "cart"} onClick={() => setTab("cart")}>
               Cart{itemCount > 0 ? ` (${itemCount})` : ""}
@@ -577,6 +592,27 @@ export default function PosPage() {
           )}
         </aside>
       </div>
+
+      {/* Mobile view switcher — phones only; desktop shows both panes at once */}
+      <nav className="flex items-stretch border-t border-gray-800 lg:hidden">
+        <button
+          onClick={() => setMobileView("products")}
+          className={`flex-1 py-3 text-sm font-semibold transition-colors ${
+            mobileView === "products" ? "bg-gray-900 text-white" : "text-gray-400"
+          }`}
+        >
+          Drinks
+        </button>
+        <button
+          onClick={() => setMobileView("cart")}
+          className={`flex flex-1 items-center justify-center gap-2 py-3 text-sm font-semibold transition-colors ${
+            mobileView === "cart" ? "bg-gray-900 text-white" : "text-gray-400"
+          }`}
+        >
+          <span>Cart{itemCount > 0 ? ` (${itemCount})` : ""}</span>
+          {itemCount > 0 && <span className="tabular-nums text-amber-400">{euro(totalCents)}</span>}
+        </button>
+      </nav>
 
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-xl bg-amber-600 px-5 py-3 font-medium shadow-lg">

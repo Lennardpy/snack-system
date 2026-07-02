@@ -29,7 +29,13 @@ management uses `requireAdmin()`. Middleware gates `/ppp` and `/api/ppp`
 
 ## The POS screen (`/ppp/<activityId>`)
 
-A two-column touch UI plus a bottom "regulars" bar:
+A two-column touch UI plus a bottom "regulars" bar. It's **responsive**: at `lg`+
+(laptop/tablet) both columns show side-by-side; on a **phone** the two don't fit,
+so it shows one at a time with a **Drinks / Cart** bottom tab bar (the tab shows
+the live item count + total). Selecting a member — by scanning a card or tapping a
+regular — auto-switches to the Cart to confirm; after a charge it returns to Drinks.
+This makes an Android phone (with `?mode=nfc` auto-selected) a complete standalone
+POS. The columns:
 
 - **Left** — category tabs + a grid of drink tiles (tap to add). Tiles can carry a
   background **colour** and show a **SPECIAL** badge + struck price when an
