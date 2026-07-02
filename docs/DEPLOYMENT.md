@@ -40,7 +40,7 @@ Set these on the Railway **service** (not the database plugin).
 | `NEXT_PUBLIC_BASE_URL` | ✅ | same as `BASE_URL` (`https://snacks.51vo.nl`) | Client-visible URL. |
 | `NEXT_PUBLIC_CARD_READER_WS_URL` | – | `ws://localhost:3000` | WebSocket the kiosk connects to for card taps (`ws` mode). Baked into the client bundle at build time. |
 | `NEXT_PUBLIC_CARD_READER_MODE` | – | `ws` (or `hid`) | Default input mode: `ws` (Arago WebSocket) or `hid` (keyboard-wedge NFC reader, e.g. iPad). Override per device with the `?mode=` URL query. |
-| `NEXT_PUBLIC_PPP_CARD_READER_MODE` | – | `ws` (or `hid`) | PPP bar POS / login reader mode (independent of the kiosk). Currently `ws`. |
+| `NEXT_PUBLIC_PPP_CARD_READER_MODE` | – | `ws` (or `hid` / `nfc`) | PPP bar POS / login reader mode (independent of the kiosk). `ws` (Arago), `hid` (keyboard-wedge), or `nfc` (the device's own NFC chip via Web NFC — Chrome/Edge on **Android** over **HTTPS**). Resolution: an explicit `?mode=` query wins, else **`nfc` is auto-selected on Android** (only Chromium-Android exposes `NDEFReader`), else this default. So an Android phone just needs `…/ppp/login` — and the auto-pick can't affect laptop (`ws`) or iPad (`hid`) devices, which don't support Web NFC. |
 | `NEXT_PUBLIC_PPP_CARD_READER_WS_URL` | – | `ws://localhost:3000` | PPP POS WebSocket reader address. Baked at build time. |
 | `CONGRESSUS_PPP_FOLDER_ID` | – | `8804` | Overrides the PPP (drinks) Congressus product folder. See [PPP.md](PPP.md). |
 | `ALEXIA_API_URL` | – | `https://alex.ia.utwente.nl/api/1/` | Alexia JSON-RPC endpoint used to auto-import scheduled borrels (public, no auth). |

@@ -58,7 +58,8 @@ type MemberState =
 
 const WS_URL =
   process.env.NEXT_PUBLIC_PPP_CARD_READER_WS_URL ?? "ws://localhost:3000";
-const ENV_MODE = process.env.NEXT_PUBLIC_PPP_CARD_READER_MODE === "ws" ? "ws" : "hid";
+const PPP_MODE = process.env.NEXT_PUBLIC_PPP_CARD_READER_MODE;
+const ENV_MODE = PPP_MODE === "ws" || PPP_MODE === "nfc" ? PPP_MODE : "hid";
 
 const euro = (cents: number) => `€${(cents / 100).toFixed(2)}`;
 
@@ -171,7 +172,7 @@ export default function PosPage() {
     }
   }, []);
 
-  const { mode, wsStatus } = useCardReader({
+  const { mode, wsStatus, nfcStatus, startNfc } = useCardReader({
     onScan: handleScan,
     wsUrl: WS_URL,
     envMode: ENV_MODE,
@@ -284,7 +285,26 @@ export default function PosPage() {
             </button>
           )}
           <div className="flex items-center gap-2 text-xs text-gray-500">
-          {mode === "hid" ? (
+          {mode === "nfc" ? (
+            nfcStatus === "scanning" ? (
+              <>
+                <span className="h-2 w-2 rounded-full bg-green-500" />
+                Ready — tap a card
+              </>
+            ) : (
+              <button
+                onClick={startNfc}
+                disabled={nfcStatus === "unsupported"}
+                className="rounded-full bg-amber-600 px-3 py-1.5 font-semibold text-white hover:bg-amber-500 disabled:opacity-40"
+              >
+                {nfcStatus === "unsupported"
+                  ? "NFC unavailable"
+                  : nfcStatus === "error"
+                  ? "Retry NFC"
+                  : "Enable NFC"}
+              </button>
+            )
+          ) : mode === "hid" ? (
             <>
               <span className="h-2 w-2 rounded-full bg-green-500" />
               Ready to scan

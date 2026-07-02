@@ -1,20 +1,40 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // Shared NFC card-reader hook used by both the snack kiosk and the PPP bar POS.
-// Two input modes, chosen per-device:
+// Three input modes, chosen per-device:
 //   "ws"  — a reader broadcasting card taps over a WebSocket (e.g. Arago on a
 //           laptop). Connects to `wsUrl` and auto-reconnects.
 //   "hid" — a USB/Bluetooth NFC reader in keyboard-wedge mode that "types" the
 //           UID followed by Enter. Works in any browser (e.g. iPad Safari).
-// Mode resolves from the ?mode= URL query first (per device), then `envMode`.
+//   "nfc" — the device's own NFC chip via the Web NFC API (`NDEFReader`).
+//           Chrome/Edge on Android only, over HTTPS. Arming the reader needs a
+//           user gesture, so callers render a button that calls `startNfc()`.
+//           An old Android phone becomes a self-contained kiosk this way.
+// Mode resolves in order: the ?mode= URL query (explicit per-device override) →
+// auto "nfc" when the device supports Web NFC (only Chrome/Edge on Android expose
+// `NDEFReader`, so an Android phone "just works" with no query) → `envMode`.
+// Only the effect for the ACTIVE mode runs, so adding "nfc" leaves ws/hid alone.
 //
-// The raw UID string is handed to `onScan` verbatim — normalisation happens
-// server-side via normalizeUid(), so both modes/readers stay in sync.
+// The raw UID/serial string is handed to `onScan` verbatim — normalisation
+// happens server-side via normalizeUid(), so every mode/reader stays in sync.
 
-export type ReaderMode = "ws" | "hid";
+export type ReaderMode = "ws" | "hid" | "nfc";
 export type WsStatus = "connecting" | "connected" | "disconnected";
+// "unsupported" = not Chrome-Android/HTTPS; "idle" = supported but not yet armed
+// (needs the user-gesture startNfc()); "scanning" = armed; "error" = scan failed.
+export type NfcStatus = "unsupported" | "idle" | "scanning" | "error";
+
+// Minimal Web NFC typing (not in the default DOM lib).
+interface NDEFReadingEvent {
+  serialNumber?: string;
+}
+interface NDEFReaderLike {
+  scan(options?: { signal?: AbortSignal }): Promise<void>;
+  onreading: ((event: NDEFReadingEvent) => void) | null;
+  onreadingerror: (() => void) | null;
+}
 
 const RECONNECT_DELAY_MS = 3000;
 
@@ -30,6 +50,7 @@ interface Options {
 export function useCardReader({ onScan, wsUrl, envMode = "ws", enabled = true }: Options) {
   const [mode, setMode] = useState<ReaderMode | null>(null); // null until resolved
   const [wsStatus, setWsStatus] = useState<WsStatus>("connecting");
+  const [nfcStatus, setNfcStatus] = useState<NfcStatus>("idle");
 
   // Stable refs so the long-lived listeners never capture stale closures.
   const onScanRef = useRef(onScan);
@@ -38,11 +59,21 @@ export function useCardReader({ onScan, wsUrl, envMode = "ws", enabled = true }:
   enabledRef.current = enabled;
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const nfcAbort = useRef<AbortController | null>(null);
 
-  // Resolve the mode on mount: ?mode=hid|ws wins, else the build-time default.
+  // Resolve the mode on mount. An explicit ?mode=hid|ws|nfc always wins. With no
+  // override, auto-pick "nfc" on devices that support Web NFC — only Chrome/Edge
+  // on Android expose `NDEFReader`, so an Android phone selects nfc on its own
+  // while laptops (ws) and iPads (hid) fall through to the build-time default.
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get("mode");
-    setMode(q === "hid" || q === "ws" ? (q as ReaderMode) : envMode);
+    if (q === "hid" || q === "ws" || q === "nfc") {
+      setMode(q as ReaderMode);
+    } else if ("NDEFReader" in window) {
+      setMode("nfc");
+    } else {
+      setMode(envMode);
+    }
   }, [envMode]);
 
   // ── Keyboard-wedge input (HID readers) ──────────────────────────────────────
@@ -124,5 +155,50 @@ export function useCardReader({ onScan, wsUrl, envMode = "ws", enabled = true }:
     };
   }, [mode, wsUrl]);
 
-  return { mode, wsStatus };
+  // ── Web NFC (device's own chip, Chrome on Android). Only runs in "nfc" mode,
+  //    so ws/hid devices never touch this. Feature-detect up front; the actual
+  //    scan is armed by startNfc() from a user gesture (Web NFC requires it). ──
+  useEffect(() => {
+    if (mode !== "nfc") return;
+    if (typeof window === "undefined" || !("NDEFReader" in window)) {
+      setNfcStatus("unsupported");
+      return;
+    }
+    setNfcStatus("idle");
+    return () => {
+      nfcAbort.current?.abort();
+      nfcAbort.current = null;
+    };
+  }, [mode]);
+
+  // Arm the phone's NFC reader. MUST be called from a user gesture (button tap)
+  // or the browser rejects it. Once armed it keeps firing for every card tap.
+  const startNfc = useCallback(async () => {
+    if (typeof window === "undefined" || !("NDEFReader" in window)) {
+      setNfcStatus("unsupported");
+      return;
+    }
+    try {
+      nfcAbort.current?.abort(); // re-arm cleanly if tapped twice
+      const controller = new AbortController();
+      nfcAbort.current = controller;
+      const NDEFReaderCtor = (window as unknown as { NDEFReader: new () => NDEFReaderLike }).NDEFReader;
+      const reader = new NDEFReaderCtor();
+      await reader.scan({ signal: controller.signal });
+      reader.onreading = (event: NDEFReadingEvent) => {
+        if (!enabledRef.current) return;
+        const uid = (event.serialNumber ?? "").trim();
+        if (uid) onScanRef.current(uid); // e.g. "04:1a:2b:…"; normalised server-side
+      };
+      reader.onreadingerror = () => {
+        // A tag was in range but unreadable — stay armed for the next tap.
+      };
+      setNfcStatus("scanning");
+    } catch {
+      // Permission denied, no NFC hardware, or not a secure context.
+      setNfcStatus("error");
+    }
+  }, []);
+
+  return { mode, wsStatus, nfcStatus, startNfc };
 }

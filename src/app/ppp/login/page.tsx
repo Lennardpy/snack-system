@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCardReader } from "@/lib/useCardReader";
 
 const WS_URL = process.env.NEXT_PUBLIC_PPP_CARD_READER_WS_URL ?? "ws://localhost:3000";
-const ENV_MODE = process.env.NEXT_PUBLIC_PPP_CARD_READER_MODE === "ws" ? "ws" : "hid";
+const PPP_MODE = process.env.NEXT_PUBLIC_PPP_CARD_READER_MODE;
+const ENV_MODE = PPP_MODE === "ws" || PPP_MODE === "nfc" ? PPP_MODE : "hid";
 
 function LoginForm() {
   const router = useRouter();
@@ -66,7 +67,7 @@ function LoginForm() {
     [from, router]
   );
 
-  const { mode, wsStatus } = useCardReader({
+  const { mode, wsStatus, nfcStatus, startNfc } = useCardReader({
     onScan: handleCardScan,
     wsUrl: WS_URL,
     envMode: ENV_MODE,
@@ -108,8 +109,40 @@ function LoginForm() {
       <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 text-center">
         <p className="text-4xl">🪪</p>
         <p className="mt-2 font-medium">{scanning ? "Reading card…" : "Scan your card"}</p>
+        {mode === "nfc" && nfcStatus !== "scanning" && (
+          <button
+            onClick={startNfc}
+            disabled={nfcStatus === "unsupported"}
+            className="mt-3 w-full rounded-lg bg-amber-600 py-2.5 text-sm font-semibold text-white hover:bg-amber-500 disabled:opacity-40"
+          >
+            {nfcStatus === "unsupported"
+              ? "NFC not available on this device"
+              : nfcStatus === "error"
+              ? "Retry — enable NFC scanning"
+              : "Enable NFC scanning"}
+          </button>
+        )}
         <div className="mt-2 flex items-center justify-center gap-2 text-xs text-gray-500">
-          {mode === "hid" ? (
+          {mode === "nfc" ? (
+            <>
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  nfcStatus === "scanning"
+                    ? "bg-green-500"
+                    : nfcStatus === "unsupported" || nfcStatus === "error"
+                    ? "bg-red-500"
+                    : "bg-yellow-500"
+                }`}
+              />
+              {nfcStatus === "scanning"
+                ? "Ready — hold a card to the phone"
+                : nfcStatus === "unsupported"
+                ? "Web NFC not supported (use Chrome on Android)"
+                : nfcStatus === "error"
+                ? "Couldn't start NFC"
+                : "Tap “Enable NFC scanning” to start"}
+            </>
+          ) : mode === "hid" ? (
             <>
               <span className="h-2 w-2 rounded-full bg-green-500" /> Ready to scan
             </>

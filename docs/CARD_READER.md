@@ -1,18 +1,22 @@
 # Card Reader & Kiosk Setup
 
-The kiosk supports two ways of getting a card UID into the page, chosen per
+The kiosk supports three ways of getting a card UID into the page, chosen per
 device:
 
 | Mode | For | How the UID arrives |
 |------|-----|---------------------|
 | **`ws`** (default) | Laptop kiosk | [**Arago Card Reader**](https://github.com/SVArago/Arago-Card-Reader) broadcasts taps over a **WebSocket** |
 | **`hid`** | **iPad / tablet** kiosk | A USB-C/Bluetooth NFC reader in **keyboard-wedge** mode "types" the UID + Enter |
+| **`nfc`** | **Android phone** kiosk (esp. the **PPP** bar POS) | The phone's own NFC chip via the **Web NFC API** (`NDEFReader`) — Chrome/Edge on Android, HTTPS |
 
-Both feed the same `handleScan(uid)` → `POST /api/card/scan` flow. Pick the mode
-with the **`?mode=` URL query** (per device) or the `NEXT_PUBLIC_CARD_READER_MODE`
-env var (build default):
+All feed the same `handleScan(uid)` → `POST /api/card/scan` flow. Mode resolves in
+order: an explicit **`?mode=` URL query** (per device) → **auto `nfc`** when the
+device supports Web NFC (only Chrome/Edge on Android expose `NDEFReader`) → the
+`NEXT_PUBLIC_CARD_READER_MODE` env var (build default):
 - Laptop: open the app normally (defaults to `ws`).
 - iPad: open **`https://snacks.51vo.nl/?mode=hid`**.
+- Android phone (PPP bar POS): just open **`https://snacks.51vo.nl/ppp/login`** —
+  it auto-selects `nfc`. See the Web NFC section below.
 
 ## iPad / tablet kiosk (HID keyboard-wedge)
 
@@ -44,6 +48,33 @@ Setup:
 > 4. If they differ by byte order or decimal/hex, either reconfigure the HID reader
 >    to match, **or** add the one-line transform in the marked spot in
 >    `normalizeUid()` — then every device stays in sync automatically.
+
+## Android phone kiosk (Web NFC — `nfc` mode)
+
+An old **Android phone** can be a self-contained kiosk with **no external reader** —
+ideal for the **PPP bar POS at outside borrels**. It uses the browser's
+[**Web NFC API**](https://developer.mozilla.org/en-US/docs/Web/API/Web_NFC_API)
+(`NDEFReader`) to read a card's **serial number** with the phone's own NFC chip.
+
+Setup:
+1. On the phone, enable **NFC** in system settings and use **Chrome or Edge**
+   (Web NFC is Chromium-Android + HTTPS only — **not** iOS Safari, **not** desktop).
+2. Open **`https://snacks.51vo.nl/ppp/login`** (Add to Home Screen for a full-screen
+   kiosk). `nfc` is auto-selected on Android — no query needed; append `?mode=nfc`
+   only if you want to force it. The kiosk (`/`) and PPP POS both honour this mode.
+3. Tap **"Enable NFC scanning"** once and grant the NFC permission prompt — Web NFC
+   requires a user gesture to arm, so this can't be skipped.
+4. Hold cards flat to the **back** of the phone (where the NFC antenna is). Each tap
+   fires the same `handleScan(uid)` flow as every other reader.
+
+Notes:
+- The status line self-explains when unsupported: *"Web NFC not supported (use
+  Chrome on Android)"* and the button disables — so mistakenly opening `?mode=nfc`
+  on a laptop/iPad simply shows that message rather than breaking anything.
+- **Byte order**: Web NFC reports the UID in tag-read order, which may differ from
+  the Arago reader for the same physical card. If a card recognised on the laptop
+  isn't recognised on the phone, follow the same one-card-on-both reconciliation as
+  the HID reader above and add the transform in `normalizeUid()`.
 
 ## Laptop kiosk (Arago WebSocket)
 

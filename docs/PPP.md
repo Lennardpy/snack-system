@@ -51,8 +51,38 @@ Identifying the member (three ways, all set the same "charge target"):
 3. The bartender can **Change** at any time.
 
 Card reader: uses the shared `useCardReader` hook (`src/lib/useCardReader.ts`) —
-**`ws`** (Arago WebSocket, default in production) or **`hid`** (keyboard-wedge),
-chosen by `NEXT_PUBLIC_PPP_CARD_READER_MODE` / `?mode=` query, same as the kiosk.
+**`ws`** (Arago WebSocket, default in production), **`hid`** (keyboard-wedge), or
+**`nfc`** (the device's own NFC chip via Web NFC), chosen by
+`NEXT_PUBLIC_PPP_CARD_READER_MODE` / `?mode=` query, same as the kiosk.
+
+### Android phone as an NFC kiosk (`?mode=nfc`)
+
+For **outside borrels** where there's no laptop + Arago reader, any Android phone
+can be the POS: just open `https://snacks.51vo.nl/ppp/login` in **Chrome or Edge
+on Android** — the reader **auto-selects `nfc`** on any device that supports Web
+NFC (only Chromium-on-Android exposes `NDEFReader`), so no `?mode=` query is
+needed. Members' cards are read by the phone's built-in NFC chip via the
+[Web NFC API](https://developer.mozilla.org/en-US/docs/Web/API/Web_NFC_API)
+(`NDEFReader`); it reads the tag's **serial number**, which flows through the
+exact same `onScan → normalizeUid → Card` lookup as every other reader. (You can
+still force a mode with `?mode=ws|hid|nfc` — an explicit query always wins, so an
+Android device driving a HID reader would use `?mode=hid`.)
+
+Requirements & behaviour:
+- **Chrome/Edge on Android only, over HTTPS.** Web NFC does not exist on iOS
+  Safari or desktop browsers — there the button self-disables and the status reads
+  *"Web NFC not supported (use Chrome on Android)."*
+- **User gesture to arm.** The browser only lets a page start NFC after a tap, so
+  the POS/login shows an **"Enable NFC scanning"** button. Tap it once per session,
+  grant the NFC permission prompt, then hold cards to the back of the phone.
+- **Fully additive.** `nfc` is entered only when selected; the `ws` WebSocket and
+  `hid` keyboard listeners are untouched, so switching the phone to `?mode=nfc`
+  can't affect the laptop or iPad readers.
+- **Byte-order caveat.** Web NFC reports the UID in tag-read order, which *may*
+  differ from the Arago reader's byte order for the same card. If a card that
+  works on the laptop isn't recognised on the phone, scan one known card on both
+  and add the deterministic transform in `normalizeUid()` (`src/lib/card.ts`,
+  which already documents the spot). See [CARD_READER.md](CARD_READER.md).
 
 ## Pricing & discounts
 
@@ -216,7 +246,7 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `NEXT_PUBLIC_PPP_CARD_READER_MODE` | `ws` (prod) | POS/login reader mode (`ws` or `hid`). |
+| `NEXT_PUBLIC_PPP_CARD_READER_MODE` | `ws` (prod) | POS/login reader mode (`ws`, `hid`, or `nfc`). Per-device override via `?mode=`. |
 | `NEXT_PUBLIC_PPP_CARD_READER_WS_URL` | `ws://localhost:3000` | POS WebSocket reader address. |
 | `CONGRESSUS_PPP_FOLDER_ID` | `8804` | Overrides the PPP Congressus product folder. |
 | `ALEXIA_API_URL` | `https://alex.ia.utwente.nl/api/1/` | Alexia JSON-RPC endpoint for borrel sync. |
