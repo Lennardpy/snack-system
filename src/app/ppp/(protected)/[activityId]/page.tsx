@@ -28,7 +28,7 @@ interface HistoryInvoice {
   totalCents: number;
   confirmedAt: string;
   member: { firstName: string; lastName: string };
-  lines: { quantity: number; unitCents: number; product: { name: string } }[];
+  lines: { quantity: number; unitCents: number; product: { id: string; name: string } }[];
 }
 
 interface MemberRoleInfo {
@@ -111,11 +111,11 @@ export default function PosPage() {
     [discountsActive, specialMap]
   );
 
-  async function logout() {
-    if (!confirm("Log out of the bar POS?")) return;
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/ppp/login");
-    router.refresh();
+  // Leave this borrel and go back to the activity list. (Logging out lives on the
+  // selector.) Confirmed, so it's not triggered by an accidental tap mid-service.
+  function endBorrel() {
+    if (!confirm("End this borrel and return to the activity list?")) return;
+    router.push("/ppp");
   }
 
   async function toggleSpecials() {
@@ -254,7 +254,22 @@ export default function PosPage() {
     return [...map.values()].sort((a, b) => a.sortOrder - b.sortOrder);
   }, [products]);
 
-  const visible = activeCat === "all" ? products : products.filter((p) => p.category.id === activeCat);
+  // Quantity sold per product at this borrel (from the recent history feed), used
+  // to bubble the most-purchased drinks to the front of the "All" tab.
+  const soldByProduct = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const inv of history)
+      for (const l of inv.lines) m.set(l.product.id, (m.get(l.product.id) ?? 0) + l.quantity);
+    return m;
+  }, [history]);
+
+  const visible = useMemo(() => {
+    if (activeCat !== "all") return products.filter((p) => p.category.id === activeCat);
+    // Most-purchased first; unsold drinks keep their normal order after them.
+    return [...products].sort(
+      (a, b) => (soldByProduct.get(b.id) ?? 0) - (soldByProduct.get(a.id) ?? 0)
+    );
+  }, [activeCat, products, soldByProduct]);
 
   const memberRef = useRef<HTMLDivElement>(null);
 
@@ -263,13 +278,19 @@ export default function PosPage() {
       {/* Header */}
       <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-gray-800 px-3 py-2.5 lg:px-5 lg:py-3">
         <div className="flex min-w-0 items-center gap-3">
-          <button
-            onClick={() => router.push("/ppp")}
-            className="text-gray-400 hover:text-white"
-            aria-label="Back to activities"
-          >
-            ←
-          </button>
+          {/* On the phone, the cart's back-arrow returns to the Drinks grid (an
+              accidental tap is harmless); leaving the borrel is the End Borrel
+              button. Hidden on desktop, where both panes are always visible. */}
+          {mobileView === "cart" && (
+            <button
+              onClick={() => setMobileView("products")}
+              className="flex items-center gap-1 text-gray-300 hover:text-white lg:hidden"
+              aria-label="Back to drinks"
+            >
+              <span className="text-xl leading-none">←</span>
+              <span className="text-sm font-medium">Drinks</span>
+            </button>
+          )}
           <h1 className="truncate font-bold">{activity?.name ?? "…"}</h1>
           {activity && !isOpen && (
             <span className="rounded-full bg-gray-700/40 px-2 py-0.5 text-xs text-gray-400">
@@ -332,10 +353,10 @@ export default function PosPage() {
           )}
           </div>
           <button
-            onClick={logout}
-            className="rounded-lg border border-gray-700 px-3 py-1.5 text-sm text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
+            onClick={endBorrel}
+            className="rounded-lg border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-300 transition-colors hover:border-red-600 hover:bg-red-600 hover:text-white"
           >
-            Log out
+            End Borrel
           </button>
         </div>
       </header>
@@ -368,6 +389,7 @@ export default function PosPage() {
                 const effective = activityUnitPrice(p, specialFor(p.id));
                 const isSpecial = effective !== p.price;
                 const onBorrelSpecial = specialFor(p.id) != null;
+                const qty = cart[p.id] ?? 0;
                 return (
                   <button
                     key={p.id}
@@ -380,6 +402,12 @@ export default function PosPage() {
                         : "border-gray-800 bg-gray-900 hover:border-amber-600"
                     }`}
                   >
+                    {/* Live in-cart quantity — appears the moment you tap the tile */}
+                    {qty > 0 && (
+                      <span className="absolute -left-1.5 -top-1.5 flex h-8 min-w-[2rem] items-center justify-center rounded-full bg-amber-500 px-2 text-base font-extrabold tabular-nums text-black shadow-lg ring-2 ring-gray-950">
+                        {qty}
+                      </span>
+                    )}
                     {onBorrelSpecial && (
                       <span className="absolute right-1.5 top-1.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-black">
                         SPECIAL
@@ -593,20 +621,25 @@ export default function PosPage() {
         </aside>
       </div>
 
-      {/* Mobile view switcher — phones only; desktop shows both panes at once */}
-      <nav className="flex items-stretch border-t border-gray-800 lg:hidden">
+      {/* Mobile view switcher — phones only; desktop shows both panes at once.
+          Big finger targets; extra bottom padding clears the phone gesture bar. */}
+      <nav className="flex items-stretch border-t border-gray-800 pb-[env(safe-area-inset-bottom)] lg:hidden">
         <button
           onClick={() => setMobileView("products")}
-          className={`flex-1 py-3 text-sm font-semibold transition-colors ${
-            mobileView === "products" ? "bg-gray-900 text-white" : "text-gray-400"
+          className={`flex flex-1 items-center justify-center gap-2 border-t-2 py-5 text-lg font-bold transition-colors ${
+            mobileView === "products"
+              ? "border-amber-500 bg-gray-900 text-white"
+              : "border-transparent text-gray-400"
           }`}
         >
-          Drinks
+          🍺 Drinks
         </button>
         <button
           onClick={() => setMobileView("cart")}
-          className={`flex flex-1 items-center justify-center gap-2 py-3 text-sm font-semibold transition-colors ${
-            mobileView === "cart" ? "bg-gray-900 text-white" : "text-gray-400"
+          className={`flex flex-1 items-center justify-center gap-2 border-t-2 py-5 text-lg font-bold transition-colors ${
+            mobileView === "cart"
+              ? "border-amber-500 bg-gray-900 text-white"
+              : "border-transparent text-gray-400"
           }`}
         >
           <span>Cart{itemCount > 0 ? ` (${itemCount})` : ""}</span>

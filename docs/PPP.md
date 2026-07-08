@@ -39,16 +39,24 @@ POS. The columns:
 
 - **Left** — category tabs + a grid of drink tiles (tap to add). Tiles can carry a
   background **colour** and show a **SPECIAL** badge + struck price when an
-  activity special is active.
+  activity special is active. The **All** tab is sorted **most-purchased first**
+  (from this borrel's order history) so the popular drinks stay under the thumb.
 - **Right** — the cart: the member being charged (with their role-discount chips),
   line items with big `− qty +` steppers, the live total (struck gross + final),
   and a large **Confirm** button. **Clear cart** sits at the top of the cart.
-- **Header** — back, activity name/status, a **Specials ON/OFF** toggle (when the
-  activity has specials), the reader status dot, and a **Log out** button.
+- **Header** — activity name/status, a **Specials ON/OFF** toggle (when the
+  activity has specials), the reader status, and an **End Borrel** button (returns
+  to the activity list; logging out lives on the selector). On a phone, the Cart
+  view also shows a **← Drinks** back-arrow so the bottom tabs aren't the only way
+  back — an accidental tap there is harmless, unlike leaving the borrel.
 - **Bottom (left column)** — **Regulars**: large circular buttons of members who
   have ordered at this borrel, most orders first. Tap one to charge them **without
   scanning** a card.
 - **History tab** — live order feed for the activity (polls every 10 s).
+
+On the phone, NFC **auto-arms** on the POS if it was already granted at login
+(via the Permissions API), so there's no second "Enable NFC" tap — the POS is
+ready to scan the moment it opens.
 
 Identifying the member (three ways, all set the same "charge target"):
 1. **Card scan** — `POST /api/ppp/card/scan` (same `Card → Member` lookup as the

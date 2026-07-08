@@ -155,31 +155,16 @@ export function useCardReader({ onScan, wsUrl, envMode = "ws", enabled = true }:
     };
   }, [mode, wsUrl]);
 
-  // ── Web NFC (device's own chip, Chrome on Android). Only runs in "nfc" mode,
-  //    so ws/hid devices never touch this. Feature-detect up front; the actual
-  //    scan is armed by startNfc() from a user gesture (Web NFC requires it). ──
-  useEffect(() => {
-    if (mode !== "nfc") return;
-    if (typeof window === "undefined" || !("NDEFReader" in window)) {
-      setNfcStatus("unsupported");
-      return;
-    }
-    setNfcStatus("idle");
-    return () => {
-      nfcAbort.current?.abort();
-      nfcAbort.current = null;
-    };
-  }, [mode]);
-
-  // Arm the phone's NFC reader. MUST be called from a user gesture (button tap)
-  // or the browser rejects it. Once armed it keeps firing for every card tap.
+  // Arm the phone's NFC reader. The FIRST call (which triggers the permission
+  // prompt) must come from a user gesture; once the origin is granted, later
+  // calls re-arm silently — that's what lets the POS pick up where login left off.
   const startNfc = useCallback(async () => {
     if (typeof window === "undefined" || !("NDEFReader" in window)) {
       setNfcStatus("unsupported");
       return;
     }
     try {
-      nfcAbort.current?.abort(); // re-arm cleanly if tapped twice
+      nfcAbort.current?.abort(); // re-arm cleanly if called twice
       const controller = new AbortController();
       nfcAbort.current = controller;
       const NDEFReaderCtor = (window as unknown as { NDEFReader: new () => NDEFReaderLike }).NDEFReader;
@@ -199,6 +184,35 @@ export function useCardReader({ onScan, wsUrl, envMode = "ws", enabled = true }:
       setNfcStatus("error");
     }
   }, []);
+
+  // ── Web NFC (device's own chip, Chrome on Android). Only runs in "nfc" mode,
+  //    so ws/hid devices never touch this. Feature-detect, then AUTO-ARM if the
+  //    user already granted NFC (e.g. at login) so the POS is ready to scan with
+  //    no second "Enable NFC" tap. If not yet granted, the page shows the button. ──
+  useEffect(() => {
+    if (mode !== "nfc") return;
+    if (typeof window === "undefined" || !("NDEFReader" in window)) {
+      setNfcStatus("unsupported");
+      return;
+    }
+    setNfcStatus("idle");
+    let cancelled = false;
+    (async () => {
+      try {
+        // navigator.permissions may not expose "nfc"; if it throws we just wait
+        // for the button. If already granted, arm silently.
+        const perm = await navigator.permissions.query({ name: "nfc" as PermissionName });
+        if (!cancelled && perm.state === "granted") startNfc();
+      } catch {
+        /* not queryable — leave the Enable-NFC button for the user */
+      }
+    })();
+    return () => {
+      cancelled = true;
+      nfcAbort.current?.abort();
+      nfcAbort.current = null;
+    };
+  }, [mode, startNfc]);
 
   return { mode, wsStatus, nfcStatus, startNfc };
 }

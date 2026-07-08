@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
       confirmedAt: true,
       member: { select: { firstName: true, lastName: true } },
       lines: {
-        select: { quantity: true, unitCents: true, product: { select: { name: true } } },
+        select: { quantity: true, unitCents: true, product: { select: { id: true, name: true } } },
       },
     },
   });
