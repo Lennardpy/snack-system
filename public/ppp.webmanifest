@@ -1,0 +1,18 @@
+{
+  "id": "/ppp",
+  "name": "PPP Bar POS",
+  "short_name": "PPP",
+  "description": "Stress bar point-of-sale — scan cards and charge drinks",
+  "start_url": "/ppp",
+  "scope": "/ppp",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "portrait",
+  "background_color": "#030712",
+  "theme_color": "#030712",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

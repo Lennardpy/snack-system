@@ -81,6 +81,14 @@ Requirements & behaviour:
 - **User gesture to arm.** The browser only lets a page start NFC after a tap, so
   the POS/login shows an **"Enable NFC scanning"** button. Tap it once per session,
   grant the NFC permission prompt, then hold cards to the back of the phone.
+- **Installable full-screen (PWA).** `/ppp/*` ships a web-app manifest
+  (`public/ppp.webmanifest`, linked only from `src/app/ppp/layout.tsx`) with
+  `display: fullscreen`, `scope`/`start_url` `/ppp`, and app icons. In Chrome →
+  **Add to Home screen / Install app**, the phone installs a standalone icon that
+  launches the POS with **no browser chrome** (no URL bar). The manifest is scoped
+  to `/ppp`, so the installed app opens the bar POS and the SSS kiosk is unaffected.
+  (If you added it to the home screen *before* the manifest shipped, delete that
+  old shortcut and re-add it — the old one opens in a normal browser tab.)
 - **Fully additive.** `nfc` is entered only when selected; the `ws` WebSocket and
   `hid` keyboard listeners are untouched, so switching the phone to `?mode=nfc`
   can't affect the laptop or iPad readers.
