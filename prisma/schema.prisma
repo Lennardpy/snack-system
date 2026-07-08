@@ -139,6 +139,7 @@ model User {
 
   sessions      Session[]
   passwordSetup PasswordSetupToken?
+  pppInvoicesTapped PppInvoice[] @relation("PppTapper")
 }
 
 // One-time link to set an account password (used for inviting bartenders).
@@ -278,6 +279,10 @@ model PppInvoice {
   member     Member       @relation(fields: [memberId], references: [id])
   activityId String
   activity   PppActivity  @relation(fields: [activityId], references: [id])
+  // The bartender ("tapper") who rang this order up on the POS. Nullable for
+  // orders created before this was tracked.
+  createdById String?
+  createdBy   User?        @relation("PppTapper", fields: [createdById], references: [id])
   lines      PppInvoiceLine[]
 }
 

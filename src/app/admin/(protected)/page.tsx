@@ -13,6 +13,7 @@ interface RecentPurchase {
 }
 interface Stats {
   range: string;
+  lastExportAt: string | null;
   revenueCents: number;
   orderCount: number;
   itemsSold: number;
@@ -25,6 +26,7 @@ interface Stats {
 }
 
 const RANGES: { key: string; label: string }[] = [
+  { key: "since_export", label: "Since export" },
   { key: "7d", label: "7 days" },
   { key: "30d", label: "30 days" },
   { key: "90d", label: "90 days" },
@@ -33,6 +35,8 @@ const RANGES: { key: string; label: string }[] = [
 ];
 
 const euro = (c: number) => `€${(c / 100).toFixed(2)}`;
+const fmtDate = (iso: string) =>
+  new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -68,7 +72,16 @@ export default function DashboardPage() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-gray-500">Sales overview</p>
+          {range === "since_export" ? (
+            <p className="text-blue-300">
+              Unbilled sales — money still to come.{" "}
+              {stats?.lastExportAt
+                ? `Since last export on ${fmtDate(stats.lastExportAt)}.`
+                : "No export yet — all confirmed sales."}
+            </p>
+          ) : (
+            <p className="text-gray-500">Sales overview</p>
+          )}
         </div>
         <div className="flex rounded-xl bg-gray-800 p-1">
           {RANGES.map((r) => (

@@ -5,11 +5,18 @@ import { requireBartender } from "@/lib/auth";
 // List activities for the bartender selector. OPEN first, and since auto-imported
 // Alexia borrels are all upcoming, OPEN ones are sorted SOONEST first (so today's
 // borrel sits at the top); CLOSED ones most-recent first.
+//
+// Borrels older than 3 days are hidden from bartenders here (admins still see all
+// on the admin activities page) — the selector stays focused on current events.
+const BARTENDER_VISIBLE_DAYS = 3;
+
 export async function GET() {
   const user = await requireBartender();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const cutoff = new Date(Date.now() - BARTENDER_VISIBLE_DAYS * 24 * 60 * 60 * 1000);
   const activities = await prisma.pppActivity.findMany({
+    where: { date: { gte: cutoff } },
     include: { _count: { select: { invoices: true } } },
   });
 

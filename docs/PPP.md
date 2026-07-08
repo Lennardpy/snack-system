@@ -19,7 +19,7 @@ session/auth model, the same Congressus client, and the same card-reader hook.
 | Path | Who | Purpose |
 |------|-----|---------|
 | `/ppp/login` | public | Bartender sign-in: email/password **or scan a linked card** |
-| `/ppp` | bartender/admin | Activity selector — auto-imports scheduled borrels from Alexia, open one or create your own; **Log out** |
+| `/ppp` | bartender/admin | Activity selector — auto-imports scheduled borrels from Alexia, open one or create your own; **Log out**. Borrels older than **3 days** are hidden here (bartenders only; admins still see all on the admin Activities page). |
 | `/ppp/<activityId>` | bartender/admin | The POS screen (cart, scan, regulars, specials toggle, **Log out**) |
 | `/admin/ppp/*` | admin | Management: dashboard, drinks, activities, roles, bartenders, invoices |
 
@@ -171,9 +171,9 @@ Managed under **Admin → PPP → Bartenders**.
 
 | Page | What |
 |------|------|
-| **Dashboard** | Financials (revenue, drinks sold, orders, borrels, drinkers, avg) + rankings: **top borrels** by revenue, **top drinkers** by drinks, most popular drinks. Range selector. |
+| **Dashboard** | Financials (revenue, drinks sold, orders, borrels, drinkers, avg) + rankings: **top borrels** by revenue, **top drinkers** by drinks, most popular drinks. Range selector includes **Since export** — the still-unbilled orders (status CONFIRMED) so you can see the money still to come; the subtitle shows the last export date. (The SSS dashboard has the same **Since export** range.) |
 | **Drinks** | PPP catalog: categories, create/edit/publish/archive drinks with price, **special price**, VAT, and a 5-colour **tile colour** picker. |
-| **Activities** | List borrels (auto-synced from Alexia + manual), close/reopen, rename, revenue + order counts + **discount given** (specials / total), order list. **Closing** shows the discount totals. Each links to its detail page. |
+| **Activities** | List borrels (auto-synced from Alexia + manual), close/reopen, rename, revenue + order counts + **discount given** (specials / total), order list (each order shows the **🍺 tapper** — the bartender who rang it up). **Closing** shows the discount totals. Each links to its detail page. |
 | **Activity detail** (`/admin/ppp/activities/[id]`) | Manage the borrel's **drink specials** (pick a drink, set a special price) — can be done in advance for a future borrel. Shows order count + the two discount totals, and whether specials are active. |
 | **Member roles** | Create/edit roles with a `%` and/or `€` discount. Highest wins. |
 | **Bartenders** | Invite by email, set-password link, link to a member for card login, delete. |
@@ -231,8 +231,9 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
 - `PppProductCategory`, `PppProduct` (price, `specialPrice?`, `color?`,
   `vatCategory`, Congressus ids), `PppActivity` (`status`, `discountsActive`),
   `PppActivityDiscount` (per-activity per-product special price),
-  `PppInvoice` (defaults to CONFIRMED, no CONCEPT), `PppInvoiceLine` (`unitCents`
-  charged + `listCents?` / `specialCents?` snapshots for discount reporting).
+  `PppInvoice` (defaults to CONFIRMED, no CONCEPT; `createdById?` → the bartender
+  who tapped the order), `PppInvoiceLine` (`unitCents` charged + `listCents?` /
+  `specialCents?` snapshots for discount reporting).
 - `MemberRole` (`discountPercent`, `discountCents`) ↔ `Member` (many-to-many).
 - `PasswordSetupToken` (bartender invites; non-expiring, single-use).
 - Reuses `User.memberId` to link a bartender to a member; reuses `Member` / `Card`

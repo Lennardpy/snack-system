@@ -2,21 +2,38 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 
-// GET /api/admin/ppp/stats?range=7d|30d|90d|365d|all
+// GET /api/admin/ppp/stats?range=7d|30d|90d|365d|all|since_export
 // PPP (bar) overview: financials, top borrels, top drinkers (by drinks), top drinks.
+// `since_export` = the still-unbilled orders (status CONFIRMED, i.e. everything
+// since the last Congressus export) so the admin can see what money is still to come.
 export async function GET(req: NextRequest) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const range = req.nextUrl.searchParams.get("range") ?? "90d";
-  const days = range === "all" ? null : parseInt(range.replace("d", ""), 10) || 90;
-  const from = days ? new Date(Date.now() - days * 24 * 60 * 60 * 1000) : null;
+  const sinceExport = range === "since_export";
+
+  let from: Date | null = null;
+  let lastExportAt: Date | null = null;
+  if (sinceExport) {
+    const last = await prisma.pppInvoice.findFirst({
+      where: { exportedAt: { not: null } },
+      orderBy: { exportedAt: "desc" },
+      select: { exportedAt: true },
+    });
+    lastExportAt = last?.exportedAt ?? null;
+  } else {
+    const days = range === "all" ? null : parseInt(range.replace("d", ""), 10) || 90;
+    from = days ? new Date(Date.now() - days * 24 * 60 * 60 * 1000) : null;
+  }
 
   const invoices = await prisma.pppInvoice.findMany({
-    where: {
-      status: { in: ["CONFIRMED", "EXPORTED"] },
-      ...(from ? { confirmedAt: { gte: from } } : {}),
-    },
+    where: sinceExport
+      ? { status: "CONFIRMED" } // unbilled = still to come
+      : {
+          status: { in: ["CONFIRMED", "EXPORTED"] },
+          ...(from ? { confirmedAt: { gte: from } } : {}),
+        },
     include: {
       member: { select: { firstName: true, lastName: true } },
       activity: { select: { id: true, name: true } },
@@ -80,6 +97,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     range,
+    lastExportAt: lastExportAt ? lastExportAt.toISOString() : null,
     revenueCents,
     drinksSold,
     orderCount,

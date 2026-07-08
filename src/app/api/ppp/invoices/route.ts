@@ -22,6 +22,11 @@ export async function GET(req: NextRequest) {
       totalCents: true,
       confirmedAt: true,
       member: { select: { firstName: true, lastName: true } },
+      // The tapper who rang the order up, shown to the admin. Prefer the linked
+      // member's name; fall back to the login email.
+      createdBy: {
+        select: { email: true, member: { select: { firstName: true, lastName: true } } },
+      },
       lines: {
         select: { quantity: true, unitCents: true, product: { select: { id: true, name: true } } },
       },
@@ -126,6 +131,7 @@ export async function POST(req: NextRequest) {
       memberId,
       activityId,
       totalCents,
+      createdById: user.id, // the bartender/tapper who rang this up
       // status defaults to CONFIRMED — a bartender confirm is final.
       lines: { create: lineData },
     },

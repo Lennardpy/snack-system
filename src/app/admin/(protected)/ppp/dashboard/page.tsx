@@ -7,6 +7,7 @@ interface Drinker { id: string; name: string; drinks: number; revenueCents: numb
 interface Drink { name: string; quantity: number; revenueCents: number }
 interface Stats {
   range: string;
+  lastExportAt: string | null;
   revenueCents: number;
   drinksSold: number;
   orderCount: number;
@@ -19,6 +20,7 @@ interface Stats {
 }
 
 const RANGES = [
+  { key: "since_export", label: "Since export" },
   { key: "30d", label: "30 days" },
   { key: "90d", label: "90 days" },
   { key: "365d", label: "1 year" },
@@ -26,6 +28,8 @@ const RANGES = [
 ];
 
 const euro = (c: number) => `€${(c / 100).toFixed(2)}`;
+const fmtDate = (iso: string) =>
+  new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
 export default function PppDashboardPage() {
   const [range, setRange] = useState("90d");
@@ -49,7 +53,16 @@ export default function PppDashboardPage() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">PPP dashboard</h1>
-          <p className="text-gray-500">Bar overview — borrels, drinkers & financials</p>
+          {range === "since_export" ? (
+            <p className="text-amber-400/90">
+              Unbilled bar orders — money still to come.{" "}
+              {stats?.lastExportAt
+                ? `Since last export on ${fmtDate(stats.lastExportAt)}.`
+                : "No export yet — all confirmed orders."}
+            </p>
+          ) : (
+            <p className="text-gray-500">Bar overview — borrels, drinkers & financials</p>
+          )}
         </div>
         <div className="flex rounded-xl bg-gray-800 p-1">
           {RANGES.map((r) => (

@@ -2,23 +2,40 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 
-// GET /api/admin/stats?range=7d|30d|90d|365d|all
+// GET /api/admin/stats?range=7d|30d|90d|365d|all|since_export
 // Returns revenue, order/item counts, a daily revenue series, and top products
-// over the chosen timeframe (based on confirmed sales).
+// over the chosen timeframe (based on confirmed sales). `since_export` = the still-
+// unbilled orders (status CONFIRMED) so the admin sees what money is still to come.
 export async function GET(req: NextRequest) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const range = req.nextUrl.searchParams.get("range") ?? "30d";
-  const days = range === "all" ? null : parseInt(range.replace("d", ""), 10) || 30;
-  const from = days ? new Date(Date.now() - days * 24 * 60 * 60 * 1000) : null;
+  const sinceExport = range === "since_export";
+
+  let from: Date | null = null;
+  let lastExportAt: Date | null = null;
+  if (sinceExport) {
+    const last = await prisma.saleInvoice.findFirst({
+      where: { exportedAt: { not: null } },
+      orderBy: { exportedAt: "desc" },
+      select: { exportedAt: true },
+    });
+    lastExportAt = last?.exportedAt ?? null;
+    from = lastExportAt; // drives the daily chart window (null => all days with data)
+  } else {
+    const days = range === "all" ? null : parseInt(range.replace("d", ""), 10) || 30;
+    from = days ? new Date(Date.now() - days * 24 * 60 * 60 * 1000) : null;
+  }
 
   // Confirmed + exported invoices count as actual sales.
   const invoices = await prisma.saleInvoice.findMany({
-    where: {
-      status: { in: ["CONFIRMED", "EXPORTED"] },
-      ...(from ? { confirmedAt: { gte: from } } : {}),
-    },
+    where: sinceExport
+      ? { status: "CONFIRMED" } // unbilled = still to come
+      : {
+          status: { in: ["CONFIRMED", "EXPORTED"] },
+          ...(from ? { confirmedAt: { gte: from } } : {}),
+        },
     include: { lines: { include: { product: true } }, member: true },
     orderBy: { confirmedAt: "asc" },
   });
@@ -113,6 +130,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     range,
+    lastExportAt: lastExportAt ? lastExportAt.toISOString() : null,
     revenueCents,
     orderCount,
     itemsSold,

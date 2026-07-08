@@ -18,15 +18,28 @@ interface OrderLine {
   unitCents: number;
   product: { name: string };
 }
+interface Tapper {
+  email: string;
+  member: { firstName: string; lastName: string } | null;
+}
 interface Order {
   id: string;
   totalCents: number;
   confirmedAt: string;
   member: { firstName: string; lastName: string };
+  createdBy: Tapper | null;
   lines: OrderLine[];
 }
 
 const euro = (c: number) => `€${(c / 100).toFixed(2)}`;
+
+// Friendly name for the bartender who rang an order up: linked member name, else
+// the part before the @ of their login email.
+function tapperName(t: Tapper | null): string | null {
+  if (!t) return null;
+  if (t.member) return `${t.member.firstName} ${t.member.lastName}`.trim();
+  return t.email.split("@")[0];
+}
 
 export default function AdminActivitiesPage() {
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -229,19 +242,27 @@ export default function AdminActivitiesPage() {
                     <p className="text-sm text-gray-600">No orders for this activity.</p>
                   ) : (
                     <ul className="space-y-2">
-                      {orders.map((o) => (
-                        <li key={o.id} className="flex items-start justify-between gap-3 text-sm">
-                          <div className="min-w-0">
-                            <span className="font-medium">
-                              {o.member.firstName} {o.member.lastName}
-                            </span>
-                            <span className="ml-2 text-gray-500">
-                              {o.lines.map((l) => `${l.quantity}× ${l.product.name}`).join(", ")}
-                            </span>
-                          </div>
-                          <span className="flex-shrink-0 text-gray-400">{euro(o.totalCents)}</span>
-                        </li>
-                      ))}
+                      {orders.map((o) => {
+                        const tapper = tapperName(o.createdBy);
+                        return (
+                          <li key={o.id} className="flex items-start justify-between gap-3 text-sm">
+                            <div className="min-w-0">
+                              <span className="font-medium">
+                                {o.member.firstName} {o.member.lastName}
+                              </span>
+                              <span className="ml-2 text-gray-500">
+                                {o.lines.map((l) => `${l.quantity}× ${l.product.name}`).join(", ")}
+                              </span>
+                              {tapper && (
+                                <span className="ml-2 rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-400">
+                                  🍺 {tapper}
+                                </span>
+                              )}
+                            </div>
+                            <span className="flex-shrink-0 text-gray-400">{euro(o.totalCents)}</span>
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
                 </div>
