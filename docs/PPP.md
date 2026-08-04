@@ -19,7 +19,7 @@ session/auth model, the same Congressus client, and the same card-reader hook.
 | Path | Who | Purpose |
 |------|-----|---------|
 | `/ppp/login` | public | Bartender sign-in: email/password **or scan a linked card** |
-| `/ppp` | bartender/admin | Activity selector — auto-imports scheduled borrels from Alexia, open one or create your own; **Log out**. Borrels older than **3 days** are hidden here (bartenders only; admins still see all on the admin Activities page). |
+| `/ppp` | bartender/admin | Activity selector — auto-imports scheduled borrels from Alexia, open one or create your own; **Log out**. Shows **today's** borrels only, **plus** any still-OPEN borrel that started before today (so a borrel running past midnight stays accessible while open). Future/old borrels are hidden here — admins still see all on the admin Activities page. Also reachable at **`ppp.51vo.nl`** (redirects to `/ppp`). |
 | `/ppp/<activityId>` | bartender/admin | The POS screen (cart, scan, regulars, specials toggle, **Log out**) |
 | `/admin/ppp/*` | admin | Management: dashboard, drinks, activities, roles, bartenders, invoices |
 

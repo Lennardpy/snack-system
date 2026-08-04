@@ -67,6 +67,19 @@ The app is served from Railway under the custom domain **`https://51vo.nl`**:
    enough, because `NEXT_PUBLIC_BASE_URL` is baked into the client at build time.
 3. Keep `EMAIL_FROM` on a Resend-verified domain (already `…@51vo.nl`).
 
+### Bar POS vanity domain (`ppp.51vo.nl`)
+`ppp.51vo.nl` is a shortcut to the bar POS. The app already redirects
+`ppp.51vo.nl/*` → `https://snacks.51vo.nl/ppp` (in `src/middleware.ts`), so only
+the routing needs wiring up — once, in two places:
+1. Railway → the **snack-system** service → **Settings → Networking → Custom
+   Domain** → add **`ppp.51vo.nl`** (target port **8080**, same as `snacks.51vo.nl`).
+2. At the DNS provider (51vo.nl zone) add the **CNAME** record Railway shows for it
+   (a per-domain `…up.railway.app` target). Wait for Railway to validate + issue
+   the TLS cert.
+
+No env-var or `BASE_URL` changes are needed — the redirect sends users to the
+canonical `snacks.51vo.nl`, where cookies, the PWA manifest and the cert all live.
+
 ## Email deliverability (verification emails)
 
 Verification emails go through **Resend** from `…@51vo.nl`. To stay out of spam:

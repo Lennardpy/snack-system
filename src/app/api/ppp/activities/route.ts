@@ -6,17 +6,30 @@ import { requireBartender } from "@/lib/auth";
 // Alexia borrels are all upcoming, OPEN ones are sorted SOONEST first (so today's
 // borrel sits at the top); CLOSED ones most-recent first.
 //
-// Borrels older than 3 days are hidden from bartenders here (admins still see all
-// on the admin activities page) — the selector stays focused on current events.
-const BARTENDER_VISIBLE_DAYS = 3;
-
+// The selector shows only TODAY's borrels — plus any still-OPEN borrel that
+// started before today, so a borrel running past midnight stays accessible while
+// it's open. Everything else (future/old borrels) is hidden from bartenders;
+// admins still see every activity on the admin Activities page.
 export async function GET() {
   const user = await requireBartender();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const cutoff = new Date(Date.now() - BARTENDER_VISIBLE_DAYS * 24 * 60 * 60 * 1000);
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfTomorrow = new Date(startOfToday);
+  startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+  const carryoverFloor = new Date(startOfToday);
+  carryoverFloor.setDate(carryoverFloor.getDate() - 1); // yesterday 00:00
+
   const activities = await prisma.pppActivity.findMany({
-    where: { date: { gte: cutoff } },
+    where: {
+      OR: [
+        // Today's borrels (any status).
+        { date: { gte: startOfToday, lt: startOfTomorrow } },
+        // A borrel that started before today but is still open (ran past midnight).
+        { status: "OPEN", date: { gte: carryoverFloor, lt: startOfToday } },
+      ],
+    },
     include: { _count: { select: { invoices: true } } },
   });
 
