@@ -245,13 +245,13 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET/POST | `/api/ppp/activities` | List / create activities |
+| GET/POST | `/api/ppp/activities` | List (today + still-open past-midnight only) / create activities |
 | GET/PATCH | `/api/ppp/activities/[id]` | Activity + specials + `discountsActive` / toggle, close, rename |
 | GET | `/api/ppp/activities/[id]/customers` | Regulars (members who ordered, most first) |
 | POST | `/api/ppp/alexia/sync` | Import upcoming Stress borrels from Alexia |
 | GET | `/api/ppp/products` | Published drinks for the POS |
 | POST | `/api/ppp/card/scan` | UID → member (name + roles) for charging |
-| GET/POST | `/api/ppp/invoices` | Order history (`?activityId=`) / confirm an order |
+| GET/POST | `/api/ppp/invoices` | Order history (`?activityId=`, incl. the `createdBy` tapper) / confirm an order (records the tapper) |
 
 **Public**:
 
@@ -262,7 +262,7 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
 
 **Admin** (`requireAdmin`): `/api/admin/ppp/products`, `…/categories`, `…/roles`,
 `…/bartenders` (+`/[id]`, `/[id]/resend`), `…/activities/[id]` (+`/discounts`),
-`…/stats`, `…/invoices`; `/api/admin/members/[id]/roles`,
+`…/stats` (`?range=…|since_export`), `…/invoices`; `/api/admin/members/[id]/roles`,
 `/api/admin/members/search`; and `POST /api/admin/invoices/export { scope }`.
 
 ## Environment

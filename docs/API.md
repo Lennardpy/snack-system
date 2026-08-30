@@ -91,11 +91,15 @@ Clears the session cookie and deletes the DB session.
 
 ## Admin — all require an admin session
 
-### `GET /api/admin/stats?range=7d|30d|90d|365d|all`
+### `GET /api/admin/stats?range=7d|30d|90d|365d|all|since_export`
 Aggregated sales over the timeframe (based on `CONFIRMED`/`EXPORTED` invoices).
 `activeUsers` is the count of distinct members who purchased in the period.
+`since_export` reports the still-**unbilled** sales (status `CONFIRMED` only) — the
+money still to come since the last Congressus export; `lastExportAt` is that export's
+timestamp (or `null` if nothing has been exported yet). The PPP dashboard's
+`GET /api/admin/ppp/stats` takes the same `since_export` range (see [PPP.md](PPP.md)).
 ```json
-{ "range": "30d", "revenueCents": 1910, "orderCount": 5, "itemsSold": 18,
+{ "range": "30d", "lastExportAt": null, "revenueCents": 1910, "orderCount": 5, "itemsSold": 18,
   "avgOrderCents": 382, "activeUsers": 4,
   "topProducts": [ { "id": "…", "name": "Mars", "quantity": 9, "revenueCents": 900 } ],
   "topSpenders": [ { "id": "…", "name": "Jane Doe", "spentCents": 1270, "orderCount": 3 } ],

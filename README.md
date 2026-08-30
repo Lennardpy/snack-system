@@ -24,7 +24,7 @@ application running on Railway.
 - **Tap-to-shop kiosk** — NFC student card opens a personal, time-limited shop session.
 - **Self-service card linking** — unrecognised cards are linked to a member via a one-click email verification (no admin needed).
 - **Admin panel** — dashboard with revenue/popularity over a selectable timeframe, member management, product & price management, and invoice editing/export.
-- **PPP bar POS** — a bartender-operated point-of-sale for drinks at activities: member roles & discounts, per-borrel drink specials (e.g. Flügel Friday), a touch UI with one-tap "regulars", card-login for bartenders, and a separate monthly Congressus invoice. See [docs/PPP.md](docs/PPP.md).
+- **PPP bar POS** — a bartender-operated point-of-sale for drinks at activities: member roles & discounts, per-borrel drink specials (e.g. Flügel Friday), a touch UI with one-tap "regulars", card-login for bartenders, and a separate monthly Congressus invoice. Runs on a laptop+reader, an iPad, or an **Android phone that reads cards with its own NFC chip** (Web NFC) — installable full-screen and reachable at `ppp.51vo.nl`. See [docs/PPP.md](docs/PPP.md).
 - **Congressus integration** — members, products, and monthly invoices sync to Congressus.
 - **Built for a shared physical kiosk** — idle auto-reset, rate limiting, and a strict "data only behind a valid session" security model.
 
@@ -53,7 +53,7 @@ application running on Railway.
 | [docs/CARD_READER.md](docs/CARD_READER.md) | Setting up the Arago reader and the kiosk laptop |
 | [docs/CONGRESSUS.md](docs/CONGRESSUS.md) | How members, products, and invoices map to Congressus (and its API quirks) |
 | [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) | Day-to-day operations for board members |
-| [docs/PPP.md](docs/PPP.md) | The **PPP bar POS**: pricing/discounts, specials, bartenders, card login, Alexia borrel sync, two-invoice export |
+| [docs/PPP.md](docs/PPP.md) | The **PPP bar POS**: pricing/discounts, specials, bartenders, card login, phone/NFC kiosk + PWA, Alexia borrel sync, two-invoice export |
 | [docs/SECURITY.md](docs/SECURITY.md) | The security model and the decisions behind it |
 
 ## Quick start (local development)
