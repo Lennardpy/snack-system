@@ -161,10 +161,35 @@ export default function ProductsPage() {
     load();
   }
 
+  // A product is "free" once it's past its best-before date (expiry discount).
+  const isFree = (p: Product) =>
+    discountStage(p.expiresAt ? new Date(p.expiresAt) : null) === "FREE";
+  // Alphabetical, case-insensitive — a stable order so edits don't reshuffle the list.
+  const byName = (a: Product, b: Product) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+
   const visible = products.filter((p) => !p.archived);
+  const freeItems = visible.filter(isFree).sort(byName);
   const byCategory = categories
-    .map((c) => ({ category: c, items: visible.filter((p) => p.category.id === c.id) }))
+    .map((c) => ({
+      category: c,
+      items: visible.filter((p) => p.category.id === c.id && !isFree(p)).sort(byName),
+    }))
     .filter((g) => g.items.length > 0);
+
+  // Render order: expired/free items first (in one group so they're easy to update
+  // when new stock arrives), then each category A→Z.
+  const groups: { key: string; title: string; free: boolean; items: Product[] }[] = [
+    ...(freeItems.length > 0
+      ? [{ key: "__free__", title: "Free — expired · restock", free: true, items: freeItems }]
+      : []),
+    ...byCategory.map(({ category, items }) => ({
+      key: category.id,
+      title: category.name,
+      free: false,
+      items,
+    })),
+  ];
 
   return (
     <div className="p-8">
@@ -260,13 +285,26 @@ export default function ProductsPage() {
         </button>
       </form>
 
-      {/* Product list grouped by category */}
+      {/* Product list — free/expired first, then each category A→Z */}
       <div className="space-y-8">
-        {byCategory.map(({ category, items }) => (
-          <div key={category.id}>
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-400">{category.name}</h2>
+        {groups.map((g) => (
+          <div key={g.key}>
+            <h2
+              className={`mb-3 text-sm font-semibold uppercase tracking-wider ${
+                g.free ? "text-green-400" : "text-gray-400"
+              }`}
+            >
+              {g.free ? "🆓 " : ""}
+              {g.title}
+            </h2>
+            {g.free && (
+              <p className="-mt-2 mb-3 text-xs text-gray-500">
+                Past their best-before date, so currently free. Set a new best-before date when
+                fresh stock comes in to move them back to their category.
+              </p>
+            )}
             <div className="space-y-2">
-              {items.map((p) => (
+              {g.items.map((p) => (
                 <div key={p.id} className="flex items-center gap-4 rounded-2xl border border-gray-800 bg-gray-900 px-4 py-3">
                   {/* Image thumbnail / upload */}
                   <button
