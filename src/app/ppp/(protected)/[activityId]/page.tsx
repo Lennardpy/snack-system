@@ -44,6 +44,13 @@ interface Customer {
   orderCount: number;
   roles: MemberRoleInfo[];
 }
+interface MemberSearchResult {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  cardCount: number;
+}
 type MemberState =
   | { kind: "idle" }
   | { kind: "scanning" }
@@ -54,6 +61,8 @@ type MemberState =
       lastName: string;
       roles: MemberRoleInfo[];
     }
+  // A scanned card with no linked member — the bartender links it by searching.
+  | { kind: "unlinked"; uid: string }
   | { kind: "error"; message: string };
 
 const WS_URL =
@@ -80,6 +89,10 @@ export default function PosPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [confirming, setConfirming] = useState(false);
   const [toast, setToast] = useState("");
+  // Manual card-linking (when an unrecognised card is scanned at the bar).
+  const [linkQuery, setLinkQuery] = useState("");
+  const [linkResults, setLinkResults] = useState<MemberSearchResult[]>([]);
+  const [linking, setLinking] = useState(false);
 
   const productById = useMemo(
     () => new Map(products.map((p) => [p.id, p])),
@@ -161,7 +174,13 @@ export default function PosPage() {
         body: JSON.stringify({ uid }),
       });
       const d = await res.json();
-      if (res.ok) {
+      if (res.ok && d.unlinked) {
+        // Unrecognised card — let the bartender link it to a member by name.
+        setLinkQuery("");
+        setLinkResults([]);
+        setMember({ kind: "unlinked", uid: d.uid });
+        setMobileView("cart");
+      } else if (res.ok) {
         setMember({
           kind: "found",
           id: d.memberId,
@@ -177,6 +196,43 @@ export default function PosPage() {
       setMember({ kind: "error", message: "Connection error" });
     }
   }, []);
+
+  // Debounced member search while linking an unrecognised card.
+  const unlinkedUid = member.kind === "unlinked" ? member.uid : null;
+  useEffect(() => {
+    if (unlinkedUid === null) return;
+    const q = linkQuery.trim();
+    if (q.length < 2) {
+      setLinkResults([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      const res = await fetch(`/api/ppp/members/search?q=${encodeURIComponent(q)}`);
+      if (res.ok) setLinkResults((await res.json()).members);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [linkQuery, unlinkedUid]);
+
+  // Link the just-scanned card to the chosen member, then charge them.
+  async function linkCard(m: MemberSearchResult) {
+    if (member.kind !== "unlinked") return;
+    setLinking(true);
+    const res = await fetch("/api/ppp/card/link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uid: member.uid, memberId: m.id }),
+    });
+    setLinking(false);
+    const d = await res.json();
+    if (res.ok) {
+      setMember({ kind: "found", id: d.memberId, firstName: d.firstName, lastName: d.lastName, roles: d.roles ?? [] });
+      setLinkQuery("");
+      setLinkResults([]);
+      flashToast(`Linked card to ${d.firstName} ${d.lastName}`);
+    } else {
+      setMember({ kind: "error", message: d.error ?? "Could not link card" });
+    }
+  }
 
   const { mode, wsStatus, nfcStatus, startNfc } = useCardReader({
     onScan: handleScan,
@@ -537,6 +593,50 @@ export default function PosPage() {
                   </div>
                 ) : member.kind === "scanning" ? (
                   <p className="text-sm text-amber-400">Reading card…</p>
+                ) : member.kind === "unlinked" ? (
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-sm font-semibold text-amber-400">Card not linked yet</p>
+                      <p className="text-xs text-gray-500">Search the member to link this card to them.</p>
+                    </div>
+                    <input
+                      autoFocus
+                      value={linkQuery}
+                      onChange={(e) => setLinkQuery(e.target.value)}
+                      placeholder="Search name…"
+                      className="w-full rounded-lg bg-gray-800 px-3 py-2 text-base outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                    {linkResults.length > 0 && (
+                      <ul className="max-h-56 space-y-1 overflow-y-auto">
+                        {linkResults.map((m) => (
+                          <li key={m.id}>
+                            <button
+                              onClick={() => linkCard(m)}
+                              disabled={linking}
+                              className="flex w-full items-center justify-between gap-2 rounded-lg bg-gray-800 px-3 py-2.5 text-left hover:bg-gray-700 disabled:opacity-40"
+                            >
+                              <span className="min-w-0">
+                                <span className="block truncate text-sm font-medium">
+                                  {m.firstName} {m.lastName}
+                                </span>
+                                <span className="block truncate text-xs text-gray-500">{m.email}</span>
+                              </span>
+                              <span className="flex-shrink-0 text-xs font-semibold text-amber-400">Link →</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {linkQuery.trim().length >= 2 && linkResults.length === 0 && !linking && (
+                      <p className="text-xs text-gray-600">No members found.</p>
+                    )}
+                    <button
+                      onClick={() => { setMember({ kind: "idle" }); setLinkQuery(""); setLinkResults([]); }}
+                      className="text-xs text-gray-500 hover:text-gray-300"
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 ) : member.kind === "error" ? (
                   <p className="text-sm text-red-400">{member.message} — tap again</p>
                 ) : (

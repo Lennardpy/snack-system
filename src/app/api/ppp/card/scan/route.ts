@@ -44,7 +44,9 @@ export async function POST(req: NextRequest) {
   });
 
   if (!card) {
-    return NextResponse.json({ error: "Card not registered" }, { status: 404 });
+    // Not an error at the bar: the bartender can link this card to a member on
+    // the spot. Return the normalised UID so the POS can offer to link it.
+    return NextResponse.json({ unlinked: true, uid: normalizeUid(uid) });
   }
 
   if (!card.member.active) {

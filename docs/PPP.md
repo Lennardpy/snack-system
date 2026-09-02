@@ -64,6 +64,15 @@ Identifying the member (three ways, all set the same "charge target"):
 2. **Regulars button** — one tap, no scan.
 3. The bartender can **Change** at any time.
 
+**Linking an unrecognised card.** If a scanned card isn't linked to a member yet,
+the scan returns `{ unlinked: true, uid }` (not an error) and the cart shows a
+**"Card not linked yet"** prompt: the bartender searches the member by name
+(`GET /api/ppp/members/search`) and taps **Link →**, which creates the shared
+`Card` (`POST /api/ppp/card/link`) and immediately sets that member as the charge
+target. The card then works everywhere — bar and snack kiosk — exactly like one
+linked via the kiosk's email flow; PPP keeps no card tables of its own. Linking a
+card that's already linked is refused (`409`).
+
 Card reader: uses the shared `useCardReader` hook (`src/lib/useCardReader.ts`) —
 **`ws`** (Arago WebSocket, default in production), **`hid`** (keyboard-wedge), or
 **`nfc`** (the device's own NFC chip via Web NFC), chosen by
@@ -250,7 +259,9 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
 | GET | `/api/ppp/activities/[id]/customers` | Regulars (members who ordered, most first) |
 | POST | `/api/ppp/alexia/sync` | Import upcoming Stress borrels from Alexia |
 | GET | `/api/ppp/products` | Published drinks for the POS |
-| POST | `/api/ppp/card/scan` | UID → member (name + roles) for charging |
+| POST | `/api/ppp/card/scan` | UID → member (name + roles); returns `{ unlinked, uid }` if the card isn't linked yet |
+| GET | `/api/ppp/members/search?q=` | Member typeahead for linking an unrecognised card |
+| POST | `/api/ppp/card/link` | Link a scanned card `{ uid, memberId }` → member (name + roles); `409` if already linked |
 | GET/POST | `/api/ppp/invoices` | Order history (`?activityId=`, incl. the `createdBy` tapper) / confirm an order (records the tapper) |
 
 **Public**:
