@@ -161,6 +161,18 @@ activity detail page, and **in a banner when an activity is closed**:
 - **Specials discount** — only the activity drink specials: Σ (list − special) × qty.
 - **Total discount given** — everything (specials + roles/free drinks): Σ (list − charged) × qty.
 
+### Bartender free drinks (`PppProductCategory.bartenderFree`)
+The bartender operating the POS drinks free from **bartender-free categories** when
+they charge **their own card** — e.g. soft drinks & 0.0% for the on-shift bartender.
+Toggle a category free with the **🍺** button on **Admin → PPP → Drinks** (Categories).
+
+- Keyed off the **logged-in user's linked member** (`GET /api/ppp/me`) vs the charge
+  target, so it can't be spoofed and only applies to the bartender's own card.
+- Priced authoritatively in the invoice route: a matching line is comped to **€0**
+  and flagged `PppInvoiceLine.bartenderFree`, snapshotting `listCents`.
+- The association covers these; the **PPP dashboard** shows a **"Bartender drinks"**
+  KPI = Σ `listCents` of bartender-free lines (with the free-drink count).
+
 ## Bartender accounts
 
 Managed under **Admin → PPP → Bartenders**.
@@ -180,7 +192,7 @@ Managed under **Admin → PPP → Bartenders**.
 
 | Page | What |
 |------|------|
-| **Dashboard** | Financials (revenue, drinks sold, orders, borrels, drinkers, avg) + rankings: **top borrels** by revenue, **top drinkers** by drinks, most popular drinks. Range selector includes **Since export** — the still-unbilled orders (status CONFIRMED) so you can see the money still to come; the subtitle shows the last export date. (The SSS dashboard has the same **Since export** range.) |
+| **Dashboard** | Financials (revenue, drinks sold, orders, borrels, drinkers, avg, **Bartender drinks** = association cost of comped bartender-free drinks) + rankings: **top borrels** by revenue, **top drinkers** by drinks, most popular drinks. Range selector includes **Since export** — the still-unbilled orders (status CONFIRMED) so you can see the money still to come; the subtitle shows the last export date. (The SSS dashboard has the same **Since export** range.) |
 | **Drinks** | PPP catalog: categories, create/edit/publish/archive drinks with price, **special price**, VAT, and a 5-colour **tile colour** picker. |
 | **Activities** | List borrels (auto-synced from Alexia + manual), close/reopen, rename, revenue + order counts + **discount given** (specials / total), order list (each order shows the **🍺 tapper** — the bartender who rang it up). **Closing** shows the discount totals. Each links to its detail page. |
 | **Activity detail** (`/admin/ppp/activities/[id]`) | Manage the borrel's **drink specials** (pick a drink, set a special price) — can be done in advance for a future borrel. Shows order count + the two discount totals, and whether specials are active. |
@@ -258,7 +270,8 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
 | GET/PATCH | `/api/ppp/activities/[id]` | Activity + specials + `discountsActive` / toggle, close, rename |
 | GET | `/api/ppp/activities/[id]/customers` | Regulars (members who ordered, most first) |
 | POST | `/api/ppp/alexia/sync` | Import upcoming Stress borrels from Alexia |
-| GET | `/api/ppp/products` | Published drinks for the POS |
+| GET | `/api/ppp/products` | Published drinks for the POS (incl. `category.bartenderFree`) |
+| GET | `/api/ppp/me` | The logged-in bartender's own linked member (for the free-drink rule) |
 | POST | `/api/ppp/card/scan` | UID → member (name + roles); returns `{ unlinked, uid }` if the card isn't linked yet |
 | GET | `/api/ppp/members/search?q=` | Member typeahead for linking an unrecognised card |
 | POST | `/api/ppp/card/link` | Link a scanned card `{ uid, memberId }` → member (name + roles); `409` if already linked |

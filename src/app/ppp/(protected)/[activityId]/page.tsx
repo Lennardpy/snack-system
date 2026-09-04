@@ -12,7 +12,7 @@ interface Product {
   specialPrice: number | null;
   imageUrl: string | null;
   color: string | null;
-  category: { id: string; name: string; sortOrder: number };
+  category: { id: string; name: string; sortOrder: number; bartenderFree: boolean };
 }
 
 interface Activity {
@@ -89,6 +89,9 @@ export default function PosPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [confirming, setConfirming] = useState(false);
   const [toast, setToast] = useState("");
+  // The logged-in bartender's own member — they drink free from bartender-free
+  // categories when charging their own card.
+  const [selfMemberId, setSelfMemberId] = useState<string | null>(null);
   // Manual card-linking (when an unrecognised card is scanned at the bar).
   const [linkQuery, setLinkQuery] = useState("");
   const [linkResults, setLinkResults] = useState<MemberSearchResult[]>([]);
@@ -111,6 +114,10 @@ export default function PosPage() {
       if (aRes.ok) setActivity((await aRes.json()).activity);
       if (pRes.ok) setProducts((await pRes.json()).products);
     })();
+    fetch("/api/ppp/me")
+      .then((r) => (r.ok ? r.json() : { memberId: null }))
+      .then((d) => setSelfMemberId(d.memberId ?? null))
+      .catch(() => setSelfMemberId(null));
   }, [activityId]);
 
   // Activity drink specials, keyed by product (only when discounts are active).
@@ -261,15 +268,25 @@ export default function PosPage() {
     [cart, productById]
   );
   const memberRoles = member.kind === "found" ? member.roles : [];
+  // The on-shift bartender (this logged-in user) drinks free from bartender-free
+  // categories when charging their OWN card.
+  const chargingSelf = member.kind === "found" && selfMemberId != null && member.id === selfMemberId;
+  const isFreeForBartender = useCallback(
+    (p: Product) => chargingSelf && p.category.bartenderFree,
+    [chargingSelf]
+  );
+  // Final unit price a member pays for a product, honouring the bartender free rule.
+  const unitPriceFor = useCallback(
+    (p: Product) =>
+      isFreeForBartender(p) ? 0 : activityDiscountedUnitPrice(p, specialFor(p.id), memberRoles),
+    [isFreeForBartender, specialFor, memberRoles]
+  );
   // "Gross" = effective price (special if set) before role discounts; total = after.
   const grossCents = cartLines.reduce(
     (s, l) => s + activityUnitPrice(l.product, specialFor(l.product.id)) * l.qty,
     0
   );
-  const totalCents = cartLines.reduce(
-    (s, l) => s + activityDiscountedUnitPrice(l.product, specialFor(l.product.id), memberRoles) * l.qty,
-    0
-  );
+  const totalCents = cartLines.reduce((s, l) => s + unitPriceFor(l.product) * l.qty, 0);
   const hasDiscount = totalCents < grossCents;
   const itemCount = cartLines.reduce((s, l) => s + l.qty, 0);
 
@@ -446,6 +463,7 @@ export default function PosPage() {
                 const isSpecial = effective !== p.price;
                 const onBorrelSpecial = specialFor(p.id) != null;
                 const qty = cart[p.id] ?? 0;
+                const free = isFreeForBartender(p);
                 return (
                   <button
                     key={p.id}
@@ -470,7 +488,16 @@ export default function PosPage() {
                       </span>
                     )}
                     <span className="text-xl font-bold leading-tight">{p.name}</span>
-                    {isSpecial ? (
+                    {free ? (
+                      <span className="mt-2 flex items-baseline gap-1.5 text-base">
+                        <span className={colored ? "text-white/60 line-through" : "text-gray-500 line-through"}>
+                          {euro(effective)}
+                        </span>
+                        <span className={colored ? "font-extrabold text-white" : "font-extrabold text-green-400"}>
+                          FREE
+                        </span>
+                      </span>
+                    ) : isSpecial ? (
                       <span className="mt-2 flex items-baseline gap-1.5 text-base">
                         <span className={colored ? "text-white/60 line-through" : "text-gray-500 line-through"}>
                           {euro(p.price)}
@@ -662,7 +689,7 @@ export default function PosPage() {
                             +
                           </button>
                           <span className="w-16 text-right text-base text-gray-400 tabular-nums">
-                            {euro(activityDiscountedUnitPrice(l.product, specialFor(l.product.id), memberRoles) * l.qty)}
+                            {isFreeForBartender(l.product) ? "FREE" : euro(unitPriceFor(l.product) * l.qty)}
                           </span>
                         </div>
                       </li>

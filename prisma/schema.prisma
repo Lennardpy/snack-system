@@ -204,6 +204,10 @@ model PppProductCategory {
   id        String       @id @default(cuid())
   name      String       @unique
   sortOrder Int          @default(0)
+  // When true, drinks in this category are FREE for the bartender currently
+  // operating the POS when they charge their own card (the association covers
+  // these — e.g. soft drinks & 0.0% for the on-shift bartender).
+  bartenderFree Boolean  @default(false)
   products  PppProduct[]
 }
 
@@ -293,6 +297,10 @@ model PppInvoiceLine {
   // Snapshots for discount/budget reporting (nullable for pre-feature rows):
   listCents    Int? // the product's normal list price at sale time
   specialCents Int? // the activity drink-special price applied, or null if none
+  // True when this line was comped free because the on-shift bartender charged
+  // their own card for a bartender-free category. The association covers the cost
+  // (= listCents); surfaced separately on the dashboard.
+  bartenderFree Boolean @default(false)
 
   invoiceId String
   invoice   PppInvoice @relation(fields: [invoiceId], references: [id])

@@ -44,6 +44,10 @@ export async function GET(req: NextRequest) {
 
   let revenueCents = 0;
   let drinksSold = 0;
+  // What the association pays for bartenders' free drinks (comped bartender-free
+  // lines, valued at their list price).
+  let bartenderCostCents = 0;
+  let bartenderDrinks = 0;
   const orderCount = invoices.length;
 
   const borrelMap = new Map<string, { name: string; revenueCents: number; drinks: number; orders: number }>();
@@ -78,6 +82,10 @@ export async function GET(req: NextRequest) {
       p.quantity += line.quantity;
       p.revenueCents += line.quantity * line.unitCents;
       drinkMap.set(line.product.name, p);
+      if (line.bartenderFree) {
+        bartenderCostCents += (line.listCents ?? 0) * line.quantity;
+        bartenderDrinks += line.quantity;
+      }
     }
   }
 
@@ -104,6 +112,8 @@ export async function GET(req: NextRequest) {
     borrelCount: borrelMap.size,
     activeDrinkers: drinkerMap.size,
     avgOrderCents: orderCount > 0 ? Math.round(revenueCents / orderCount) : 0,
+    bartenderCostCents,
+    bartenderDrinks,
     topBorrels,
     topDrinkers,
     topDrinks,

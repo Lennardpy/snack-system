@@ -37,6 +37,7 @@ function ColorSwatches({ value, onChange }: { value: string | null; onChange: (c
 interface Category {
   id: string;
   name: string;
+  bartenderFree?: boolean;
   _count?: { products: number };
 }
 interface Product {
@@ -112,6 +113,17 @@ export default function PppProductsPage() {
     else alert((await res.json()).error ?? "Could not delete category");
   }
 
+  // Toggle whether drinks in this category are free for the on-shift bartender.
+  async function toggleBartenderFree(c: Category) {
+    const res = await fetch(`/api/admin/ppp/categories/${c.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bartenderFree: !c.bartenderFree }),
+    });
+    if (res.ok) load();
+    else alert((await res.json()).error ?? "Could not update category");
+  }
+
   async function createProduct(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !categoryId || price.trim() === "") return;
@@ -157,10 +169,26 @@ export default function PppProductsPage() {
       {/* Categories */}
       <section className="my-6">
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Categories</h2>
+        <p className="mb-2 text-xs text-gray-500">
+          Tap 🍺 to mark a category <b>free for the on-shift bartender</b> (they drink these free when
+          charging their own card — e.g. soft drinks &amp; 0.0%). The association covers the cost.
+        </p>
         <div className="flex flex-wrap items-center gap-2">
           {categories.map((c) => (
-            <span key={c.id} className="inline-flex items-center gap-2 rounded-full bg-gray-800 px-3 py-1.5 text-sm">
+            <span
+              key={c.id}
+              className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm ${
+                c.bartenderFree ? "bg-green-600/25 text-green-300 ring-1 ring-green-600/40" : "bg-gray-800"
+              }`}
+            >
               {c.name}
+              <button
+                onClick={() => toggleBartenderFree(c)}
+                className={c.bartenderFree ? "text-green-300" : "text-gray-500 hover:text-green-300"}
+                title={c.bartenderFree ? "Bartender-free — click to turn off" : "Make free for the on-shift bartender"}
+              >
+                🍺
+              </button>
               <button onClick={() => deleteCategory(c)} className="text-gray-500 hover:text-red-400" title="Delete category">
                 ✕
               </button>

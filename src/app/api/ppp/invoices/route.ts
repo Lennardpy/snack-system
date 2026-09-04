@@ -90,9 +90,14 @@ export async function POST(req: NextRequest) {
   // Authoritative prices from the DB (never trust client-supplied prices).
   const products = await prisma.pppProduct.findMany({
     where: { id: { in: [...qtyByProduct.keys()] }, archived: false },
-    select: { id: true, price: true, specialPrice: true },
+    select: { id: true, price: true, specialPrice: true, category: { select: { bartenderFree: true } } },
   });
   const productById = new Map(products.map((p) => [p.id, p]));
+
+  // The on-shift bartender drinks free from bartender-free categories when they
+  // charge THEIR OWN card. Keyed off the session user's linked member, so it can't
+  // be spoofed and only applies to the bartender operating this POS.
+  const chargingSelf = user.memberId != null && user.memberId === memberId;
 
   const lineData: {
     productId: string;
@@ -100,6 +105,7 @@ export async function POST(req: NextRequest) {
     unitCents: number;
     listCents: number;
     specialCents: number | null;
+    bartenderFree: boolean;
   }[] = [];
   let totalCents = 0;
   for (const [productId, quantity] of qtyByProduct) {
@@ -110,10 +116,14 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    const bartenderFree = chargingSelf && product.category.bartenderFree;
     // Snapshot the discounted unit price: activity special (if active) > product
     // special > price, then role discounts (fixed-cent skipped on any special).
+    // A bartender-free line is comped to €0 (the association covers listCents).
     const activitySpecial = specialMap.get(productId) ?? null;
-    const unitCents = activityDiscountedUnitPrice(product, activitySpecial, member.roles);
+    const unitCents = bartenderFree
+      ? 0
+      : activityDiscountedUnitPrice(product, activitySpecial, member.roles);
     // Snapshots for budget/discount reporting at close: the normal list price and
     // the activity drink-special price that applied (null if no activity special).
     lineData.push({
@@ -122,6 +132,7 @@ export async function POST(req: NextRequest) {
       unitCents,
       listCents: product.price,
       specialCents: activitySpecial,
+      bartenderFree,
     });
     totalCents += unitCents * quantity;
   }

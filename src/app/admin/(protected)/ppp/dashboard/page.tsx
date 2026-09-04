@@ -14,6 +14,8 @@ interface Stats {
   borrelCount: number;
   activeDrinkers: number;
   avgOrderCents: number;
+  bartenderCostCents: number;
+  bartenderDrinks: number;
   topBorrels: Borrel[];
   topDrinkers: Drinker[];
   topDrinks: Drink[];
@@ -80,13 +82,18 @@ export default function PppDashboardPage() {
       </div>
 
       {/* Financials KPIs */}
-      <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+      <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-7">
         <Kpi label="Revenue" value={stats ? euro(stats.revenueCents) : "—"} accent />
         <Kpi label="Drinks sold" value={stats ? String(stats.drinksSold) : "—"} />
         <Kpi label="Orders" value={stats ? String(stats.orderCount) : "—"} />
         <Kpi label="Borrels" value={stats ? String(stats.borrelCount) : "—"} />
         <Kpi label="Drinkers" value={stats ? String(stats.activeDrinkers) : "—"} />
         <Kpi label="Avg. order" value={stats ? euro(stats.avgOrderCents) : "—"} />
+        <Kpi
+          label="Bartender drinks"
+          value={stats ? euro(stats.bartenderCostCents) : "—"}
+          sub={stats ? `${stats.bartenderDrinks} free · assoc. cost` : undefined}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
@@ -156,11 +163,12 @@ export default function PppDashboardPage() {
   );
 }
 
-function Kpi({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function Kpi({ label, value, accent, sub }: { label: string; value: string; accent?: boolean; sub?: string }) {
   return (
     <div className={`rounded-2xl border p-5 ${accent ? "border-green-700/50 bg-green-900/20" : "border-gray-800 bg-gray-900"}`}>
       <p className="mb-1 text-sm text-gray-400">{label}</p>
       <p className="text-3xl font-bold tabular-nums">{value}</p>
+      {sub && <p className="mt-1 text-xs text-gray-500">{sub}</p>}
     </div>
   );
 }

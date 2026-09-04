@@ -19,7 +19,7 @@ export async function GET() {
       imageUrl: true,
       color: true,
       categoryId: true,
-      category: { select: { id: true, name: true, sortOrder: true } },
+      category: { select: { id: true, name: true, sortOrder: true, bartenderFree: true } },
     },
   });
 
