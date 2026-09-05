@@ -249,12 +249,14 @@ Configurable via `ALEXIA_API_URL` and `ALEXIA_ORGANIZER` (default `Stress`).
 
 See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
 
-- `PppProductCategory`, `PppProduct` (price, `specialPrice?`, `color?`,
-  `vatCategory`, Congressus ids), `PppActivity` (`status`, `discountsActive`),
+- `PppProductCategory` (`bartenderFree` → drinks free for the on-shift bartender),
+  `PppProduct` (price, `specialPrice?`, `color?`, `vatCategory`, Congressus ids),
+  `PppActivity` (`status`, `discountsActive`),
   `PppActivityDiscount` (per-activity per-product special price),
   `PppInvoice` (defaults to CONFIRMED, no CONCEPT; `createdById?` → the bartender
   who tapped the order), `PppInvoiceLine` (`unitCents` charged + `listCents?` /
-  `specialCents?` snapshots for discount reporting).
+  `specialCents?` snapshots for discount reporting + `bartenderFree` marking a
+  comped bartender line).
 - `MemberRole` (`discountPercent`, `discountCents`) ↔ `Member` (many-to-many).
 - `PasswordSetupToken` (bartender invites; non-expiring, single-use).
 - Reuses `User.memberId` to link a bartender to a member; reuses `Member` / `Card`
