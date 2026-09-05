@@ -16,6 +16,7 @@ interface Stats {
   avgOrderCents: number;
   bartenderCostCents: number;
   bartenderDrinks: number;
+  roleCosts: { name: string; costCents: number; drinks: number }[];
   topBorrels: Borrel[];
   topDrinkers: Drinker[];
   topDrinks: Drink[];
@@ -49,6 +50,7 @@ export default function PppDashboardPage() {
   const maxBorrel = Math.max(1, ...(stats?.topBorrels.map((b) => b.revenueCents) ?? [1]));
   const maxDrinker = Math.max(1, ...(stats?.topDrinkers.map((d) => d.drinks) ?? [1]));
   const maxDrink = Math.max(1, ...(stats?.topDrinks.map((d) => d.quantity) ?? [1]));
+  const maxRoleCost = Math.max(1, ...(stats?.roleCosts.map((r) => r.costCents) ?? [1]));
 
   return (
     <div className="p-8">
@@ -151,6 +153,26 @@ export default function PppDashboardPage() {
                   right={`${d.quantity}× · ${euro(d.revenueCents)}`}
                   pct={(d.quantity / maxDrink) * 100}
                   color="bg-green-500"
+                />
+              ))}
+            </ul>
+          )}
+        </Section>
+
+        {/* Free / discounted drinks by role — the association's cost per role */}
+        <Section title="Free drinks by role (association cost)">
+          {!stats || stats.roleCosts.length === 0 ? (
+            <Empty />
+          ) : (
+            <ul className="space-y-3">
+              {stats.roleCosts.map((r, i) => (
+                <Bar
+                  key={r.name}
+                  rank={i + 1}
+                  name={r.name}
+                  right={`${r.drinks} drink${r.drinks === 1 ? "" : "s"} · ${euro(r.costCents)}`}
+                  pct={(r.costCents / maxRoleCost) * 100}
+                  color="bg-red-500"
                 />
               ))}
             </ul>

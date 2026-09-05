@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
+import { roleDiscountAmount } from "@/lib/roles";
 
 // GET /api/admin/ppp/stats?range=7d|30d|90d|365d|all|since_export
 // PPP (bar) overview: financials, top borrels, top drinkers (by drinks), top drinks.
@@ -35,7 +36,13 @@ export async function GET(req: NextRequest) {
           ...(from ? { confirmedAt: { gte: from } } : {}),
         },
     include: {
-      member: { select: { firstName: true, lastName: true } },
+      member: {
+        select: {
+          firstName: true,
+          lastName: true,
+          roles: { select: { name: true, discountPercent: true, discountCents: true } },
+        },
+      },
       activity: { select: { id: true, name: true } },
       lines: { include: { product: { select: { name: true } } } },
     },
@@ -48,6 +55,9 @@ export async function GET(req: NextRequest) {
   // lines, valued at their list price).
   let bartenderCostCents = 0;
   let bartenderDrinks = 0;
+  // Cost of role-based free/discounted drinks, split per role (e.g. Board, PilsCie):
+  // each line's discount is attributed to the role that actually granted it.
+  const roleCostMap = new Map<string, { costCents: number; drinks: number }>();
   const orderCount = invoices.length;
 
   const borrelMap = new Map<string, { name: string; revenueCents: number; drinks: number; orders: number }>();
@@ -85,9 +95,35 @@ export async function GET(req: NextRequest) {
       if (line.bartenderFree) {
         bartenderCostCents += (line.listCents ?? 0) * line.quantity;
         bartenderDrinks += line.quantity;
+        continue; // bartender comps are reported separately, not as a role cost
+      }
+      // Attribute the role discount on this line to the role that granted it.
+      const roles = inv.member.roles;
+      if (roles.length === 0) continue;
+      const preRole = line.specialCents ?? line.listCents; // price before role discount
+      if (preRole == null) continue;
+      const ignoreFixed = line.specialCents != null; // on a special, only % roles apply
+      let bestAmt = 0;
+      let bestRole = "";
+      for (const r of roles) {
+        const amt = roleDiscountAmount(preRole, r, ignoreFixed);
+        if (amt > bestAmt) {
+          bestAmt = amt;
+          bestRole = r.name;
+        }
+      }
+      if (bestAmt > 0 && bestRole) {
+        const e = roleCostMap.get(bestRole) ?? { costCents: 0, drinks: 0 };
+        e.costCents += bestAmt * line.quantity;
+        e.drinks += line.quantity;
+        roleCostMap.set(bestRole, e);
       }
     }
   }
+
+  const roleCosts = [...roleCostMap.entries()]
+    .map(([name, v]) => ({ name, ...v }))
+    .sort((a, b) => b.costCents - a.costCents);
 
   const topBorrels = [...borrelMap.entries()]
     .map(([id, v]) => ({ id, ...v }))
@@ -114,6 +150,7 @@ export async function GET(req: NextRequest) {
     avgOrderCents: orderCount > 0 ? Math.round(revenueCents / orderCount) : 0,
     bartenderCostCents,
     bartenderDrinks,
+    roleCosts,
     topBorrels,
     topDrinkers,
     topDrinks,
