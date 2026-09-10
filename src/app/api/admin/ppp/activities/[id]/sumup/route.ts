@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
-import { fetchSumupRevenue } from "@/lib/sumup";
+import { fetchSumupBreakdown } from "@/lib/sumup";
 
 // Live SumUp card revenue for a borrel, matched by its time window. Fetched
 // separately from the detail so the page stays snappy and can show a spinner.
@@ -28,7 +28,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     to.setDate(to.getDate() + 1);
   }
 
-  const result = await fetchSumupRevenue(from.toISOString(), to.toISOString());
+  const result = await fetchSumupBreakdown(from.toISOString(), to.toISOString());
   if (!result) {
     return NextResponse.json({
       available: false,
@@ -40,6 +40,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     available: true,
     revenueCents: result.revenueCents,
     count: result.count,
+    byDrink: result.byDrink,
     from: from.toISOString(),
     to: to.toISOString(),
   });

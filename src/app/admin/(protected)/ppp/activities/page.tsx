@@ -207,7 +207,7 @@ export default function AdminActivitiesPage() {
                     href={`/admin/ppp/activities/${a.id}`}
                     className="rounded-lg bg-amber-600/90 px-3 py-2 text-sm font-medium text-white hover:bg-amber-500"
                   >
-                    🍺 Specials
+                    📊 Details / P&amp;L
                   </a>
                   <button
                     onClick={() => toggleOrders(a)}

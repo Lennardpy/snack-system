@@ -208,8 +208,10 @@ Member **role assignment** is on the existing **Admin → Members** page (role c
 The activity detail page shows a full **profit/loss** for a borrel:
 
 - **Revenue** = **member charges** (itemised PPP orders, billed via Congressus) +
-  **card revenue from SumUp** (fetched live for the borrel's time window). Card/cash
-  sales aren't itemised per drink — only the SumUp total is known.
+  **card revenue from SumUp** (fetched live for the borrel's time window). SumUp
+  records the **drink** on each card payment, so card revenue is attributed **per
+  drink** and merged with member charges. (Card payments made before SumUp's product
+  catalog was set up have no drink name and show as "Card (unlabelled)".)
 - **Cost of goods** = the **SBZ usage** the admin enters (Alexia holds this but isn't
   public, so it's entered manually): **kegs in kg** (≈ liters), **bottles/cans/shots
   as units**, priced from the SBZ price list (`src/lib/sbz.ts` — the fixed cost
@@ -217,12 +219,14 @@ The activity detail page shows a full **profit/loss** for a borrel:
 - **Net P/L** = revenue − cost of goods (incl. BTW).
 - **Discounts given** (the association's cost, already reflected in member charges):
   drink specials, per-role (Board / PilsCie / …), and bartender free drinks.
-- A **per-drink table** of member-charge sales (quantity, revenue, discount).
+- A **per-drink table** merging member charges + SumUp card sales (member/card
+  quantities, total revenue, discount) so you can see each drink's profit picture.
 
-**SumUp** (`src/lib/sumup.ts`): sums SUCCESSFUL card payments (minus refunds) between
+**SumUp** (`src/lib/sumup.ts`): finds SUCCESSFUL card payments (minus refunds) between
 the borrel's `startsAt`/`endsAt` (from Alexia; falls back to the `date` calendar day)
-via the SumUp transactions API, using `SUMUP_API_KEY`. Fail-soft — no key or an error
-shows card revenue as "n/a" and the rest of the P/L still renders.
+and fetches each transaction's detail for its line items, aggregating **per drink**.
+Uses `SUMUP_API_KEY`. Fail-soft — no key or an error shows card revenue as "n/a" and
+the rest of the P/L still renders.
 
 ## Congressus
 

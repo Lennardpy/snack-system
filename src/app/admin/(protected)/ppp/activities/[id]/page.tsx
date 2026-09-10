@@ -41,7 +41,8 @@ export default function ActivityDetailPage() {
   const [usage, setUsage] = useState<Record<string, string>>({});
   const [savingUsage, setSavingUsage] = useState(false);
   const [sumup, setSumup] = useState<
-    { state: "loading" | "unavailable" } | { state: "ok"; revenueCents: number; count: number }
+    | { state: "loading" | "unavailable" }
+    | { state: "ok"; revenueCents: number; count: number; byDrink: { name: string; quantity: number; revenueCents: number }[] }
   >({ state: "loading" });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -86,7 +87,7 @@ export default function ActivityDetailPage() {
       .then((r) => (r.ok ? r.json() : { available: false }))
       .then((d) =>
         d.available
-          ? setSumup({ state: "ok", revenueCents: d.revenueCents, count: d.count })
+          ? setSumup({ state: "ok", revenueCents: d.revenueCents, count: d.count, byDrink: d.byDrink ?? [] })
           : setSumup({ state: "unavailable" })
       )
       .catch(() => setSumup({ state: "unavailable" }));
@@ -105,6 +106,26 @@ export default function ActivityDetailPage() {
   const cardRevenueCents = sumup.state === "ok" ? sumup.revenueCents : 0;
   const totalRevenueCents = pnl.memberRevenueCents + cardRevenueCents;
   const netPlCents = totalRevenueCents - liveCogsCents;
+
+  // Per-drink: member charges + SumUp card sales, merged by drink name.
+  const mergedDrinks = useMemo(() => {
+    const m = new Map<
+      string,
+      { name: string; memberQty: number; memberRev: number; discount: number; cardQty: number; cardRev: number }
+    >();
+    for (const d of pnl.perDrink) {
+      m.set(d.name, { name: d.name, memberQty: d.quantity, memberRev: d.revenueCents, discount: d.discountCents, cardQty: 0, cardRev: 0 });
+    }
+    if (sumup.state === "ok") {
+      for (const c of sumup.byDrink) {
+        const e = m.get(c.name) ?? { name: c.name, memberQty: 0, memberRev: 0, discount: 0, cardQty: 0, cardRev: 0 };
+        e.cardQty += c.quantity;
+        e.cardRev += c.revenueCents;
+        m.set(c.name, e);
+      }
+    }
+    return [...m.values()].sort((a, b) => b.memberRev + b.cardRev - (a.memberRev + a.cardRev));
+  }, [pnl.perDrink, sumup]);
 
   const available = useMemo(() => {
     const taken = new Set((activity?.discounts ?? []).map((d) => d.productId));
@@ -304,33 +325,45 @@ export default function ActivityDetailPage() {
         </div>
       </section>
 
-      {/* ── Per-drink breakdown (member charges) ──────────────────────────── */}
-      {pnl.perDrink.length > 0 && (
+      {/* ── Per-drink breakdown (member charges + SumUp card) ─────────────── */}
+      {mergedDrinks.length > 0 && (
         <section className="mb-6 max-w-5xl rounded-2xl border border-gray-800 bg-gray-900 p-6">
-          <h2 className="mb-1 text-lg font-semibold">Per drink (member charges)</h2>
+          <h2 className="mb-1 text-lg font-semibold">Per drink</h2>
           <p className="mb-4 text-sm text-gray-500">
-            What members were charged per drink. Card/cash sales aren&apos;t itemised — see the SumUp total above.
+            Member charges + SumUp card sales per drink (SumUp records the drink on each card
+            payment). {sumup.state === "loading" && <span className="text-amber-400">Loading card sales…</span>}
+            {sumup.state === "unavailable" && <span className="text-gray-500">Card sales unavailable.</span>}
           </p>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-800 text-left text-xs uppercase tracking-wide text-gray-500">
-                <th className="py-2">Drink</th>
-                <th className="py-2 text-right">Sold</th>
-                <th className="py-2 text-right">Revenue</th>
-                <th className="py-2 text-right">Discount given</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pnl.perDrink.map((d) => (
-                <tr key={d.name} className="border-b border-gray-800/60">
-                  <td className="py-2">{d.name}</td>
-                  <td className="py-2 text-right tabular-nums">{d.quantity}×</td>
-                  <td className="py-2 text-right tabular-nums">{euro(d.revenueCents)}</td>
-                  <td className="py-2 text-right tabular-nums text-gray-400">{d.discountCents > 0 ? euro(d.discountCents) : "—"}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-800 text-left text-xs uppercase tracking-wide text-gray-500">
+                  <th className="py-2">Drink</th>
+                  <th className="py-2 text-right">Member</th>
+                  <th className="py-2 text-right">Card</th>
+                  <th className="py-2 text-right">Sold</th>
+                  <th className="py-2 text-right">Revenue</th>
+                  <th className="py-2 text-right">Discount</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {mergedDrinks.map((d) => (
+                  <tr key={d.name} className="border-b border-gray-800/60">
+                    <td className="py-2">{d.name}</td>
+                    <td className="py-2 text-right tabular-nums text-gray-400">
+                      {d.memberQty > 0 ? `${d.memberQty}× · ${euro(d.memberRev)}` : "—"}
+                    </td>
+                    <td className="py-2 text-right tabular-nums text-gray-400">
+                      {d.cardQty > 0 ? `${d.cardQty}× · ${euro(d.cardRev)}` : "—"}
+                    </td>
+                    <td className="py-2 text-right tabular-nums">{d.memberQty + d.cardQty}×</td>
+                    <td className="py-2 text-right font-medium tabular-nums">{euro(d.memberRev + d.cardRev)}</td>
+                    <td className="py-2 text-right tabular-nums text-gray-400">{d.discount > 0 ? euro(d.discount) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
 

@@ -1,69 +1,128 @@
-// SumUp card revenue for a borrel's P/L. Reads successful card transactions in a
-// time window from the SumUp transactions API (the bar's card terminal).
+// SumUp card revenue for a borrel's P/L, broken down per drink. SumUp records the
+// product (drink) on each transaction, so we can attribute card sales per drink and
+// sum an evening together — not just a lump total.
 //
-// Auth: a SumUp secret API key in SUMUP_API_KEY (used as a Bearer token). The key
-// identifies the merchant, so no merchant id is needed. Everything fails soft —
-// a missing key or any error yields `null` so the P/L still renders.
+// Auth: a SumUp secret API key in SUMUP_API_KEY (Bearer token) identifying the
+// merchant. Everything fails soft — a missing key or any error yields `null` so
+// the P/L still renders.
+//
+// The transaction list doesn't include line items, so we fetch each transaction's
+// detail (which has `products`) — bounded by a transaction cap + limited concurrency.
 
 const BASE = "https://api.sumup.com";
+const MAX_TX = 600; // safety cap on transactions per window
+const CONCURRENCY = 8;
 
-interface SumupTx {
-  amount: number; // decimal, merchant currency (EUR)
-  currency: string;
-  status: string; // SUCCESSFUL | FAILED | ...
-  type: string; // PAYMENT | REFUND | ...
-  refunded_amount?: number;
-  timestamp: string;
+interface SumupHistItem {
+  id: string;
+  status: string;
+  type: string; // PAYMENT | REFUND
+}
+interface SumupProduct {
+  name?: string;
+  price?: number;
+  quantity?: number;
+  total_price?: number;
+}
+interface SumupDetail {
+  type: string;
+  amount?: number;
+  products?: SumupProduct[];
 }
 
-export interface SumupWindowResult {
-  revenueCents: number; // net card revenue (payments − refunds) in the window
-  count: number; // successful payments counted
+export interface SumupDrink {
+  name: string;
+  quantity: number;
+  revenueCents: number;
+}
+export interface SumupBreakdown {
+  revenueCents: number; // net card revenue in the window
+  count: number; // successful card payments
+  byDrink: SumupDrink[]; // per-drink, biggest revenue first
 }
 
-// Sum successful card payments (minus refunds) between two ISO timestamps.
-// Returns null when SumUp is unavailable (no key / error) so callers can degrade.
-export async function fetchSumupRevenue(
+// Sum successful card sales (minus refunds) between two ISO timestamps, per drink.
+// Returns null when SumUp is unavailable (no key / error).
+export async function fetchSumupBreakdown(
   fromISO: string,
   toISO: string
-): Promise<SumupWindowResult | null> {
+): Promise<SumupBreakdown | null> {
   const key = process.env.SUMUP_API_KEY;
   if (!key) return null;
-
   const headers = { Authorization: `Bearer ${key}` };
-  let url =
-    `${BASE}/v0.1/me/transactions/history?order=ascending&limit=200` +
-    `&oldest_time=${encodeURIComponent(fromISO)}&newest_time=${encodeURIComponent(toISO)}`;
-
-  let revenueCents = 0;
-  let count = 0;
 
   try {
-    for (let page = 0; page < 25; page++) {
-      // hard page cap
+    // 1. Collect the window's successful transactions (ids only).
+    const txs: SumupHistItem[] = [];
+    let url =
+      `${BASE}/v0.1/me/transactions/history?order=ascending&limit=200` +
+      `&oldest_time=${encodeURIComponent(fromISO)}&newest_time=${encodeURIComponent(toISO)}`;
+    for (let page = 0; page < 25 && txs.length < MAX_TX; page++) {
       const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
       if (!res.ok) return null;
-      const body = (await res.json()) as { items?: SumupTx[]; links?: { href: string; rel: string }[] };
-      for (const tx of body.items ?? []) {
-        if (tx.status !== "SUCCESSFUL") continue;
-        const amt = Math.round((tx.amount ?? 0) * 100);
-        if (tx.type === "REFUND") {
-          revenueCents -= Math.abs(amt);
-        } else {
-          revenueCents += amt - Math.round((tx.refunded_amount ?? 0) * 100);
-          count++;
-        }
+      const body = (await res.json()) as { items?: SumupHistItem[]; links?: { href: string; rel: string }[] };
+      for (const it of body.items ?? []) {
+        if (it.status === "SUCCESSFUL") txs.push(it);
       }
       const next = (body.links ?? []).find((l) => l.rel === "next")?.href;
       if (!next) break;
-      // The API returns the next link as a bare query string.
       url = next.startsWith("http")
         ? next
         : next.startsWith("/")
         ? `${BASE}${next}`
         : `${BASE}/v0.1/me/transactions/history?${next}`;
     }
-    return { revenueCents, count };
+
+    // 2. Fetch each transaction's detail (has line items) with limited concurrency.
+    const byName = new Map<string, { quantity: number; revenueCents: number }>();
+    let revenueCents = 0;
+    let count = 0;
+
+    for (let i = 0; i < txs.length; i += CONCURRENCY) {
+      const batch = txs.slice(i, i + CONCURRENCY);
+      const details = await Promise.all(
+        batch.map((t) =>
+          fetch(`${BASE}/v0.1/me/transactions?id=${encodeURIComponent(t.id)}`, {
+            headers,
+            signal: AbortSignal.timeout(8000),
+          })
+            .then((r) => (r.ok ? (r.json() as Promise<SumupDetail>) : null))
+            .catch(() => null)
+        )
+      );
+      for (const d of details) {
+        if (!d) continue;
+        const sign = d.type === "REFUND" ? -1 : 1;
+        if (sign > 0) count++;
+        const products = d.products ?? [];
+        if (products.length > 0) {
+          for (const p of products) {
+            const name = (p.name ?? "").trim() || "Unlabelled";
+            const cents =
+              Math.round((p.total_price ?? (p.price ?? 0) * (p.quantity ?? 0)) * 100) * sign;
+            const qty = (p.quantity ?? 0) * sign;
+            const e = byName.get(name) ?? { quantity: 0, revenueCents: 0 };
+            e.quantity += qty;
+            e.revenueCents += cents;
+            byName.set(name, e);
+            revenueCents += cents;
+          }
+        } else {
+          // No line items on this transaction — count the amount as unlabelled card.
+          const cents = Math.round((d.amount ?? 0) * 100) * sign;
+          const e = byName.get("Card (unlabelled)") ?? { quantity: 0, revenueCents: 0 };
+          e.revenueCents += cents;
+          byName.set("Card (unlabelled)", e);
+          revenueCents += cents;
+        }
+      }
+    }
+
+    const byDrink = [...byName.entries()]
+      .map(([name, v]) => ({ name, ...v }))
+      .sort((a, b) => b.revenueCents - a.revenueCents);
+
+    return { revenueCents, count, byDrink };
   } catch {
     return null;
   }
