@@ -40,6 +40,9 @@ export default function ActivityDetailPage() {
   });
   const [usage, setUsage] = useState<Record<string, string>>({});
   const [savingUsage, setSavingUsage] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importNote, setImportNote] = useState("");
+  const [unmatched, setUnmatched] = useState<{ name: string; quantity: number; isKeg: boolean }[]>([]);
   const [sumup, setSumup] = useState<
     | { state: "loading" | "unavailable" }
     | { state: "ok"; revenueCents: number; count: number; byDrink: { name: string; quantity: number; revenueCents: number }[] }
@@ -155,6 +158,40 @@ export default function ActivityDetailPage() {
     setSavingUsage(false);
     if (res.ok) load();
     else alert((await res.json()).error ?? "Could not save usage");
+  }
+
+  // Import an Alexia usage PDF: extract the numbers and pre-fill the form (the
+  // file is parsed server-side in memory and not stored). The admin reviews, maps
+  // any unmatched items, then Saves.
+  async function importPdf(file: File) {
+    setImporting(true);
+    setImportNote("");
+    setUnmatched([]);
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch(`/api/admin/ppp/activities/${id}/import`, { method: "POST", body: fd });
+    setImporting(false);
+    const d = await res.json();
+    if (!res.ok) {
+      setImportNote(d.error ?? "Import failed");
+      return;
+    }
+    setUsage((u) => {
+      const next = { ...u };
+      for (const m of d.matched as { sbzKey: string; quantity: number }[]) next[m.sbzKey] = String(m.quantity);
+      return next;
+    });
+    setUnmatched(d.unmatched ?? []);
+    setImportNote(
+      `Imported ${d.matched.length} item${d.matched.length === 1 ? "" : "s"} — review below, then Save usage.` +
+        (d.unmatched?.length ? ` ${d.unmatched.length} couldn't be matched — assign them below.` : "")
+    );
+  }
+
+  // Assign an unmatched imported line to an SBZ product (fills its input).
+  function assignUnmatched(line: { name: string; quantity: number }, sbzKey: string) {
+    if (sbzKey) setUsage((u) => ({ ...u, [sbzKey]: String(line.quantity) }));
+    setUnmatched((list) => list.filter((l) => l !== line));
   }
 
   async function addSpecial(e: React.FormEvent) {
@@ -274,18 +311,67 @@ export default function ActivityDetailPage() {
       <section className="mb-6 max-w-5xl rounded-2xl border border-gray-800 bg-gray-900 p-6">
         <div className="mb-1 flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Usage (SBZ)</h2>
-          <button
-            onClick={saveUsage}
-            disabled={savingUsage}
-            className="rounded-xl bg-amber-600 px-5 py-2 text-sm font-semibold transition-colors hover:bg-amber-500 disabled:opacity-40"
-          >
-            {savingUsage ? "Saving…" : "Save usage"}
-          </button>
+          <div className="flex items-center gap-2">
+            <label
+              className={`cursor-pointer rounded-xl bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 ${
+                importing ? "opacity-50" : ""
+              }`}
+            >
+              {importing ? "Reading…" : "⇪ Import Alexia PDF"}
+              <input
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                disabled={importing}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) importPdf(f);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            <button
+              onClick={saveUsage}
+              disabled={savingUsage}
+              className="rounded-xl bg-amber-600 px-5 py-2 text-sm font-semibold transition-colors hover:bg-amber-500 disabled:opacity-40"
+            >
+              {savingUsage ? "Saving…" : "Save usage"}
+            </button>
+          </div>
         </div>
-        <p className="mb-5 text-sm text-gray-500">
-          Enter what was used, from the SBZ price list. <b>Kegs in kg</b> (≈ liters), <b>bottles/cans/shots as units</b>.
-          Cost is the SBZ invoice price (incl. BTW).
+        <p className="mb-3 text-sm text-gray-500">
+          Enter what was used, or <b>Import</b> the Alexia usage PDF to auto-fill. <b>Kegs in kg</b> (≈ liters),
+          <b> bottles/cans/shots as units</b>. Cost is the SBZ invoice price (incl. BTW).
         </p>
+        {importNote && (
+          <p className="mb-4 rounded-lg bg-gray-950/60 px-3 py-2 text-sm text-amber-200">{importNote}</p>
+        )}
+        {unmatched.length > 0 && (
+          <div className="mb-5 rounded-xl border border-amber-800/40 bg-amber-900/10 p-4">
+            <p className="mb-2 text-sm font-medium text-amber-300">
+              Couldn&apos;t match {unmatched.length} line{unmatched.length === 1 ? "" : "s"} — assign a product:
+            </p>
+            <ul className="space-y-2">
+              {unmatched.map((u, i) => (
+                <li key={i} className="flex items-center gap-3 text-sm">
+                  <span className="min-w-0 flex-1 truncate">
+                    {u.name} <span className="text-gray-500">· {u.quantity}{u.isKeg ? " kg" : "×"}</span>
+                  </span>
+                  <select
+                    defaultValue=""
+                    onChange={(e) => assignUnmatched(u, e.target.value)}
+                    className="rounded-lg bg-gray-800 px-2 py-1 outline-none focus:ring-2 focus:ring-amber-500"
+                  >
+                    <option value="">Ignore</option>
+                    {SBZ_PRODUCTS.filter((p) => p.unit === (u.isKeg ? "LITER" : "UNIT")).map((p) => (
+                      <option key={p.key} value={p.key}>{p.name}</option>
+                    ))}
+                  </select>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="grid gap-6 lg:grid-cols-2">
           {SECTIONS.map((section) => {

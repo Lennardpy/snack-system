@@ -212,10 +212,14 @@ The activity detail page shows a full **profit/loss** for a borrel:
   records the **drink** on each card payment, so card revenue is attributed **per
   drink** and merged with member charges. (Card payments made before SumUp's product
   catalog was set up have no drink name and show as "Card (unlabelled)".)
-- **Cost of goods** = the **SBZ usage** the admin enters (Alexia holds this but isn't
-  public, so it's entered manually): **kegs in kg** (≈ liters), **bottles/cans/shots
-  as units**, priced from the SBZ price list (`src/lib/sbz.ts` — the fixed cost
-  catalog, incl./excl. BTW per item; update it when SBZ revises prices).
+- **Cost of goods** = the **SBZ usage**: **kegs in kg** (≈ liters), **bottles/cans/
+  shots as units**, priced from the SBZ price list (`src/lib/sbz.ts` — the fixed cost
+  catalog, incl./excl. BTW per item; update it when SBZ revises prices). Enter it by
+  hand, or **upload the Alexia "Verbruiksformulier" PDF** to auto-fill: it's parsed
+  server-side (`src/lib/verbruik.ts` via `unpdf`) — the "Verbruik" unit counts and
+  "Fustbier" keg weights (Totaal Gewicht kg) are read and mapped to SBZ items;
+  unmatched lines are flagged so the admin assigns them. **The PDF is not stored** —
+  only the extracted numbers pre-fill the form for review before Save.
 - **Net P/L** = revenue − cost of goods (incl. BTW).
 - **Discounts given** (the association's cost, already reflected in member charges):
   drink specials, per-role (Board / PilsCie / …), and bartender free drinks.
@@ -314,7 +318,8 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
 
 **Admin** (`requireAdmin`): `/api/admin/ppp/products`, `…/categories`, `…/roles`,
 `…/bartenders` (+`/[id]`, `/[id]/resend`), `…/activities/[id]` (GET = detail + P/L,
-PUT = save SBZ usage; +`/discounts`, +`/sumup` = live card revenue),
+PUT = save SBZ usage; +`/discounts`, +`/sumup` = live card revenue, +`/import` =
+extract usage from an uploaded Alexia PDF),
 `…/stats` (`?range=…|since_export`), `…/invoices`; `/api/admin/members/[id]/roles`,
 `/api/admin/members/search`; and `POST /api/admin/invoices/export { scope }`.
 
