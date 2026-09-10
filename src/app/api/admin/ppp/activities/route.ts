@@ -2,14 +2,16 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { sumLineDiscounts } from "@/lib/roles";
+import { sbzCostInclCents } from "@/lib/sbz";
 
-// Full activity list for the admin panel: order counts, revenue, and the discount
-// given (specials-only + total) per activity. OPEN ones first.
+// Full activity list for the admin panel: order counts, revenue, cost of goods
+// (from entered SBZ usage), and the discount given (specials-only + total) per
+// activity. OPEN ones first.
 export async function GET() {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const [activities, invoices] = await Promise.all([
+  const [activities, invoices, usage] = await Promise.all([
     prisma.pppActivity.findMany({ orderBy: { date: "desc" } }),
     prisma.pppInvoice.findMany({
       select: {
@@ -26,6 +28,7 @@ export async function GET() {
         },
       },
     }),
+    prisma.pppActivityUsage.findMany({ select: { activityId: true, sbzKey: true, quantity: true } }),
   ]);
 
   type Agg = { orders: number; revenue: number; specials: number; total: number };
@@ -40,6 +43,12 @@ export async function GET() {
     agg.set(inv.activityId, e);
   }
 
+  // Cost of goods per activity from the entered SBZ usage.
+  const cogs = new Map<string, number>();
+  for (const u of usage) {
+    cogs.set(u.activityId, (cogs.get(u.activityId) ?? 0) + sbzCostInclCents(u.sbzKey, u.quantity));
+  }
+
   const result = activities
     .map((a) => {
       const e = agg.get(a.id);
@@ -52,6 +61,7 @@ export async function GET() {
         revenueCents: e?.revenue ?? 0,
         specialsDiscountCents: e?.specials ?? 0,
         totalDiscountCents: e?.total ?? 0,
+        cogsInclCents: cogs.get(a.id) ?? 0,
       };
     })
     // OPEN before CLOSED, preserving date order within each group.

@@ -11,6 +11,7 @@ interface Activity {
   revenueCents: number;
   specialsDiscountCents: number;
   totalDiscountCents: number;
+  cogsInclCents: number;
 }
 
 interface OrderLine {
@@ -192,11 +193,20 @@ export default function AdminActivitiesPage() {
                     </span>
                   </p>
                   <p className="text-xs text-gray-500">
-                    {new Date(a.date).toLocaleDateString()} · {a.orderCount} order
-                    {a.orderCount === 1 ? "" : "s"} · {euro(a.revenueCents)}
+                    {new Date(a.date).toLocaleDateString()} · {a.orderCount} order{a.orderCount === 1 ? "" : "s"}
                   </p>
+                  <div className="mt-1 flex flex-wrap items-baseline gap-x-6 gap-y-1">
+                    <span className="text-xl font-bold tabular-nums">
+                      {euro(a.revenueCents)} <span className="text-xs font-normal text-gray-500">revenue</span>
+                    </span>
+                    {a.cogsInclCents > 0 && (
+                      <span className="text-xl font-bold tabular-nums text-red-300">
+                        −{euro(a.cogsInclCents)} <span className="text-xs font-normal text-gray-500">cost of goods</span>
+                      </span>
+                    )}
+                  </div>
                   {a.totalDiscountCents > 0 && (
-                    <p className="text-xs text-gray-600">
+                    <p className="mt-1 text-xs text-gray-600">
                       Discount given · specials {euro(a.specialsDiscountCents)} · total{" "}
                       <span className="text-amber-400/80">{euro(a.totalDiscountCents)}</span>
                     </p>
