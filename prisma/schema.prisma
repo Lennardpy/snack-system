@@ -245,6 +245,10 @@ model PppActivity {
   name      String
   status    ActivityStatus @default(OPEN)
   date      DateTime       @default(now())
+  // Start/end of the borrel (from Alexia when imported). Used as the time window
+  // for matching SumUp card revenue; falls back to the `date` calendar day.
+  startsAt  DateTime?
+  endsAt    DateTime?
   // Whether this activity's per-drink specials are currently applied. Bartenders
   // flip this off in the POS when a special "runs out" mid-borrel.
   discountsActive Boolean  @default(true)
@@ -253,6 +257,24 @@ model PppActivity {
 
   invoices  PppInvoice[]
   discounts PppActivityDiscount[]
+  usage     PppActivityUsage[]
+}
+
+// Manually-entered SBZ stock used at a borrel (kegs in kg, bottles/cans/shots as
+// units), keyed by the SBZ price-list item (see src/lib/sbz.ts). Powers the
+// cost-of-goods side of the activity P/L. Alexia holds this but isn't public, so
+// the admin enters it here.
+model PppActivityUsage {
+  id         String   @id @default(cuid())
+  sbzKey     String // SBZ price-list item key (src/lib/sbz.ts)
+  quantity   Float // kg for kegs (LITER items), unit count for bottles/cans/shots
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  activityId String
+  activity   PppActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@unique([activityId, sbzKey])
 }
 
 // A drink special for one activity: this product sells at `priceCents` during the

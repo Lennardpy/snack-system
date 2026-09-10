@@ -45,6 +45,7 @@ Set these on the Railway **service** (not the database plugin).
 | `CONGRESSUS_PPP_FOLDER_ID` | – | `8804` | Overrides the PPP (drinks) Congressus product folder. See [PPP.md](PPP.md). |
 | `ALEXIA_API_URL` | – | `https://alex.ia.utwente.nl/api/1/` | Alexia JSON-RPC endpoint used to auto-import scheduled borrels (public, no auth). |
 | `ALEXIA_ORGANIZER` | – | `Stress` | Only borrels with this organiser are imported. |
+| `SUMUP_API_KEY` | – | `sup_sk_…` | SumUp secret API key (Bearer token) for pulling card revenue into a borrel's profit/loss. Fail-soft if unset (card revenue shows "n/a"). |
 | `UPLOAD_DIR` | – | `/data/uploads/products` | Where product images are written (the volume mount). |
 | `ADMIN_EMAIL` | seed | `secretary@stress.utwente.nl` | Admin login created by `npm run seed`. |
 | `ADMIN_PASSWORD` | seed | – | Admin password for the seeded user. |

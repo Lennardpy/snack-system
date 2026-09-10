@@ -195,13 +195,34 @@ Managed under **Admin → PPP → Bartenders**.
 | **Dashboard** | Financials (revenue, drinks sold, orders, borrels, drinkers, avg, **Bartender drinks** = association cost of comped bartender-free drinks) + rankings: **top borrels** by revenue, **top drinkers** by drinks, most popular drinks, and **Free drinks by role** — the association's cost of role-based free/discounted drinks split per role (e.g. Board = free drinks at list value, PilsCie = their discount); each line's discount is attributed to the role that granted it. Range selector includes **Since export** — the still-unbilled orders (status CONFIRMED) so you can see the money still to come; the subtitle shows the last export date. (The SSS dashboard has the same **Since export** range.) |
 | **Drinks** | PPP catalog: categories, create/edit/publish/archive drinks with price, **special price**, VAT, and a 5-colour **tile colour** picker. |
 | **Activities** | List borrels (auto-synced from Alexia + manual), close/reopen, rename, revenue + order counts + **discount given** (specials / total), order list (each order shows the **🍺 tapper** — the bartender who rang it up). **Closing** shows the discount totals. Each links to its detail page. |
-| **Activity detail** (`/admin/ppp/activities/[id]`) | Manage the borrel's **drink specials** (pick a drink, set a special price) — can be done in advance for a future borrel. Shows order count + the two discount totals, and whether specials are active. |
+| **Activity detail** (`/admin/ppp/activities/[id]`) | Manage the borrel's **drink specials**, and see its full **profit/loss** (see below): revenue, cost of goods, discounts, per-drink. Manage specials as before (also in advance for future borrels). |
 | **Member roles** | Create/edit roles with a `%` and/or `€` discount. Highest wins. |
 | **Bartenders** | Invite by email, set-password link, link to a member for card login, delete. |
 | **Invoices** | PPP orders grouped by borrel; status filter; **Export PPP to Congressus**; delete/clear test data. |
 
 Member **role assignment** is on the existing **Admin → Members** page (role chips
 + a toggle picker per member).
+
+## Activity profit/loss
+
+The activity detail page shows a full **profit/loss** for a borrel:
+
+- **Revenue** = **member charges** (itemised PPP orders, billed via Congressus) +
+  **card revenue from SumUp** (fetched live for the borrel's time window). Card/cash
+  sales aren't itemised per drink — only the SumUp total is known.
+- **Cost of goods** = the **SBZ usage** the admin enters (Alexia holds this but isn't
+  public, so it's entered manually): **kegs in kg** (≈ liters), **bottles/cans/shots
+  as units**, priced from the SBZ price list (`src/lib/sbz.ts` — the fixed cost
+  catalog, incl./excl. BTW per item; update it when SBZ revises prices).
+- **Net P/L** = revenue − cost of goods (incl. BTW).
+- **Discounts given** (the association's cost, already reflected in member charges):
+  drink specials, per-role (Board / PilsCie / …), and bartender free drinks.
+- A **per-drink table** of member-charge sales (quantity, revenue, discount).
+
+**SumUp** (`src/lib/sumup.ts`): sums SUCCESSFUL card payments (minus refunds) between
+the borrel's `startsAt`/`endsAt` (from Alexia; falls back to the `date` calendar day)
+via the SumUp transactions API, using `SUMUP_API_KEY`. Fail-soft — no key or an error
+shows card revenue as "n/a" and the rest of the P/L still renders.
 
 ## Congressus
 
@@ -251,8 +272,9 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
 
 - `PppProductCategory` (`bartenderFree` → drinks free for the on-shift bartender),
   `PppProduct` (price, `specialPrice?`, `color?`, `vatCategory`, Congressus ids),
-  `PppActivity` (`status`, `discountsActive`),
-  `PppActivityDiscount` (per-activity per-product special price),
+  `PppActivity` (`status`, `discountsActive`, `startsAt?`/`endsAt?` for the SumUp
+  window), `PppActivityUsage` (per-activity SBZ usage: `sbzKey` + `quantity`, for
+  the P/L cost of goods), `PppActivityDiscount` (per-activity per-product special price),
   `PppInvoice` (defaults to CONFIRMED, no CONCEPT; `createdById?` → the bartender
   who tapped the order), `PppInvoiceLine` (`unitCents` charged + `listCents?` /
   `specialCents?` snapshots for discount reporting + `bartenderFree` marking a
@@ -287,7 +309,8 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
 | GET/POST | `/api/auth/set-password` | Validate / consume a set-password token |
 
 **Admin** (`requireAdmin`): `/api/admin/ppp/products`, `…/categories`, `…/roles`,
-`…/bartenders` (+`/[id]`, `/[id]/resend`), `…/activities/[id]` (+`/discounts`),
+`…/bartenders` (+`/[id]`, `/[id]/resend`), `…/activities/[id]` (GET = detail + P/L,
+PUT = save SBZ usage; +`/discounts`, +`/sumup` = live card revenue),
 `…/stats` (`?range=…|since_export`), `…/invoices`; `/api/admin/members/[id]/roles`,
 `/api/admin/members/search`; and `POST /api/admin/invoices/export { scope }`.
 
@@ -300,6 +323,7 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
 | `CONGRESSUS_PPP_FOLDER_ID` | `8804` | Overrides the PPP Congressus product folder. |
 | `ALEXIA_API_URL` | `https://alex.ia.utwente.nl/api/1/` | Alexia JSON-RPC endpoint for borrel sync. |
 | `ALEXIA_ORGANIZER` | `Stress` | Only import borrels with this organiser. |
+| `SUMUP_API_KEY` | – | SumUp secret API key (`sup_sk_…`), used as a Bearer token to pull card revenue for the activity P/L. Fail-soft if unset. |
 
 Bartender invite + card-verification emails reuse `EMAIL_FROM` / `BASE_URL` (see
 [DEPLOYMENT.md](DEPLOYMENT.md)).

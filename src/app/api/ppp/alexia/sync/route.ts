@@ -20,7 +20,12 @@ export async function POST() {
   const toCreate = events.filter((e) => !known.has(alexiaMatchKey(e.name, e.startsAt)));
   if (toCreate.length > 0) {
     await prisma.pppActivity.createMany({
-      data: toCreate.map((e) => ({ name: e.name, date: new Date(e.startsAt) })),
+      data: toCreate.map((e) => ({
+        name: e.name,
+        date: new Date(e.startsAt),
+        startsAt: new Date(e.startsAt),
+        endsAt: new Date(e.endsAt),
+      })),
     });
   }
 
