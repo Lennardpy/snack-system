@@ -16,6 +16,7 @@ interface Stats {
   avgOrderCents: number;
   bartenderCostCents: number;
   bartenderDrinks: number;
+  cogsInclCents: number;
   roleCosts: { name: string; costCents: number; drinks: number }[];
   topBorrels: Borrel[];
   topDrinkers: Drinker[];
@@ -38,6 +39,10 @@ export default function PppDashboardPage() {
   const [range, setRange] = useState("90d");
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  // SumUp card income for the range — loaded separately (external call).
+  const [sumup, setSumup] = useState<{ state: "loading" | "unavailable" } | { state: "ok"; revenueCents: number }>({
+    state: "loading",
+  });
 
   useEffect(() => {
     setLoading(true);
@@ -45,7 +50,17 @@ export default function PppDashboardPage() {
       .then((r) => r.json())
       .then(setStats)
       .finally(() => setLoading(false));
+    setSumup({ state: "loading" });
+    fetch(`/api/admin/ppp/stats/sumup?range=${range}`)
+      .then((r) => (r.ok ? r.json() : { available: false }))
+      .then((d) => setSumup(d.available ? { state: "ok", revenueCents: d.revenueCents } : { state: "unavailable" }))
+      .catch(() => setSumup({ state: "unavailable" }));
   }, [range]);
+
+  const pppIncomeCents = stats?.revenueCents ?? 0;
+  const cardIncomeCents = sumup.state === "ok" ? sumup.revenueCents : 0;
+  const cogsCents = stats?.cogsInclCents ?? 0;
+  const netPlCents = pppIncomeCents + cardIncomeCents - cogsCents;
 
   const maxBorrel = Math.max(1, ...(stats?.topBorrels.map((b) => b.revenueCents) ?? [1]));
   const maxDrinker = Math.max(1, ...(stats?.topDrinkers.map((d) => d.drinks) ?? [1]));
@@ -82,6 +97,24 @@ export default function PppDashboardPage() {
           ))}
         </div>
       </div>
+
+      {/* Profit / loss — income (PPP + SumUp) minus cost of goods */}
+      <section className="mb-6 rounded-2xl border border-gray-800 bg-gray-900 p-6">
+        <h2 className="mb-4 text-lg font-semibold">Profit / loss</h2>
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <Kpi label="Income — PPP (member)" value={stats ? euro(pppIncomeCents) : "—"} />
+          <Kpi
+            label="Income — SumUp (card)"
+            value={sumup.state === "ok" ? euro(sumup.revenueCents) : sumup.state === "loading" ? "…" : "n/a"}
+          />
+          <Kpi label="Cost of goods" value={stats ? `− ${euro(cogsCents)}` : "—"} />
+          <Kpi
+            label="Net profit / loss"
+            value={stats ? `${netPlCents < 0 ? "−" : ""}${euro(Math.abs(netPlCents))}` : "—"}
+            accent={netPlCents >= 0 ? "green" : "red"}
+          />
+        </div>
+      </section>
 
       {/* Financials KPIs */}
       <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-7">
@@ -185,9 +218,15 @@ export default function PppDashboardPage() {
   );
 }
 
-function Kpi({ label, value, accent, sub }: { label: string; value: string; accent?: boolean; sub?: string }) {
+function Kpi({ label, value, accent, sub }: { label: string; value: string; accent?: boolean | "green" | "red"; sub?: string }) {
+  const border =
+    accent === "red"
+      ? "border-red-700/50 bg-red-900/20"
+      : accent // true or "green"
+      ? "border-green-700/50 bg-green-900/20"
+      : "border-gray-800 bg-gray-900";
   return (
-    <div className={`rounded-2xl border p-5 ${accent ? "border-green-700/50 bg-green-900/20" : "border-gray-800 bg-gray-900"}`}>
+    <div className={`rounded-2xl border p-5 ${border}`}>
       <p className="mb-1 text-sm text-gray-400">{label}</p>
       <p className="text-3xl font-bold tabular-nums">{value}</p>
       {sub && <p className="mt-1 text-xs text-gray-500">{sub}</p>}

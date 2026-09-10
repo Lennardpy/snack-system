@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { roleDiscountAmount } from "@/lib/roles";
+import { sbzCostInclCents } from "@/lib/sbz";
 
 // GET /api/admin/ppp/stats?range=7d|30d|90d|365d|all|since_export
 // PPP (bar) overview: financials, top borrels, top drinkers (by drinks), top drinks.
@@ -125,6 +126,15 @@ export async function GET(req: NextRequest) {
     .map(([name, v]) => ({ name, ...v }))
     .sort((a, b) => b.costCents - a.costCents);
 
+  // Cost of goods for activities in the range (from the entered SBZ usage).
+  const cogsFrom = sinceExport ? lastExportAt : from;
+  const usage = await prisma.pppActivityUsage.findMany({
+    where: cogsFrom ? { activity: { date: { gte: cogsFrom } } } : {},
+    select: { sbzKey: true, quantity: true },
+  });
+  let cogsInclCents = 0;
+  for (const u of usage) cogsInclCents += sbzCostInclCents(u.sbzKey, u.quantity);
+
   const topBorrels = [...borrelMap.entries()]
     .map(([id, v]) => ({ id, ...v }))
     .sort((a, b) => b.revenueCents - a.revenueCents)
@@ -150,6 +160,7 @@ export async function GET(req: NextRequest) {
     avgOrderCents: orderCount > 0 ? Math.round(revenueCents / orderCount) : 0,
     bartenderCostCents,
     bartenderDrinks,
+    cogsInclCents,
     roleCosts,
     topBorrels,
     topDrinkers,

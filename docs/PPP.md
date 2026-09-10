@@ -192,7 +192,7 @@ Managed under **Admin → PPP → Bartenders**.
 
 | Page | What |
 |------|------|
-| **Dashboard** | Financials (revenue, drinks sold, orders, borrels, drinkers, avg, **Bartender drinks** = association cost of comped bartender-free drinks) + rankings: **top borrels** by revenue, **top drinkers** by drinks, most popular drinks, and **Free drinks by role** — the association's cost of role-based free/discounted drinks split per role (e.g. Board = free drinks at list value, PilsCie = their discount); each line's discount is attributed to the role that granted it. Range selector includes **Since export** — the still-unbilled orders (status CONFIRMED) so you can see the money still to come; the subtitle shows the last export date. (The SSS dashboard has the same **Since export** range.) |
+| **Dashboard** | A **Profit / loss** block for the range — **income split PPP (member) + SumUp (card)** minus **cost of goods** (summed SBZ usage) = one **net P/L** number (SumUp loads separately). Plus financials (revenue, drinks sold, orders, borrels, drinkers, avg, **Bartender drinks** = association cost of comped bartender-free drinks) + rankings: **top borrels** by revenue, **top drinkers** by drinks, most popular drinks, and **Free drinks by role** — the association's cost of role-based free/discounted drinks split per role (e.g. Board = free drinks at list value, PilsCie = their discount); each line's discount is attributed to the role that granted it. Range selector includes **Since export** — the still-unbilled orders (status CONFIRMED) so you can see the money still to come; the subtitle shows the last export date. (The SSS dashboard has the same **Since export** range.) |
 | **Drinks** | PPP catalog: categories, create/edit/publish/archive drinks with price, **special price**, VAT, and a 5-colour **tile colour** picker. |
 | **Activities** | List borrels (auto-synced from Alexia + manual), close/reopen, rename, revenue + order counts + **discount given** (specials / total), order list (each order shows the **🍺 tapper** — the bartender who rang it up). **Closing** shows the discount totals. Each links to its detail page. |
 | **Activity detail** (`/admin/ppp/activities/[id]`) | Manage the borrel's **drink specials**, and see its full **profit/loss** (see below): revenue, cost of goods, discounts, per-drink. Manage specials as before (also in advance for future borrels). |
@@ -320,7 +320,7 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
 `…/bartenders` (+`/[id]`, `/[id]/resend`), `…/activities/[id]` (GET = detail + P/L,
 PUT = save SBZ usage; +`/discounts`, +`/sumup` = live card revenue, +`/import` =
 extract usage from an uploaded Alexia PDF),
-`…/stats` (`?range=…|since_export`), `…/invoices`; `/api/admin/members/[id]/roles`,
+`…/stats` (`?range=…|since_export`; returns `cogsInclCents`) +`/stats/sumup` (range card-income total), `…/invoices`; `/api/admin/members/[id]/roles`,
 `/api/admin/members/search`; and `POST /api/admin/invoices/export { scope }`.
 
 ## Environment

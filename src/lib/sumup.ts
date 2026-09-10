@@ -41,6 +41,44 @@ export interface SumupBreakdown {
   byDrink: SumupDrink[]; // per-drink, biggest revenue first
 }
 
+// Lightweight total of successful card revenue (minus refunds) in a window, from
+// the history list alone (no per-transaction detail fetches) — for the dashboard
+// aggregate P/L. Returns cents, or null when SumUp is unavailable.
+export async function fetchSumupRevenueTotal(fromISO: string, toISO: string): Promise<number | null> {
+  const key = process.env.SUMUP_API_KEY;
+  if (!key) return null;
+  const headers = { Authorization: `Bearer ${key}` };
+  let url =
+    `${BASE}/v0.1/me/transactions/history?order=ascending&limit=200` +
+    `&oldest_time=${encodeURIComponent(fromISO)}&newest_time=${encodeURIComponent(toISO)}`;
+  let cents = 0;
+  try {
+    for (let page = 0; page < 60; page++) {
+      const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
+      if (!res.ok) return null;
+      const body = (await res.json()) as {
+        items?: { amount?: number; refunded_amount?: number; status: string; type: string }[];
+        links?: { href: string; rel: string }[];
+      };
+      for (const t of body.items ?? []) {
+        if (t.status !== "SUCCESSFUL") continue;
+        if (t.type === "REFUND") cents -= Math.abs(Math.round((t.amount ?? 0) * 100));
+        else cents += Math.round((t.amount ?? 0) * 100) - Math.round((t.refunded_amount ?? 0) * 100);
+      }
+      const next = (body.links ?? []).find((l) => l.rel === "next")?.href;
+      if (!next) break;
+      url = next.startsWith("http")
+        ? next
+        : next.startsWith("/")
+        ? `${BASE}${next}`
+        : `${BASE}/v0.1/me/transactions/history?${next}`;
+    }
+    return cents;
+  } catch {
+    return null;
+  }
+}
+
 // Sum successful card sales (minus refunds) between two ISO timestamps, per drink.
 // Returns null when SumUp is unavailable (no key / error).
 export async function fetchSumupBreakdown(
