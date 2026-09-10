@@ -218,8 +218,9 @@ The activity detail page shows a full **profit/loss** for a borrel:
   hand, or **upload the Alexia "Verbruiksformulier" PDF** to auto-fill: it's parsed
   server-side (`src/lib/verbruik.ts` via `unpdf`) — the "Verbruik" unit counts and
   "Fustbier" keg weights (Totaal Gewicht kg) are read and mapped to SBZ items;
-  unmatched lines are flagged so the admin assigns them. **The PDF is not stored** —
-  only the extracted numbers pre-fill the form for review before Save.
+  unmatched lines are flagged so the admin assigns them. Numbers **add onto** the
+  current form values, so uploading a second document accumulates. **The PDF is not
+  stored** — only the extracted numbers pre-fill the form for review before Save.
 - **Net P/L** = revenue − cost of goods (incl. BTW).
 - **Discounts given** (the association's cost, already reflected in member charges):
   drink specials, per-role (Board / PilsCie / …), and bartender free drinks.

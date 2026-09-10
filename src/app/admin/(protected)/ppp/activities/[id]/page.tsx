@@ -178,19 +178,28 @@ export default function ActivityDetailPage() {
     }
     setUsage((u) => {
       const next = { ...u };
-      for (const m of d.matched as { sbzKey: string; quantity: number }[]) next[m.sbzKey] = String(m.quantity);
+      // Add onto whatever is already in the form (so uploading a second document
+      // accumulates), rounding to drop floating-point noise.
+      for (const m of d.matched as { sbzKey: string; quantity: number }[]) {
+        const cur = Number(next[m.sbzKey]) || 0;
+        next[m.sbzKey] = String(Math.round((cur + m.quantity) * 1000) / 1000);
+      }
       return next;
     });
     setUnmatched(d.unmatched ?? []);
     setImportNote(
-      `Imported ${d.matched.length} item${d.matched.length === 1 ? "" : "s"} — review below, then Save usage.` +
+      `Added ${d.matched.length} item${d.matched.length === 1 ? "" : "s"} to the form — review below, then Save usage.` +
         (d.unmatched?.length ? ` ${d.unmatched.length} couldn't be matched — assign them below.` : "")
     );
   }
 
-  // Assign an unmatched imported line to an SBZ product (fills its input).
+  // Assign an unmatched imported line to an SBZ product (adds onto its input).
   function assignUnmatched(line: { name: string; quantity: number }, sbzKey: string) {
-    if (sbzKey) setUsage((u) => ({ ...u, [sbzKey]: String(line.quantity) }));
+    if (sbzKey)
+      setUsage((u) => {
+        const cur = Number(u[sbzKey]) || 0;
+        return { ...u, [sbzKey]: String(Math.round((cur + line.quantity) * 1000) / 1000) };
+      });
     setUnmatched((list) => list.filter((l) => l !== line));
   }
 
@@ -340,8 +349,9 @@ export default function ActivityDetailPage() {
           </div>
         </div>
         <p className="mb-3 text-sm text-gray-500">
-          Enter what was used, or <b>Import</b> the Alexia usage PDF to auto-fill. <b>Kegs in kg</b> (≈ liters),
-          <b> bottles/cans/shots as units</b>. Cost is the SBZ invoice price (incl. BTW).
+          Enter what was used, or <b>Import</b> the Alexia usage PDF to auto-fill — a second upload <b>adds
+          onto</b> the current values. <b>Kegs in kg</b> (≈ liters), <b>bottles/cans/shots as units</b>. Cost is
+          the SBZ invoice price (incl. BTW).
         </p>
         {importNote && (
           <p className="mb-4 rounded-lg bg-gray-950/60 px-3 py-2 text-sm text-amber-200">{importNote}</p>
