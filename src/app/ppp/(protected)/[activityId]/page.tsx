@@ -72,6 +72,11 @@ const ENV_MODE = PPP_MODE === "ws" || PPP_MODE === "nfc" ? PPP_MODE : "hid";
 
 const euro = (cents: number) => `€${(cents / 100).toFixed(2)}`;
 
+// No order for this long → the bartender is signed out and the borrel ended, so a
+// forgotten kiosk can't be used to charge members. Warn a few minutes before.
+const IDLE_LIMIT_MS = 60 * 60_000;
+const IDLE_WARN_MS = 5 * 60_000;
+
 export default function PosPage() {
   const router = useRouter();
   const { activityId } = useParams<{ activityId: string }>();
@@ -137,6 +142,32 @@ export default function PosPage() {
     if (!confirm("End this borrel and return to the activity list?")) return;
     router.push("/ppp");
   }
+
+  // ── Idle sign-out ───────────────────────────────────────────────────────────
+  // Timestamp of the last order confirmed here (or when the borrel was opened).
+  // Wall-clock based, so a phone that slept through the hour signs out on wake.
+  const lastOrderAt = useRef(Date.now());
+  const [idleMsLeft, setIdleMsLeft] = useState(IDLE_LIMIT_MS);
+  const signingOut = useRef(false);
+
+  useEffect(() => {
+    async function check() {
+      const left = IDLE_LIMIT_MS - (Date.now() - lastOrderAt.current);
+      setIdleMsLeft(left);
+      if (left > 0 || signingOut.current) return;
+      signingOut.current = true;
+      await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+      router.replace("/ppp/login?reason=idle");
+      router.refresh();
+    }
+    const t = setInterval(check, 15_000);
+    const onVisible = () => document.visibilityState === "visible" && check();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [router]);
 
   async function toggleSpecials() {
     if (!activity) return;
@@ -309,6 +340,8 @@ export default function PosPage() {
     });
     setConfirming(false);
     if (res.ok) {
+      lastOrderAt.current = Date.now();
+      setIdleMsLeft(IDLE_LIMIT_MS);
       flashToast(`Charged ${member.firstName} ${euro(totalCents)}`);
       setCart({});
       setMember({ kind: "idle" });
@@ -433,6 +466,13 @@ export default function PosPage() {
           </button>
         </div>
       </header>
+
+      {idleMsLeft <= IDLE_WARN_MS && (
+        <div className="bg-red-900/40 px-4 py-2 text-center text-sm font-medium text-red-200">
+          No orders for a while — signing out and ending the borrel in{" "}
+          {Math.max(1, Math.ceil(idleMsLeft / 60_000))} min unless an order is confirmed.
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1">
         {/* Left: products (full-width on phones; hidden there when viewing cart) */}

@@ -81,6 +81,11 @@ function LoginForm() {
         <p className="text-gray-400 text-xs">Bar POS — sign in with email / password or scan your card</p>
       </div>
 
+      {searchParams.get("reason") === "idle" && !error && (
+        <p className="rounded-lg bg-amber-900/30 px-3 py-2 text-sm text-amber-200">
+          Signed out — no orders for 1 hour, so the borrel was ended. Sign in again to continue.
+        </p>
+      )}
       {error && <p className="text-sm text-red-400">{error}</p>}
 
       <form onSubmit={login} className="space-y-4">

@@ -49,6 +49,11 @@ POS. The columns:
   to the activity list; logging out lives on the selector). On a phone, the Cart
   view also shows a **← Drinks** back-arrow so the bottom tabs aren't the only way
   back — an accidental tap there is harmless, unlike leaving the borrel.
+- **Idle sign-out** — if no order is confirmed on the POS for **1 hour** (counted
+  from opening the borrel or the last order), the bartender is signed out (server
+  session deleted) and sent to `/ppp/login` with a notice, ending the borrel on that
+  device. A red banner warns during the last 5 minutes. The clock is wall-time
+  based, so a phone that slept through the hour signs out as soon as it wakes.
 - **Bottom (left column)** — **Regulars**: large circular buttons of members who
   have ordered at this borrel, most orders first. Tap one to charge them **without
   scanning** a card.
