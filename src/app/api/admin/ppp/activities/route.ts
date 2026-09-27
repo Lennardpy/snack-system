@@ -4,7 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 import { sumLineDiscounts } from "@/lib/roles";
 import { sbzCostInclCents } from "@/lib/sbz";
 
-// Full activity list for the admin panel: order counts, revenue, cost of goods
+// Full activity list for the admin panel: order counts, revenue (+ saved SumUp), cost of goods
 // (from entered SBZ usage), and the discount given (specials-only + total) per
 // activity. OPEN ones first.
 export async function GET() {
@@ -12,7 +12,10 @@ export async function GET() {
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const [activities, invoices, usage] = await Promise.all([
-    prisma.pppActivity.findMany({ orderBy: { date: "desc" } }),
+    prisma.pppActivity.findMany({
+      orderBy: { date: "desc" },
+      include: { sumup: { select: { revenueCents: true } } },
+    }),
     prisma.pppInvoice.findMany({
       select: {
         activityId: true,
@@ -62,6 +65,8 @@ export async function GET() {
         specialsDiscountCents: e?.specials ?? 0,
         totalDiscountCents: e?.total ?? 0,
         cogsInclCents: cogs.get(a.id) ?? 0,
+        // Saved SumUp card revenue (null = not saved yet; the page fetches it).
+        sumupCents: a.sumup?.revenueCents ?? null,
       };
     })
     // OPEN before CLOSED, preserving date order within each group.

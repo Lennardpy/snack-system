@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface Activity {
   id: string;
@@ -12,6 +12,7 @@ interface Activity {
   specialsDiscountCents: number;
   totalDiscountCents: number;
   cogsInclCents: number;
+  sumupCents: number | null; // saved SumUp card revenue, null = not saved yet
 }
 
 interface OrderLine {
@@ -52,6 +53,10 @@ export default function AdminActivitiesPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [actingId, setActingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // SumUp card revenue fetched on this page for borrels not saved yet (the fetch
+  // saves past ones, so next time they come with the list).
+  const [sumupFetched, setSumupFetched] = useState<Record<string, number | "loading" | "n/a">>({});
+  const sumupRequested = useRef(new Set<string>());
 
   async function load() {
     // Import any newly-scheduled Stress borrels from Alexia first, so they appear
@@ -63,8 +68,34 @@ export default function AdminActivitiesPage() {
       setNotice(`Imported ${sync.imported} new borrel${sync.imported === 1 ? "" : "s"} from Alexia.`);
     }
     const res = await fetch("/api/admin/ppp/activities");
-    if (res.ok) setActivities((await res.json()).activities);
+    if (res.ok) {
+      const list: Activity[] = (await res.json()).activities;
+      setActivities(list);
+      fetchMissingSumup(list);
+    }
     setLoading(false);
+  }
+
+  // One at a time: an unsaved borrel fans out into per-transaction SumUp requests.
+  async function fetchMissingSumup(list: Activity[]) {
+    const now = Date.now();
+    const todo = list.filter(
+      (a) => a.sumupCents == null && new Date(a.date).getTime() <= now && !sumupRequested.current.has(a.id)
+    );
+    for (const a of todo) {
+      sumupRequested.current.add(a.id);
+      setSumupFetched((m) => ({ ...m, [a.id]: "loading" }));
+      const d = await fetch(`/api/admin/ppp/activities/${a.id}/sumup`)
+        .then((r) => (r.ok ? r.json() : { available: false }))
+        .catch(() => ({ available: false }));
+      setSumupFetched((m) => ({ ...m, [a.id]: d.available ? d.revenueCents : "n/a" }));
+    }
+  }
+
+  // SumUp card revenue for a row: saved, fetched here, still loading, or unknown.
+  function sumupFor(a: Activity): number | "loading" | "n/a" | null {
+    if (a.sumupCents != null) return a.sumupCents;
+    return sumupFetched[a.id] ?? (new Date(a.date).getTime() > Date.now() ? null : "loading");
   }
   useEffect(() => {
     load();
@@ -210,16 +241,45 @@ export default function AdminActivitiesPage() {
                   <p className="text-xs text-gray-500">
                     {new Date(a.date).toLocaleDateString()} · {a.orderCount} order{a.orderCount === 1 ? "" : "s"}
                   </p>
-                  <div className="mt-1 flex flex-wrap items-baseline gap-x-6 gap-y-1">
-                    <span className="text-xl font-bold tabular-nums">
-                      {euro(a.revenueCents)} <span className="text-xs font-normal text-gray-500">revenue</span>
-                    </span>
-                    {a.cogsInclCents > 0 && (
-                      <span className="text-xl font-bold tabular-nums text-red-300">
-                        −{euro(a.cogsInclCents)} <span className="text-xs font-normal text-gray-500">cost of goods</span>
-                      </span>
-                    )}
-                  </div>
+                  {(() => {
+                    const card = sumupFor(a);
+                    const cardCents = typeof card === "number" ? card : 0;
+                    const totalRevenue = a.revenueCents + cardCents;
+                    const net = totalRevenue - a.cogsInclCents;
+                    const settled = card !== "loading";
+                    return (
+                      <>
+                        <div className="mt-1 flex flex-wrap items-baseline gap-x-6 gap-y-1">
+                          <span className="text-xl font-bold tabular-nums">
+                            {euro(totalRevenue)} <span className="text-xs font-normal text-gray-500">revenue</span>
+                          </span>
+                          {a.cogsInclCents > 0 && (
+                            <span className="text-xl font-bold tabular-nums text-white">
+                              −{euro(a.cogsInclCents)}{" "}
+                              <span className="text-xs font-normal text-gray-500">cost of goods</span>
+                            </span>
+                          )}
+                          {a.cogsInclCents > 0 && settled && (
+                            <span
+                              className={`rounded-lg px-2.5 py-1 text-xl font-bold tabular-nums ${
+                                net >= 0 ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"
+                              }`}
+                            >
+                              {net >= 0 ? "▲ +" : "▼ −"}
+                              {euro(Math.abs(net))}{" "}
+                              <span className="text-xs font-medium opacity-80">{net >= 0 ? "profit" : "loss"}</span>
+                            </span>
+                          )}
+                        </div>
+                        {card !== null && (
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            PPP {euro(a.revenueCents)} · SumUp{" "}
+                            {card === "loading" ? "loading…" : card === "n/a" ? "unavailable" : euro(card)}
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()}
                   {a.totalDiscountCents > 0 && (
                     <p className="mt-1 text-xs text-gray-600">
                       Discount given · specials {euro(a.specialsDiscountCents)} · total{" "}
