@@ -13,9 +13,16 @@ export async function POST() {
   const events = await fetchStressEvents();
   if (events.length === 0) return NextResponse.json({ imported: 0 });
 
-  // Existing activities, keyed by name + calendar day (Alexia events have no id).
-  const activities = await prisma.pppActivity.findMany({ select: { name: true, date: true } });
-  const known = new Set(activities.map((a) => alexiaMatchKey(a.name, a.date.toISOString())));
+  // Existing activities, keyed by name + calendar day (Alexia events have no id),
+  // plus events the admin deleted (external activities / free drinks) — never re-import.
+  const [activities, dismissed] = await Promise.all([
+    prisma.pppActivity.findMany({ select: { name: true, date: true } }),
+    prisma.pppDismissedEvent.findMany({ select: { matchKey: true } }),
+  ]);
+  const known = new Set([
+    ...activities.map((a) => alexiaMatchKey(a.name, a.date.toISOString())),
+    ...dismissed.map((d) => d.matchKey),
+  ]);
 
   const toCreate = events.filter((e) => !known.has(alexiaMatchKey(e.name, e.startsAt)));
   if (toCreate.length > 0) {

@@ -133,6 +133,21 @@ export default function AdminActivitiesPage() {
     if (res.ok) setOrders((await res.json()).invoices);
   }
 
+  // Only activities without PPP orders can be deleted (e.g. external activities or
+  // free drinks synced from Alexia); they won't be re-imported.
+  async function remove(a: Activity) {
+    if (!confirm(`Delete "${a.name}"?\n\nIt won't be re-imported from Alexia. Its specials and usage are removed too.`)) return;
+    setActingId(a.id);
+    const res = await fetch(`/api/admin/ppp/activities/${a.id}`, { method: "DELETE" });
+    setActingId(null);
+    if (res.ok) {
+      setActivities((prev) => prev.filter((x) => x.id !== a.id));
+      setNotice(`Deleted "${a.name}".`);
+    } else {
+      alert((await res.json().catch(() => ({}))).error ?? "Could not delete");
+    }
+  }
+
   async function rename(a: Activity) {
     const next = prompt("Rename activity", a.name);
     if (next && next.trim() && next.trim() !== a.name) patch(a.id, { name: next.trim() });
@@ -242,6 +257,18 @@ export default function AdminActivitiesPage() {
                     }`}
                   >
                     {a.status === "OPEN" ? "Close" : "Reopen"}
+                  </button>
+                  <button
+                    onClick={() => remove(a)}
+                    disabled={actingId === a.id || a.orderCount > 0}
+                    title={
+                      a.orderCount > 0
+                        ? "Can't delete — this activity has PPP orders"
+                        : "Delete (e.g. an external activity or free drink)"
+                    }
+                    className="rounded-lg bg-gray-800 px-3 py-2 text-sm text-gray-300 hover:bg-red-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-gray-800 disabled:hover:text-gray-300"
+                  >
+                    Delete
                   </button>
                 </div>
               </div>

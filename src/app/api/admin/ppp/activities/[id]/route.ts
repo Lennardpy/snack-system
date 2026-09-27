@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { sumLineDiscounts, roleDiscountAmount } from "@/lib/roles";
 import { SBZ_BY_KEY, sbzCostInclCents, sbzCostExclCents } from "@/lib/sbz";
+import { alexiaMatchKey } from "@/lib/alexia";
 
 // Activity detail + full profit/loss for the admin page:
 //   • the activity (+ its drink specials) and the drink catalog for the picker
@@ -168,5 +169,37 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       ),
   ]);
 
+  return NextResponse.json({ ok: true });
+}
+
+// DELETE — remove an activity that has no PPP orders (e.g. an external activity or
+// a free drink synced from Alexia). Its specials, usage and saved SumUp go with it
+// (cascade). Its Alexia name+day is remembered so the sync won't re-import it.
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id } = await params;
+  const activity = await prisma.pppActivity.findUnique({
+    where: { id },
+    select: { name: true, date: true, startsAt: true, _count: { select: { invoices: true } } },
+  });
+  if (!activity) return NextResponse.json({ error: "Activity not found" }, { status: 404 });
+  if (activity._count.invoices > 0) {
+    return NextResponse.json(
+      { error: `Cannot delete: this activity has ${activity._count.invoices} PPP order(s).` },
+      { status: 409 }
+    );
+  }
+
+  const matchKey = alexiaMatchKey(activity.name, (activity.startsAt ?? activity.date).toISOString());
+  await prisma.$transaction([
+    prisma.pppDismissedEvent.upsert({
+      where: { matchKey },
+      create: { matchKey, name: activity.name },
+      update: {},
+    }),
+    prisma.pppActivity.delete({ where: { id } }),
+  ]);
   return NextResponse.json({ ok: true });
 }

@@ -261,6 +261,16 @@ model PppActivity {
   sumup     PppActivitySumup?
 }
 
+// An Alexia event the admin deleted from PPP (e.g. an external activity or a free
+// drink). Alexia events have no id, so the sync matches by name + day
+// (alexiaMatchKey); keys listed here are never re-imported.
+model PppDismissedEvent {
+  id        String   @id @default(cuid())
+  matchKey  String   @unique
+  name      String
+  createdAt DateTime @default(now())
+}
+
 // SumUp card revenue for a finished borrel, saved once the day after it ended
 // (past card sales don't change) so it isn't re-fetched from the SumUp API on
 // every page view. While the borrel is today/ongoing it is fetched live instead.
