@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { roleDiscountAmount } from "@/lib/roles";
 import { sbzCostInclCents } from "@/lib/sbz";
+import { costedActivityIds, resolvePppRange } from "@/lib/ppp-pl";
 
 // GET /api/admin/ppp/stats?range=7d|30d|90d|365d|all|since_export
 // PPP (bar) overview: financials, top borrels, top drinkers (by drinks), top drinks.
@@ -15,19 +16,10 @@ export async function GET(req: NextRequest) {
   const range = req.nextUrl.searchParams.get("range") ?? "90d";
   const sinceExport = range === "since_export";
 
-  let from: Date | null = null;
-  let lastExportAt: Date | null = null;
-  if (sinceExport) {
-    const last = await prisma.pppInvoice.findFirst({
-      where: { exportedAt: { not: null } },
-      orderBy: { exportedAt: "desc" },
-      select: { exportedAt: true },
-    });
-    lastExportAt = last?.exportedAt ?? null;
-  } else {
-    const days = range === "all" ? null : parseInt(range.replace("d", ""), 10) || 90;
-    from = days ? new Date(Date.now() - days * 24 * 60 * 60 * 1000) : null;
-  }
+  const resolved = await resolvePppRange(range);
+  const lastExportAt = resolved.lastExportAt;
+  // Order-date filter for the general stats (since_export filters by status instead).
+  const from = sinceExport ? null : resolved.from;
 
   const invoices = await prisma.pppInvoice.findMany({
     where: sinceExport
@@ -126,12 +118,19 @@ export async function GET(req: NextRequest) {
     .map(([name, v]) => ({ name, ...v }))
     .sort((a, b) => b.costCents - a.costCents);
 
-  // Cost of goods for activities in the range (from the entered SBZ usage).
-  const cogsFrom = sinceExport ? lastExportAt : from;
-  const usage = await prisma.pppActivityUsage.findMany({
-    where: cogsFrom ? { activity: { date: { gte: cogsFrom } } } : {},
-    select: { sbzKey: true, quantity: true },
-  });
+  // Profit/loss covers only borrels in the range with cost of goods uploaded, so
+  // income and costs describe the same borrels. Member income = all their orders.
+  const plIds = await costedActivityIds(resolved.from);
+  const [usage, plIncome] = await Promise.all([
+    prisma.pppActivityUsage.findMany({
+      where: { activityId: { in: plIds } },
+      select: { sbzKey: true, quantity: true },
+    }),
+    prisma.pppInvoice.aggregate({
+      where: { activityId: { in: plIds }, status: { in: ["CONFIRMED", "EXPORTED"] } },
+      _sum: { totalCents: true },
+    }),
+  ]);
   let cogsInclCents = 0;
   for (const u of usage) cogsInclCents += sbzCostInclCents(u.sbzKey, u.quantity);
 
@@ -161,6 +160,11 @@ export async function GET(req: NextRequest) {
     bartenderCostCents,
     bartenderDrinks,
     cogsInclCents,
+    pl: {
+      activityCount: plIds.length,
+      pppIncomeCents: plIncome._sum.totalCents ?? 0,
+      cogsInclCents,
+    },
     roleCosts,
     topBorrels,
     topDrinkers,

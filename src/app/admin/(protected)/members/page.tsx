@@ -169,7 +169,9 @@ export default function MembersPage() {
                 </div>
                 <div className="min-w-0">
                   <p className="flex items-center gap-2 font-semibold">
-                    <span className="truncate">{m.firstName} {m.lastName}</span>
+                    <a href={`/admin/members/${m.id}`} className="truncate hover:text-blue-400 hover:underline">
+                      {m.firstName} {m.lastName}
+                    </a>
                     {!m.active && (
                       <span className="flex-shrink-0 rounded-full bg-red-900/50 px-2 py-0.5 text-xs text-red-300">Inactive</span>
                     )}
@@ -180,6 +182,13 @@ export default function MembersPage() {
               </div>
 
               <div className="flex flex-shrink-0 items-center gap-2">
+                <a
+                  href={`/admin/members/${m.id}`}
+                  title="Purchases, spend, open invoice and cards (unlink a lost card)"
+                  className="rounded-lg bg-gray-800 px-3 py-2 text-sm font-medium text-gray-200 transition-colors hover:bg-blue-600"
+                >
+                  📊 Dashboard
+                </a>
                 <button
                   onClick={() => setEditingId(editingId === m.id ? null : m.id)}
                   title="Assign roles / discounts"

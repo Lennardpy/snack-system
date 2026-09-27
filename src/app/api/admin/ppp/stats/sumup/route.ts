@@ -1,31 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
-import { fetchSumupRevenueTotal } from "@/lib/sumup";
+import { getActivitySumup } from "@/lib/activity-sumup";
+import { costedActivityIds, resolvePppRange } from "@/lib/ppp-pl";
 
-// Total SumUp card revenue for the dashboard's selected range. Loaded separately
-// from the main stats so the dashboard stays snappy (external call).
+// SumUp card income for the dashboard P/L: summed over the range's borrels that
+// have cost of goods uploaded (the same set the P/L's costs come from). Past
+// borrels come from their saved snapshot; only today's/unsaved ones hit SumUp.
 // GET /api/admin/ppp/stats/sumup?range=7d|30d|90d|365d|all|since_export
 export async function GET(req: NextRequest) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const range = req.nextUrl.searchParams.get("range") ?? "90d";
-  let from: Date | null = null;
-  if (range === "since_export") {
-    const last = await prisma.pppInvoice.findFirst({
-      where: { exportedAt: { not: null } },
-      orderBy: { exportedAt: "desc" },
-      select: { exportedAt: true },
-    });
-    from = last?.exportedAt ?? null;
-  } else if (range !== "all") {
-    const days = parseInt(range.replace("d", ""), 10) || 90;
-    from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const { from } = await resolvePppRange(req.nextUrl.searchParams.get("range") ?? "90d");
+  const ids = await costedActivityIds(from);
+
+  let revenueCents = 0;
+  let saved = 0;
+  let live = 0;
+  let missing = 0;
+  // Sequential: an unsaved borrel fans out into per-transaction SumUp requests.
+  for (const id of ids) {
+    const s = await getActivitySumup(id);
+    if (!s) {
+      missing++;
+      continue;
+    }
+    revenueCents += s.revenueCents;
+    if (s.source === "saved") saved++;
+    else live++;
   }
 
-  const fromISO = (from ?? new Date("2000-01-01T00:00:00Z")).toISOString();
-  const revenueCents = await fetchSumupRevenueTotal(fromISO, new Date().toISOString());
-  if (revenueCents == null) return NextResponse.json({ available: false });
-  return NextResponse.json({ available: true, revenueCents });
+  if (ids.length > 0 && missing === ids.length) return NextResponse.json({ available: false });
+  return NextResponse.json({ available: true, revenueCents, activities: ids.length, saved, live, missing });
 }

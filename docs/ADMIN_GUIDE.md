@@ -25,6 +25,14 @@ All figures count **confirmed and exported** purchases in the chosen period.
 - **Sync from Congressus** — imports/updates all Primary & Secondary members. Run
   this whenever membership changes (new members, status changes). Inactive
   members are flagged and cannot link cards.
+- **📊 Dashboard** (or click the name) — the member's page: total spend split
+  **SSS / PPP**, the **open invoice** (confirmed but not yet exported to
+  Congressus), every past purchase (filter All / SSS / PPP; each marked Open or
+  Exported), their **linked cards with UIDs**, and **🎟️ Edit roles** to add/remove
+  roles (bar drink discounts) — saved immediately.
+- **Lost card → Unlink** — on the member dashboard, **Unlink** removes just that
+  card. It stops working immediately; the member and their history are kept. The
+  member can link a new (or the found) card again via the normal flow.
 - **🛒 Enter store** — opens the kiosk shop **as that member** so you can place an
   order on their behalf (e.g. manual sale). It behaves exactly like a card tap.
 - **Delete** — removes a member and their linked cards. Blocked if the member has

@@ -14,6 +14,7 @@ interface Invoice {
   totalCents: number;
   confirmedAt: string;
   congressusInvoiceId: number | null;
+  memberId: string;
   member: { firstName: string; lastName: string; email: string };
   lines: Line[];
 }
@@ -164,7 +165,9 @@ export default function InvoicesPage() {
             <div key={inv.id} className="rounded-2xl border border-gray-800 bg-gray-900 p-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <p className="font-semibold">{inv.member.firstName} {inv.member.lastName}</p>
+                  <a href={`/admin/members/${inv.memberId}`} className="font-semibold hover:text-blue-400 hover:underline">
+                    {inv.member.firstName} {inv.member.lastName}
+                  </a>
                   <p className="truncate text-sm text-gray-400">{inv.member.email}</p>
                   <p className="mt-1 text-xs text-gray-500">
                     {inv.confirmedAt ? new Date(inv.confirmedAt).toLocaleString() : "—"}

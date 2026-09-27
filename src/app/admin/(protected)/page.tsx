@@ -6,6 +6,7 @@ interface TopProduct { id: string; name: string; quantity: number; revenueCents:
 interface TopSpender { id: string; name: string; spentCents: number; orderCount: number }
 interface RecentPurchase {
   id: string;
+  memberId: string;
   memberName: string;
   at: string;
   totalCents: number;
@@ -172,7 +173,7 @@ export default function DashboardPage() {
                   <span className="w-5 text-right text-sm font-bold text-gray-500">{i + 1}</span>
                   <div className="min-w-0 flex-1">
                     <div className="mb-1 flex justify-between gap-2">
-                      <span className="truncate font-medium">{s.name}</span>
+                      <a href={`/admin/members/${s.id}`} className="truncate font-medium hover:text-blue-400 hover:underline">{s.name}</a>
                       <span className="flex-shrink-0 text-sm text-gray-400">
                         {euro(s.spentCents)} · {s.orderCount} order{s.orderCount === 1 ? "" : "s"}
                       </span>
@@ -201,7 +202,7 @@ export default function DashboardPage() {
                 <li key={p.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
-                      <span className="truncate font-medium">{p.memberName}</span>
+                      <a href={`/admin/members/${p.memberId}`} className="truncate font-medium hover:text-blue-400 hover:underline">{p.memberName}</a>
                       <span className="flex-shrink-0 text-xs text-gray-500">{timeAgo(p.at)}</span>
                     </div>
                     <p className="truncate text-sm text-gray-400">

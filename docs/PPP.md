@@ -197,7 +197,7 @@ Managed under **Admin → PPP → Bartenders**.
 
 | Page | What |
 |------|------|
-| **Dashboard** | A **Profit / loss** block for the range — **income split PPP (member) + SumUp (card)** minus **cost of goods** (summed SBZ usage) = one **net P/L** number (SumUp loads separately). Plus financials (revenue, drinks sold, orders, borrels, drinkers, avg, **Bartender drinks** = association cost of comped bartender-free drinks) + rankings: **top borrels** by revenue, **top drinkers** by drinks, most popular drinks, and **Free drinks by role** — the association's cost of role-based free/discounted drinks split per role (e.g. Board = free drinks at list value, PilsCie = their discount); each line's discount is attributed to the role that granted it. Range selector includes **Since export** — the still-unbilled orders (status CONFIRMED) so you can see the money still to come; the subtitle shows the last export date. (The SSS dashboard has the same **Since export** range.) |
+| **Dashboard** | A **Profit / loss** block for the range covering **only borrels with cost of goods uploaded** (so income and costs describe the same borrels) — **income split PPP (member) + SumUp (card)** minus **cost of goods** (summed SBZ usage) = one **net P/L** number. SumUp loads separately and comes from each borrel's **saved snapshot** (see below); only today's borrels hit the SumUp API. The general Revenue KPI still counts all orders. Plus financials (revenue, drinks sold, orders, borrels, drinkers, avg, **Bartender drinks** = association cost of comped bartender-free drinks) + rankings: **top borrels** by revenue, **top drinkers** by drinks, most popular drinks, and **Free drinks by role** — the association's cost of role-based free/discounted drinks split per role (e.g. Board = free drinks at list value, PilsCie = their discount); each line's discount is attributed to the role that granted it. Range selector includes **Since export** — the still-unbilled orders (status CONFIRMED) so you can see the money still to come; the subtitle shows the last export date. (The SSS dashboard has the same **Since export** range.) |
 | **Drinks** | PPP catalog: categories, create/edit/publish/archive drinks with price, **special price**, VAT, and a 5-colour **tile colour** picker. |
 | **Activities** | List borrels (auto-synced from Alexia + manual), close/reopen, rename, **revenue + cost of goods** (large, per event) + order counts + **discount given** (specials / total), order list (each order shows the **🍺 tapper** — the bartender who rang it up). **Closing** shows the discount totals. Each links to its detail page. |
 | **Activity detail** (`/admin/ppp/activities/[id]`) | Manage the borrel's **drink specials**, and see its full **profit/loss** (see below): revenue, cost of goods, discounts, per-drink. Manage specials as before (also in advance for future borrels). |
@@ -237,6 +237,15 @@ the borrel's `startsAt`/`endsAt` (from Alexia; falls back to the `date` calendar
 and fetches each transaction's detail for its line items, aggregating **per drink**.
 Uses `SUMUP_API_KEY`. Fail-soft — no key or an error shows card revenue as "n/a" and
 the rest of the P/L still renders.
+
+**Saved SumUp snapshot** (`PppActivitySumup`, `src/lib/activity-sumup.ts`): card sales
+for a past borrel don't change, so they're fetched **live on the day** and **saved the
+day after** (once both the borrel's end and the midnight after its start have passed,
++1 h margin — so a borrel running past midnight is saved after it actually ends).
+From then on the detail page and dashboard read the stored figures instead of calling
+SumUp; the hint shows "live" or "saved <date>". **↻ Re-fetch SumUp** on the detail
+page (`GET …/sumup?refresh=1`) re-fetches and overwrites the snapshot, e.g. after a
+late refund.
 
 ## Congressus
 

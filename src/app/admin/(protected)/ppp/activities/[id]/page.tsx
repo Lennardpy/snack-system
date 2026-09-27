@@ -45,7 +45,14 @@ export default function ActivityDetailPage() {
   const [unmatched, setUnmatched] = useState<{ name: string; quantity: number; isKeg: boolean }[]>([]);
   const [sumup, setSumup] = useState<
     | { state: "loading" | "unavailable" }
-    | { state: "ok"; revenueCents: number; count: number; byDrink: { name: string; quantity: number; revenueCents: number }[] }
+    | {
+        state: "ok";
+        revenueCents: number;
+        count: number;
+        byDrink: { name: string; quantity: number; revenueCents: number }[];
+        source: "saved" | "live";
+        fetchedAt: string;
+      }
   >({ state: "loading" });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -83,18 +90,32 @@ export default function ActivityDetailPage() {
     load();
   }, [load]);
 
-  // Card revenue from SumUp, loaded separately (external call).
+  // Card revenue from SumUp, loaded separately. Saved once the borrel's day is
+  // over; `refresh` re-fetches it from SumUp and overwrites the saved figures.
+  const loadSumup = useCallback(
+    (refresh = false) => {
+      setSumup({ state: "loading" });
+      fetch(`/api/admin/ppp/activities/${id}/sumup${refresh ? "?refresh=1" : ""}`)
+        .then((r) => (r.ok ? r.json() : { available: false }))
+        .then((d) =>
+          d.available
+            ? setSumup({
+                state: "ok",
+                revenueCents: d.revenueCents,
+                count: d.count,
+                byDrink: d.byDrink ?? [],
+                source: d.source,
+                fetchedAt: d.fetchedAt,
+              })
+            : setSumup({ state: "unavailable" })
+        )
+        .catch(() => setSumup({ state: "unavailable" }));
+    },
+    [id]
+  );
   useEffect(() => {
-    setSumup({ state: "loading" });
-    fetch(`/api/admin/ppp/activities/${id}/sumup`)
-      .then((r) => (r.ok ? r.json() : { available: false }))
-      .then((d) =>
-        d.available
-          ? setSumup({ state: "ok", revenueCents: d.revenueCents, count: d.count, byDrink: d.byDrink ?? [] })
-          : setSumup({ state: "unavailable" })
-      )
-      .catch(() => setSumup({ state: "unavailable" }));
-  }, [id]);
+    loadSumup();
+  }, [loadSumup]);
 
   // Live cost-of-goods from the usage form inputs (headline = incl. BTW).
   const liveCogsCents = useMemo(() => {
@@ -274,6 +295,14 @@ export default function ActivityDetailPage() {
         <h2 className="mb-1 text-lg font-semibold">Profit / loss</h2>
         <p className="mb-5 text-sm text-gray-500">
           Revenue (member charges + SumUp card) minus the cost of goods you enter below.
+          SumUp is fetched live on the day and saved the day after.{" "}
+          <button
+            onClick={() => loadSumup(true)}
+            disabled={sumup.state === "loading"}
+            className="text-amber-400 hover:text-amber-300 disabled:opacity-40"
+          >
+            ↻ Re-fetch SumUp
+          </button>
         </p>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -285,7 +314,11 @@ export default function ActivityDetailPage() {
             }
             hint={
               sumup.state === "ok"
-                ? `${sumup.count} card payment${sumup.count === 1 ? "" : "s"}`
+                ? `${sumup.count} card payment${sumup.count === 1 ? "" : "s"} · ${
+                    sumup.source === "saved"
+                      ? `saved ${new Date(sumup.fetchedAt).toLocaleDateString()}`
+                      : "live"
+                  }`
                 : sumup.state === "unavailable"
                 ? "SumUp unavailable"
                 : "loading…"

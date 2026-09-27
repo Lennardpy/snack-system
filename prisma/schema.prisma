@@ -258,6 +258,21 @@ model PppActivity {
   invoices  PppInvoice[]
   discounts PppActivityDiscount[]
   usage     PppActivityUsage[]
+  sumup     PppActivitySumup?
+}
+
+// SumUp card revenue for a finished borrel, saved once the day after it ended
+// (past card sales don't change) so it isn't re-fetched from the SumUp API on
+// every page view. While the borrel is today/ongoing it is fetched live instead.
+model PppActivitySumup {
+  id           String   @id @default(cuid())
+  revenueCents Int
+  count        Int // successful card payments
+  byDrink      Json // [{ name, quantity, revenueCents }]
+  fetchedAt    DateTime @default(now())
+
+  activityId String      @unique
+  activity   PppActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
 }
 
 // Manually-entered SBZ stock used at a borrel (kegs in kg, bottles/cans/shots as

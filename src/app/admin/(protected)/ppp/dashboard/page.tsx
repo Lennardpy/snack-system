@@ -17,6 +17,7 @@ interface Stats {
   bartenderCostCents: number;
   bartenderDrinks: number;
   cogsInclCents: number;
+  pl: { activityCount: number; pppIncomeCents: number; cogsInclCents: number };
   roleCosts: { name: string; costCents: number; drinks: number }[];
   topBorrels: Borrel[];
   topDrinkers: Drinker[];
@@ -40,9 +41,9 @@ export default function PppDashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   // SumUp card income for the range — loaded separately (external call).
-  const [sumup, setSumup] = useState<{ state: "loading" | "unavailable" } | { state: "ok"; revenueCents: number }>({
-    state: "loading",
-  });
+  const [sumup, setSumup] = useState<
+    { state: "loading" | "unavailable" } | { state: "ok"; revenueCents: number; live: number; missing: number }
+  >({ state: "loading" });
 
   useEffect(() => {
     setLoading(true);
@@ -53,13 +54,20 @@ export default function PppDashboardPage() {
     setSumup({ state: "loading" });
     fetch(`/api/admin/ppp/stats/sumup?range=${range}`)
       .then((r) => (r.ok ? r.json() : { available: false }))
-      .then((d) => setSumup(d.available ? { state: "ok", revenueCents: d.revenueCents } : { state: "unavailable" }))
+      .then((d) =>
+        setSumup(
+          d.available
+            ? { state: "ok", revenueCents: d.revenueCents, live: d.live ?? 0, missing: d.missing ?? 0 }
+            : { state: "unavailable" }
+        )
+      )
       .catch(() => setSumup({ state: "unavailable" }));
   }, [range]);
 
-  const pppIncomeCents = stats?.revenueCents ?? 0;
+  const plCount = stats?.pl.activityCount ?? 0;
+  const pppIncomeCents = stats?.pl.pppIncomeCents ?? 0;
   const cardIncomeCents = sumup.state === "ok" ? sumup.revenueCents : 0;
-  const cogsCents = stats?.cogsInclCents ?? 0;
+  const cogsCents = stats?.pl.cogsInclCents ?? 0;
   const netPlCents = pppIncomeCents + cardIncomeCents - cogsCents;
 
   const maxBorrel = Math.max(1, ...(stats?.topBorrels.map((b) => b.revenueCents) ?? [1]));
@@ -100,12 +108,23 @@ export default function PppDashboardPage() {
 
       {/* Profit / loss — income (PPP + SumUp) minus cost of goods */}
       <section className="mb-6 rounded-2xl border border-gray-800 bg-gray-900 p-6">
-        <h2 className="mb-4 text-lg font-semibold">Profit / loss</h2>
+        <h2 className="text-lg font-semibold">Profit / loss</h2>
+        <p className="mb-4 text-sm text-gray-500">
+          {stats
+            ? plCount === 0
+              ? "No borrels with cost of goods uploaded in this period — upload usage on a borrel's Details page."
+              : `Only the ${plCount} borrel${plCount === 1 ? "" : "s"} with cost of goods uploaded — member and SumUp income from those borrels vs. their costs.`
+            : "\u00a0"}
+          {sumup.state === "ok" && sumup.missing > 0 && (
+            <span className="text-amber-400"> SumUp unavailable for {sumup.missing} borrel(s).</span>
+          )}
+        </p>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <Kpi label="Income — PPP (member)" value={stats ? euro(pppIncomeCents) : "—"} />
           <Kpi
             label="Income — SumUp (card)"
             value={sumup.state === "ok" ? euro(sumup.revenueCents) : sumup.state === "loading" ? "…" : "n/a"}
+            sub={sumup.state === "ok" && sumup.live > 0 ? `${sumup.live} live (today) · rest saved` : undefined}
           />
           <Kpi label="Cost of goods" value={stats ? `− ${euro(cogsCents)}` : "—"} />
           <Kpi
@@ -163,6 +182,7 @@ export default function PppDashboardPage() {
                   key={d.id}
                   rank={i + 1}
                   name={d.name}
+                  href={`/admin/members/${d.id}`}
                   right={`${d.drinks} drink${d.drinks === 1 ? "" : "s"} · ${euro(d.revenueCents)}`}
                   pct={(d.drinks / maxDrinker) * 100}
                   color="bg-blue-500"
@@ -247,13 +267,33 @@ function Empty() {
   return <p className="text-gray-500">No bar sales in this period.</p>;
 }
 
-function Bar({ rank, name, right, pct, color }: { rank: number; name: string; right: string; pct: number; color: string }) {
+function Bar({
+  rank,
+  name,
+  href,
+  right,
+  pct,
+  color,
+}: {
+  rank: number;
+  name: string;
+  href?: string;
+  right: string;
+  pct: number;
+  color: string;
+}) {
   return (
     <li className="flex items-center gap-3">
       <span className="w-5 text-right text-sm font-bold text-gray-500">{rank}</span>
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex justify-between gap-2">
-          <span className="truncate font-medium">{name}</span>
+          {href ? (
+            <a href={href} className="truncate font-medium hover:text-blue-400 hover:underline">
+              {name}
+            </a>
+          ) : (
+            <span className="truncate font-medium">{name}</span>
+          )}
           <span className="flex-shrink-0 text-sm text-gray-400">{right}</span>
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-gray-800">

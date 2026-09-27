@@ -111,6 +111,16 @@ timestamp (or `null` if nothing has been exported yet). The PPP dashboard's
 ### `GET /api/admin/members`
 All members with their cards, sorted by name.
 
+### `GET /api/admin/members/[id]`
+Member dashboard data: member (roles, cards with UIDs), `sss`/`ppp` totals
+(`spentCents`, `openCents` = confirmed but not yet exported, `orders`) and
+`purchases` — every confirmed/exported SSS + PPP invoice with lines, newest first.
+Page: `/admin/members/[id]` (linked from the Members list).
+
+### `DELETE /api/admin/members/[id]/cards/[cardId]`
+Unlinks one card (e.g. a **lost card**): deletes only that `Card` row. The member,
+invoices and history stay; the UID becomes unregistered and can be linked again.
+
 ### `DELETE /api/admin/members/[id]`
 Deletes a member plus their cards & shop sessions (transaction). `409` if the
 member has any invoices.

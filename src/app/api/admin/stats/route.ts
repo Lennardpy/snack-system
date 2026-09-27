@@ -103,6 +103,7 @@ export async function GET(req: NextRequest) {
     .slice(0, 5)
     .map((inv) => ({
       id: inv.id,
+      memberId: inv.memberId,
       memberName: `${inv.member.firstName} ${inv.member.lastName}`.trim(),
       at: (inv.confirmedAt ?? inv.createdAt).toISOString(),
       totalCents: inv.totalCents,
