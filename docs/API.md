@@ -131,8 +131,14 @@ Opens the kiosk shop **as this member**: replaces their sessions, creates a
 `/shop/<token>`.
 
 ### `POST /api/admin/members/sync`
-Pulls all Primary + Secondary members from Congressus and upserts them.
-Returns `{ created, updated, skipped, total }`.
+Pulls all Primary + Secondary members from Congressus and upserts them, then
+prunes members missing from that list: **deleted** if they have no invoices (and no
+bartender login), otherwise **deactivated** (purchases blocked; history kept).
+Returns `{ created, updated, skipped, total, deleted, deactivated, openInvoices:
+[{ name, openCents }], pruneSkipped }` — `openInvoices` = deactivated members with
+unexported (CONFIRMED) orders; `pruneSkipped` is a message when the safety guard
+(empty list or < half the active members) skipped the clean-up. `502` if the
+Congressus fetch fails (nothing changed).
 
 ### `GET /api/admin/products`
 All products (incl. archived) with categories.

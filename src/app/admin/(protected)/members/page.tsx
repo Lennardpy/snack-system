@@ -71,7 +71,25 @@ export default function MembersPage() {
     setSyncResult(null);
     const res = await fetch("/api/admin/members/sync", { method: "POST" });
     const data = await res.json();
-    setSyncResult(`Sync complete: ${data.created} created, ${data.updated} updated (${data.total} total)`);
+    if (!res.ok) {
+      setSyncResult(`Sync failed: ${data.error ?? res.status}`);
+      setSyncing(false);
+      return;
+    }
+    const parts = [
+      `Sync complete: ${data.created} created, ${data.updated} updated (${data.total} in Congressus).`,
+      data.pruneSkipped
+        ? data.pruneSkipped
+        : `No longer in Congressus: ${data.deleted} removed, ${data.deactivated} deactivated (kept for their purchase history).`,
+    ];
+    if (data.openInvoices?.length) {
+      parts.push(
+        `Still to invoice: ${data.openInvoices
+          .map((o: { name: string; openCents: number }) => `${o.name} €${(o.openCents / 100).toFixed(2)}`)
+          .join(", ")}.`
+      );
+    }
+    setSyncResult(parts.join(" "));
     setSyncing(false);
     load();
   }
