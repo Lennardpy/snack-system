@@ -11,7 +11,7 @@ linked at the snack kiosk works at the bar with no re-registration), the same
 session/auth model, the same Congressus client, and the same card-reader hook.
 
 ```
-  Member card ──tap──▶ Bar POS ──confirm──▶ PppInvoice ──monthly──▶ Congressus ("PPP <month>")
+  Member card ──tap──▶ Bar POS ──confirm──▶ PppInvoice ──monthly──▶ Congressus ("SSS & PPP <month>")
 ```
 
 ## Surfaces
@@ -251,7 +251,7 @@ lists** (`SbzPriceList` + `SbzPrice`), managed on **Admin → PPP → SBZ prices
 | **SBZ prices** | The cost prices paid to SBZ, as versioned price lists — view, edit, upload the SBZ PDF; each list applies from its date onward. See [SBZ prices](#sbz-prices-cost-of-goods). |
 | **Member roles** | Create/edit roles with a `%` and/or `€` discount. Highest wins. |
 | **Bartenders** | Invite by email, set-password link, link to a member for card login, delete. |
-| **Invoices** | PPP orders grouped by borrel; status filter; **Export PPP to Congressus**; delete/clear test data. **Edit** a pending (not yet exported) order: change quantities, remove lines (removing all deletes the order), and **Remove discount** on a line — it's then charged at the drink's normal list price (drops the borrel special, role discount such as PilsCie/Board, or bartender free drink) and counts as undiscounted in all reports. Each discounted line shows why it was discounted. `PATCH /api/admin/ppp/invoices/[id]` `{ lines: [{ id, quantity?, removeDiscount? }] }`; exported orders return `409`. |
+| **Invoices** | PPP orders grouped by borrel; status filter; **Export SSS + PPP to Congressus** (one combined invoice per member per month — same action as on the SSS page); delete/clear test data. **Edit** a pending (not yet exported) order: change quantities, remove lines (removing all deletes the order), and **Remove discount** on a line — it's then charged at the drink's normal list price (drops the borrel special, role discount such as PilsCie/Board, or bartender free drink) and counts as undiscounted in all reports. Each discounted line shows why it was discounted. `PATCH /api/admin/ppp/invoices/[id]` `{ lines: [{ id, quantity?, removeDiscount? }] }`; exported orders return `409`. |
 
 Member **role assignment** is on the existing **Admin → Members** page (role chips
 + a toggle picker per member).
@@ -307,12 +307,15 @@ PPP drinks live in their own Congressus folder, separate from SSS snacks. See
   `vat_percentage`, …) returns HTTP 500 server-side, so PPP products sync **without
   VAT** (like SSS products, which are all unset). VAT is kept locally on
   `PppProduct.vatCategory`; set it in the Congressus UI if needed.
-- **Two-invoice export** — `POST /api/admin/invoices/export { scope }` (`sss` |
-  `ppp` | `all`) creates **separate** Congressus invoices per member per month: an
-  `"SSS <month>"` invoice and a `"PPP <month>"` invoice. PPP line descriptions
-  include the activity name (`"Pils – Borrel 28 jun"`); same product at different
-  activities/prices stays on separate lines. Both reuse `createSaleInvoice()` and
-  the Mendix fallback for lines without an offer id.
+- **One combined invoice** — `POST /api/admin/invoices/export` (from either
+  invoices page, "Export SSS + PPP to Congressus") groups ALL `CONFIRMED` SSS and
+  PPP orders by member × month and creates **one** Congressus sale-invoice per group,
+  reference `"SSS & PPP <month>"`, holding both the snack lines and the drink lines —
+  so a member gets one invoice and one direct debit. PPP line descriptions include
+  the activity name (`"Pils – Borrel 28 jun"`); the same product at different
+  activities/prices stays on separate lines. Every line keeps its own offer id;
+  lines without one use the Mendix fallback. Source rows (both tables) are marked
+  `EXPORTED` with the same Congressus invoice id.
 
 ## Alexia integration (scheduled borrels)
 

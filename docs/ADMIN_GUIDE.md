@@ -93,9 +93,15 @@ Two tabs: **Pending export** (confirmed, awaiting billing) and **Exported**
   to remove it; the total recalculates live. Use this when a member was charged
   for something by mistake or that wasn't actually in stock. **Save changes**.
 - **Delete invoice** (pending only) — remove a whole invoice.
-- **Export to Congressus** — bills all pending invoices. They are grouped into
-  **one Congressus invoice per member per month** and then move to the Exported
-  tab. Run this once per billing cycle (e.g. monthly).
+- **Export SSS + PPP to Congressus** (same button on the SSS and PPP invoices
+  pages) — bills ALL pending snack and drink orders together: **one Congressus
+  invoice per member per month** ("SSS & PPP <month>") with both their snacks and
+  drinks, so each member gets one invoice and one direct debit. The orders then
+  move to the Exported tab. Run this once per billing cycle (e.g. monthly).
+- **⚠️ needs a check** — if Congressus didn't clearly answer (e.g. a timeout), the
+  affected orders are locked and listed in a warning at the top. Check in Congressus
+  whether that member has the invoice, then click **It's in Congressus → mark
+  exported** or **Not in Congressus → back to pending**.
 - **Clear all … (test data)** — bulk-deletes every invoice in the current tab,
   with a double confirmation. Use this to wipe test data so the dashboard counts
   fresh. **Irreversible.**
@@ -107,7 +113,7 @@ Two tabs: **Pending export** (confirmed, awaiting billing) and **Exported**
 
 1. **Members → Sync from Congressus** (catch new/changed members).
 2. Check the **Dashboard** for the month.
-3. **Invoices → Export to Congressus** to bill the month's purchases.
+3. **Invoices → Export SSS + PPP to Congressus** to bill the month's snacks and drinks.
 4. Verify the new invoices in Congressus.
 
 ## Member-facing flows (what members experience)

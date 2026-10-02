@@ -1,5 +1,6 @@
 "use client";
 
+import { EXPORT_CONFIRM, exportResultMessage } from "@/lib/export-message";
 import NeedsCheck from "../NeedsCheck";
 import { useEffect, useState } from "react";
 
@@ -41,28 +42,16 @@ export default function InvoicesPage() {
   useEffect(load, [filter]);
 
   async function runExport() {
+    if (!confirm(EXPORT_CONFIRM)) return;
     setExporting(true);
     setResult(null);
-    const res = await fetch("/api/admin/invoices/export", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scope: "sss" }),
-    });
-    const data = await res.json();
-    const errorDetail = data.errors?.length ? `\nErrors:\n${data.errors.join("\n")}` : "";
-    setResult(
-      `Created ${data.sss?.congressusInvoices ?? data.congressusInvoices ?? 0} SSS Congressus invoice(s) covering ${data.sss?.exported ?? data.exported} purchase(s).` +
-      (data.sss?.failed ? ` ${data.sss.failed} failed.${errorDetail}` : "")
-    );
-    if (data.needsCheck) {
-      setResult(
-        (r) => `${r}\n⚠️ ${data.needsCheck} order(s) need a check in Congressus — see the warning above.`
-      );
-    }
+    const res = await fetch("/api/admin/invoices/export", { method: "POST" });
+    setResult(exportResultMessage(await res.json().catch(() => ({ error: `HTTP ${res.status}` }))));
     setExporting(false);
     setCheckKey((k) => k + 1);
     load();
   }
+
 
   function startEdit(inv: Invoice) {
     setEditId(inv.id);
@@ -135,7 +124,7 @@ export default function InvoicesPage() {
           disabled={exporting}
           className="rounded-xl bg-green-600 px-5 py-2.5 font-semibold transition-colors hover:bg-green-500 disabled:opacity-40"
         >
-          {exporting ? "Exporting…" : "Export SSS to Congressus"}
+          {exporting ? "Exporting…" : "Export SSS + PPP to Congressus"}
         </button>
       </div>
 
@@ -145,7 +134,7 @@ export default function InvoicesPage() {
         </pre>
       )}
 
-      <NeedsCheck system="sss" refreshKey={checkKey} onResolved={load} />
+      <NeedsCheck refreshKey={checkKey} onResolved={load} />
 
       <div className="mb-6 flex items-center gap-2">
         {(["CONFIRMED", "EXPORTED"] as const).map((s) => (

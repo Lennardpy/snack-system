@@ -105,9 +105,10 @@ Reader → kiosk page → POST /api/card/scan → 404 "Card not registered"
 ### 3. Monthly invoice export
 ```
 Each Confirm creates/updates a CONFIRMED SaleInvoice with its lines.
-Admin → Invoices → Export to Congressus:
-  group CONFIRMED invoices by member × calendar month
-  → one Congressus sale-invoice per group (workflow 605, direct debit)
+Admin → Invoices → Export SSS + PPP to Congressus:
+  claim all CONFIRMED SSS + PPP orders (→ EXPORTING), group by member × month
+  → one Congressus sale-invoice per group, snacks + drinks together
+    ("SSS & PPP <month>", workflow 605, direct debit)
   → line items use each product's Congressus offer ID; products without one
     fall back to the "SSS purchases Mendix" product at €0.01 × total cents
   → mark the local invoices EXPORTED with the Congressus invoice id

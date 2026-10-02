@@ -177,18 +177,20 @@ is already `EXPORTED`.
 Deletes the invoice and its lines. `409` if already `EXPORTED`.
 
 ### `POST /api/admin/invoices/export`
-Atomically claims all `CONFIRMED` invoices of the scope (`CONFIRMED → EXPORTING`,
+Atomically claims all `CONFIRMED` SSS **and** PPP orders (`CONFIRMED → EXPORTING`,
 tagged with this run's id — a concurrent run gets none), groups them by member ×
-calendar month and creates one Congressus sale-invoice per group, then marks them
-`EXPORTED`. A Congressus 4xx returns that group to `CONFIRMED`; an unknown outcome
+calendar month and creates **one** Congressus sale-invoice per group with both the
+snack and drink lines (`"SSS & PPP <month>"`), then marks them `EXPORTED`. A
+Congressus 4xx returns that group to `CONFIRMED`; an unknown outcome
 (timeout/5xx/network/DB failure after success) leaves it `EXPORTING` and counts it
-in `needsCheck`.
+in `needsCheck`. No body.
 ```json
-{ "ok": true, "exported": 12, "congressusInvoices": 3, "failed": 0, "needsCheck": 0, "errors": [] }
+{ "ok": true, "exported": 18, "sssOrders": 6, "pppOrders": 12, "congressusInvoices": 5, "failed": 0, "needsCheck": 0, "errors": [] }
 ```
 
 ### `POST /api/admin/invoices/reconcile`
 Resolve orders stuck in `EXPORTING` after checking Congressus.
-Body `{ system: "sss"|"ppp", ids: [...], action: "exported"|"pending", congressusInvoiceId? }`.
+Body `{ sssIds: [...], pppIds: [...], action: "exported"|"pending", congressusInvoiceId? }` —
+a combined invoice's SSS and PPP orders are resolved together.
 Only claims older than 10 minutes; `409` otherwise. The invoice lists accept
 `?status=EXPORTING` to list them.

@@ -10,8 +10,9 @@ and monthly sale-invoices (out). Client code lives in `src/lib/congressus.ts`.
 - **Invoice workflow id:** `605` (Contribution)
 
 > The bar subsystem (PPP) reuses this same client. See [PPP.md](PPP.md). PPP
-> products live in folder **`8804`** (`webshop/ppp`), and the export produces a
-> **separate** Congressus invoice (`"PPP <month>"`) — see below.
+> products live in folder **`8804`** (`webshop/ppp`). The export puts a member's
+> snacks AND drinks of a month on **one** Congressus invoice (`"SSS & PPP <month>"`)
+> — see below.
 
 ## Members (Congressus → SSS)
 
@@ -49,11 +50,13 @@ name/price via `POST /api/admin/sync-product-offers`.
 
 ## Sale invoices (SSS → Congressus)
 
-`Invoices → Export to Congressus`:
-1. Group all `CONFIRMED` invoices by **member × calendar month**.
+`Invoices → Export SSS + PPP to Congressus` (same action on both invoices pages):
+1. Claim and group all `CONFIRMED` SSS **and** PPP orders by **member × calendar
+   month** (see SECURITY.md for the duplicate-proof claim).
 2. For each group, create one Congressus sale-invoice via `POST /sale-invoices`:
    - `invoice_workflow_id: 605`, `use_direct_debit: true`
-   - `invoice_reference: "SSS <month> <year>"` (Dutch locale, e.g. "SSS juni 2026")
+   - `invoice_reference: "SSS & PPP <month> <year>"` (Dutch locale, e.g.
+     "SSS & PPP juni 2026") — snack and drink lines on the same invoice
    - **`items[]` built from the grouped lines** — one line per product using its
      offer id; any product without an offer id is rolled into a single fallback
      line using the **"SSS purchases Mendix"** product
@@ -90,12 +93,15 @@ The bar subsystem syncs the same way, into its own folder.
   no 0 %.)
 - **Product update endpoint** is `PUT /v30/products/{id}` (and `DELETE`); `PATCH`
   returns 404. `{id}` is the **offer id** (object `id`), not the product entity id.
-- **Two separate invoices** — `POST /api/admin/invoices/export { scope }`
-  (`sss`|`ppp`|`all`) groups `CONFIRMED` invoices by member × month and creates one
-  Congressus sale-invoice per group **per system**: `"SSS <month>"` from
-  `SaleInvoice`, `"PPP <month>"` from `PppInvoice`. PPP line descriptions append the
-  activity name (`"Pils – Borrel 28 jun"`). Both reuse `createSaleInvoice()` and the
-  Mendix fallback. Source rows are marked `EXPORTED` with the returned id.
+- **One combined invoice** — `POST /api/admin/invoices/export` (from either
+  invoices page, "Export SSS + PPP to Congressus") groups ALL `CONFIRMED` SSS and
+  PPP orders by member × month and creates **one** Congressus sale-invoice per group,
+  reference `"SSS & PPP <month>"`, holding both the snack lines and the drink lines —
+  so a member gets one invoice and one direct debit. PPP line descriptions include
+  the activity name (`"Pils – Borrel 28 jun"`); the same product at different
+  activities/prices stays on separate lines. Every line keeps its own offer id;
+  lines without one use the Mendix fallback. Source rows (both tables) are marked
+  `EXPORTED` with the same Congressus invoice id.
 
 ## Quick reference of quirks
 

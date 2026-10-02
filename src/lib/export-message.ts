@@ -1,0 +1,25 @@
+// Shared confirm + result text for the combined SSS + PPP export (both invoices
+// pages trigger the same export: one Congressus invoice per member per month).
+
+export const EXPORT_CONFIRM =
+  "Export ALL pending orders — snacks (SSS) and drinks (PPP) together — to Congressus?\n\n" +
+  'Each member gets ONE invoice per month ("SSS & PPP <month>") with both their snacks and drinks.';
+
+export function exportResultMessage(data: {
+  congressusInvoices?: number;
+  sssOrders?: number;
+  pppOrders?: number;
+  failed?: number;
+  needsCheck?: number;
+  errors?: string[];
+  error?: string;
+}): string {
+  if (data.error) return `Export failed: ${data.error}`;
+  let msg =
+    `Created ${data.congressusInvoices ?? 0} Congressus invoice(s) covering ` +
+    `${data.sssOrders ?? 0} snack and ${data.pppOrders ?? 0} drink order(s).`;
+  if (data.failed) msg += ` ${data.failed} failed.`;
+  if (data.errors?.length) msg += `\nErrors:\n${data.errors.join("\n")}`;
+  if (data.needsCheck) msg += `\n⚠️ ${data.needsCheck} order(s) need a check in Congressus — see the warning above.`;
+  return msg;
+}

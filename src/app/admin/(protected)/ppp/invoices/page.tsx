@@ -1,5 +1,6 @@
 "use client";
 
+import { EXPORT_CONFIRM, exportResultMessage } from "@/lib/export-message";
 import NeedsCheck from "../../NeedsCheck";
 import { useEffect, useMemo, useState } from "react";
 
@@ -62,28 +63,16 @@ export default function PppInvoicesPage() {
   useEffect(load, [filter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function runExport() {
+    if (!confirm(EXPORT_CONFIRM)) return;
     setExporting(true);
     setResult(null);
-    const res = await fetch("/api/admin/invoices/export", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scope: "ppp" }),
-    });
-    const data = await res.json();
-    const errorDetail = data.errors?.length ? `\nErrors:\n${data.errors.join("\n")}` : "";
-    setResult(
-      `Created ${data.ppp?.congressusInvoices ?? 0} PPP Congressus invoice(s) covering ${data.ppp?.exported ?? 0} order(s).` +
-        (data.ppp?.failed ? ` ${data.ppp.failed} failed.${errorDetail}` : "")
-    );
-    if (data.needsCheck) {
-      setResult(
-        (r) => `${r}\n⚠️ ${data.needsCheck} order(s) need a check in Congressus — see the warning above.`
-      );
-    }
+    const res = await fetch("/api/admin/invoices/export", { method: "POST" });
+    setResult(exportResultMessage(await res.json().catch(() => ({ error: `HTTP ${res.status}` }))));
     setExporting(false);
     setCheckKey((k) => k + 1);
     load();
   }
+
 
   async function deleteInvoice(inv: Invoice) {
     if (!confirm(`Delete this order for ${inv.member.firstName} ${inv.member.lastName} (${euro(inv.totalCents)})?`)) return;
@@ -169,7 +158,7 @@ export default function PppInvoicesPage() {
           disabled={exporting}
           className="rounded-xl bg-green-600 px-5 py-2.5 font-semibold transition-colors hover:bg-green-500 disabled:opacity-40"
         >
-          {exporting ? "Exporting…" : "Export PPP to Congressus"}
+          {exporting ? "Exporting…" : "Export SSS + PPP to Congressus"}
         </button>
       </div>
 
@@ -179,7 +168,7 @@ export default function PppInvoicesPage() {
         </pre>
       )}
 
-      <NeedsCheck system="ppp" refreshKey={checkKey} onResolved={load} />
+      <NeedsCheck refreshKey={checkKey} onResolved={load} />
 
       <div className="mb-6 flex items-center gap-2">
         {(["CONFIRMED", "EXPORTED"] as const).map((s) => (

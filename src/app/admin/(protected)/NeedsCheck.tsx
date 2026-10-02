@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 
 // Orders left in EXPORTING after an export whose outcome was unknown (timeout,
-// Congressus error, crash). Shown as a warning on the invoices pages so the admin
+// Congressus error, crash). Shown as a warning on both invoices pages so the admin
 // checks Congressus and resolves them — never exported twice, never forgotten.
+// One Congressus invoice holds a member-month's SSS and PPP orders, so a group
+// spans both and is resolved as a whole.
 
 interface StuckInvoice {
   id: string;
@@ -18,7 +20,7 @@ interface StuckInvoice {
 interface Group {
   key: string;
   name: string;
-  ids: string[];
+  ids: { sss: string[]; ppp: string[] };
   totalCents: number;
   claimedAt: Date | null;
 }
@@ -27,39 +29,42 @@ const euro = (c: number) => `€${(c / 100).toFixed(2)}`;
 const MIN_CLAIM_AGE_MS = 10 * 60 * 1000;
 
 export default function NeedsCheck({
-  system,
   refreshKey,
   onResolved,
 }: {
-  system: "sss" | "ppp";
   refreshKey: number;
   onResolved: () => void;
 }) {
   const [groups, setGroups] = useState<Group[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
-  const base = system === "ppp" ? "/api/admin/ppp/invoices" : "/api/admin/invoices";
 
   const load = useCallback(async () => {
-    const res = await fetch(`${base}?status=EXPORTING`);
-    if (!res.ok) return;
-    const invoices: StuckInvoice[] = (await res.json()).invoices ?? [];
+    const [sssRes, pppRes] = await Promise.all([
+      fetch("/api/admin/invoices?status=EXPORTING"),
+      fetch("/api/admin/ppp/invoices?status=EXPORTING"),
+    ]);
+    if (!sssRes.ok || !pppRes.ok) return;
+    const stuck: { system: "sss" | "ppp"; inv: StuckInvoice }[] = [
+      ...((await sssRes.json()).invoices ?? []).map((inv: StuckInvoice) => ({ system: "sss" as const, inv })),
+      ...((await pppRes.json()).invoices ?? []).map((inv: StuckInvoice) => ({ system: "ppp" as const, inv })),
+    ];
     // One group per export run × member = one (possible) Congressus invoice.
     const m = new Map<string, Group>();
-    for (const inv of invoices) {
+    for (const { system, inv } of stuck) {
       const key = `${inv.exportClaim}-${inv.memberId}`;
       const g = m.get(key) ?? {
         key,
         name: `${inv.member.firstName} ${inv.member.lastName}`,
-        ids: [],
+        ids: { sss: [], ppp: [] },
         totalCents: 0,
         claimedAt: inv.exportClaimedAt ? new Date(inv.exportClaimedAt) : null,
       };
-      g.ids.push(inv.id);
+      g.ids[system].push(inv.id);
       g.totalCents += inv.totalCents;
       m.set(key, g);
     }
     setGroups([...m.values()]);
-  }, [base]);
+  }, []);
   useEffect(() => {
     load();
   }, [load, refreshKey]);
@@ -83,7 +88,12 @@ export default function NeedsCheck({
     const res = await fetch("/api/admin/invoices/reconcile", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ system, ids: g.ids, action, congressusInvoiceId: congressusInvoiceId || undefined }),
+      body: JSON.stringify({
+        sssIds: g.ids.sss,
+        pppIds: g.ids.ppp,
+        action,
+        congressusInvoiceId: congressusInvoiceId || undefined,
+      }),
     });
     const d = await res.json().catch(() => ({}));
     setBusy(null);
@@ -93,7 +103,6 @@ export default function NeedsCheck({
   }
 
   if (groups.length === 0) return null;
-  const prefix = system === "ppp" ? "PPP" : "SSS";
 
   return (
     <section className="mb-6 rounded-2xl border border-amber-600/60 bg-amber-900/15 p-4">
@@ -102,7 +111,7 @@ export default function NeedsCheck({
       </h2>
       <p className="mb-3 text-sm text-amber-100/70">
         The outcome of these Congressus invoices is unknown (e.g. a timeout). In Congressus, check whether the member
-        has a &ldquo;{prefix} &lt;month&gt;&rdquo; invoice from that moment, then resolve it here. They&apos;re locked
+        has a &ldquo;SSS &amp; PPP &lt;month&gt;&rdquo; invoice from that moment, then resolve it here. They&apos;re locked
         until then, so they can never be billed twice.
       </p>
       <ul className="space-y-2">
@@ -114,7 +123,13 @@ export default function NeedsCheck({
               <span className="min-w-0 flex-1">
                 <span className="font-medium">{g.name}</span>
                 <span className="ml-2 text-sm text-gray-400">
-                  {g.ids.length} order{g.ids.length === 1 ? "" : "s"} · {euro(g.totalCents)}
+                  {[
+                    g.ids.sss.length && `${g.ids.sss.length} snack order${g.ids.sss.length === 1 ? "" : "s"}`,
+                    g.ids.ppp.length && `${g.ids.ppp.length} drink order${g.ids.ppp.length === 1 ? "" : "s"}`,
+                  ]
+                    .filter(Boolean)
+                    .join(" + ")}{" "}
+                  · {euro(g.totalCents)}
                   {g.claimedAt && ` · export started ${g.claimedAt.toLocaleString()}`}
                 </span>
               </span>
