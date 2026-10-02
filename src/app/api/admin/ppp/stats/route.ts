@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { attributeRoleDiscount } from "@/lib/roles";
 import { sbzCostInclCents } from "@/lib/sbz";
+import { loadSbzLists, sbzCatalogAt } from "@/lib/sbz-db";
 import { costedActivityIds, resolvePppRange } from "@/lib/ppp-pl";
 
 // GET /api/admin/ppp/stats?range=7d|30d|90d|365d|all|since_export
@@ -113,18 +114,22 @@ export async function GET(req: NextRequest) {
   // Profit/loss covers only borrels in the range with cost of goods uploaded, so
   // income and costs describe the same borrels. Member income = all their orders.
   const plIds = await costedActivityIds(resolved.from);
-  const [usage, plIncome] = await Promise.all([
+  const [usage, plIncome, sbzLists] = await Promise.all([
     prisma.pppActivityUsage.findMany({
       where: { activityId: { in: plIds } },
-      select: { sbzKey: true, quantity: true },
+      select: { sbzKey: true, quantity: true, activity: { select: { date: true } } },
     }),
     prisma.pppInvoice.aggregate({
       where: { activityId: { in: plIds }, status: { in: ["CONFIRMED", "EXPORTED"] } },
       _sum: { totalCents: true },
     }),
+    loadSbzLists(),
   ]);
+  // Each borrel's usage is priced with the SBZ list valid on its date.
   let cogsInclCents = 0;
-  for (const u of usage) cogsInclCents += sbzCostInclCents(u.sbzKey, u.quantity);
+  for (const u of usage) {
+    cogsInclCents += sbzCostInclCents(sbzCatalogAt(sbzLists, u.activity.date), u.sbzKey, u.quantity);
+  }
 
   const topBorrels = [...borrelMap.entries()]
     .map(([id, v]) => ({ id, ...v }))

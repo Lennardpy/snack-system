@@ -11,7 +11,7 @@
 // unit-aware (kegs → LITER items). Unmatched lines are returned for the admin to
 // map by hand. Nothing here is authoritative — the admin reviews before saving.
 
-import { SBZ_PRODUCTS } from "./sbz";
+import type { SbzProduct } from "./sbz";
 
 export interface ParsedUsageLine {
   name: string;
@@ -64,12 +64,13 @@ const RULES: Record<string, { groups: string[][]; not?: string[] }> = {
 };
 
 // Best SBZ key for an Alexia product name, or null if no confident match.
-// `isKeg` restricts to the matching unit (kegs are LITER items).
-export function matchSbz(name: string, isKeg: boolean): string | null {
+// `isKeg` restricts to the matching unit (kegs are LITER items). `items` = the SBZ
+// price list valid for the borrel.
+export function matchSbz(name: string, isKeg: boolean, items: SbzProduct[]): string | null {
   const hay = norm(name);
   const wantUnit = isKeg ? "LITER" : "UNIT";
   let best: { key: string; score: number } | null = null;
-  for (const p of SBZ_PRODUCTS) {
+  for (const p of items) {
     if (p.unit !== wantUnit) continue;
     const rule = RULES[p.key];
     if (!rule) continue;
@@ -154,12 +155,12 @@ export function parseVerbruik(text: string): ParsedUsageLine[] {
 }
 
 // Parse + match in one go.
-export function extractUsage(text: string): MatchedUsage {
+export function extractUsage(text: string, items: SbzProduct[]): MatchedUsage {
   const lines = parseVerbruik(text);
   const matched: MatchedUsage["matched"] = [];
   const unmatched: ParsedUsageLine[] = [];
   for (const l of lines) {
-    const key = matchSbz(l.name, l.isKeg);
+    const key = matchSbz(l.name, l.isKeg, items);
     if (key) matched.push({ sbzKey: key, quantity: l.quantity, name: l.name });
     else unmatched.push(l);
   }

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { sumLineDiscounts, attributeRoleDiscount } from "@/lib/roles";
-import { SBZ_BY_KEY, sbzCostInclCents, sbzCostExclCents } from "@/lib/sbz";
+import { sbzCostInclCents, sbzCostExclCents, type SbzProduct } from "@/lib/sbz";
+import { loadSbzLists, sbzCatalogAt, sbzListAt } from "@/lib/sbz-db";
 import { alexiaMatchKey } from "@/lib/alexia";
 
 // Activity detail + full profit/loss for the admin page:
@@ -16,7 +17,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const [activity, products, invoices, usage] = await Promise.all([
+  const [activity, products, invoices, usage, sbzLists] = await Promise.all([
     prisma.pppActivity.findUnique({
       where: { id },
       include: {
@@ -49,6 +50,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       },
     }),
     prisma.pppActivityUsage.findMany({ where: { activityId: id }, select: { sbzKey: true, quantity: true } }),
+    loadSbzLists(),
   ]);
 
   if (!activity) return NextResponse.json({ error: "Activity not found" }, { status: 404 });
@@ -103,13 +105,21 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     .sort((a, b) => b.costCents - a.costCents);
   const perDrink = [...drinkMap.values()].sort((a, b) => b.quantity - a.quantity);
 
-  // Cost of goods from the entered SBZ usage.
+  // Cost of goods from the entered SBZ usage, priced with the SBZ list valid on
+  // this borrel's date (later price lists don't change it).
+  const sbzList = sbzListAt(sbzLists, activity.date);
+  const catalog = sbzCatalogAt(sbzLists, activity.date);
   let cogsInclCents = 0;
   let cogsExclCents = 0;
   for (const u of usage) {
-    if (!SBZ_BY_KEY[u.sbzKey]) continue;
-    cogsInclCents += sbzCostInclCents(u.sbzKey, u.quantity);
-    cogsExclCents += sbzCostExclCents(u.sbzKey, u.quantity);
+    cogsInclCents += sbzCostInclCents(catalog, u.sbzKey, u.quantity);
+    cogsExclCents += sbzCostExclCents(catalog, u.sbzKey, u.quantity);
+  }
+  // Items for the usage form: that list, plus any item with usage entered that a
+  // later edit dropped from it (priced at its last known price).
+  const sbzItems: SbzProduct[] = [...(sbzList?.items ?? [])];
+  for (const u of usage) {
+    if (!sbzItems.some((p) => p.key === u.sbzKey) && catalog[u.sbzKey]) sbzItems.push(catalog[u.sbzKey]);
   }
 
   return NextResponse.json({
@@ -126,6 +136,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     usage,
     cogsInclCents,
     cogsExclCents,
+    sbz: {
+      label: sbzList?.label ?? null,
+      validFrom: sbzList?.validFrom.toISOString() ?? null,
+      items: sbzItems,
+    },
   });
 }
 
@@ -136,14 +151,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const activity = await prisma.pppActivity.findUnique({ where: { id }, select: { id: true } });
+  const activity = await prisma.pppActivity.findUnique({ where: { id }, select: { id: true, date: true } });
   if (!activity) return NextResponse.json({ error: "Activity not found" }, { status: 404 });
+  const catalog = sbzCatalogAt(await loadSbzLists(), activity.date);
 
   const body = await req.json();
   const entries: { sbzKey: string; quantity: number }[] = Array.isArray(body.usage) ? body.usage : [];
 
   const clean = entries
-    .filter((e) => typeof e?.sbzKey === "string" && SBZ_BY_KEY[e.sbzKey])
+    .filter((e) => typeof e?.sbzKey === "string" && catalog[e.sbzKey])
     .map((e) => ({ sbzKey: e.sbzKey, quantity: Math.max(0, Number(e.quantity) || 0) }));
 
   await prisma.$transaction([

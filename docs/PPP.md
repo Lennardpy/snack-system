@@ -204,6 +204,35 @@ Managed under **Admin → PPP → Bartenders**.
   card UID isn't a secret, so this is limited to staff-linked cards and
   rate-limited (it's a convenience, weaker than the password).
 
+## SBZ prices (cost of goods)
+
+What the association pays SBZ per drink lives in the database as **versioned price
+lists** (`SbzPriceList` + `SbzPrice`), managed on **Admin → PPP → SBZ prices**
+(`/admin/ppp/sbz`):
+
+- Each list is **valid from a date** until the next list starts. A borrel's cost of
+  goods always uses the list valid on the **borrel's date** — so a new price list
+  never changes the cost of earlier borrels. The base list ("SBZ price list (April
+  2026)", seeded by the migration from the old hard-coded catalog) covers everything
+  before the first newer list and can't be deleted.
+- **Upload price list PDF** — the SBZ PDF (e.g. "SBZ price list effective 01/10/2026
+  (V2)") is parsed in memory (`src/lib/sbz-pdf.ts`, file not stored): each row's
+  **New** excl./incl. price is matched to an existing item by name (unit-aware; the
+  row's **Old** price is used as a tie-breaker), the **valid-from date** is read from
+  the "effective dd/mm/yyyy" header. A review screen shows every item as *price
+  changed* (old → new), *same price*, *new item*, or *not in PDF — kept*; adjust if
+  needed, then save.
+- **Edit prices** — edit any price/VAT/name, add or remove items, and save as a list
+  valid from a chosen date (default today). Saving on a date that already has a list
+  **replaces** that list (to correct a mistake); otherwise a new version is added.
+- Older versions can be viewed and (except the base) deleted — borrels they covered
+  fall back to the previous list.
+- Item **keys** stay the same across versions (usage is stored against them). If an
+  item is dropped from a later list, borrels with usage of it keep its last known
+  price. Kegs are per **liter** (usage entered in kg ≈ liters), the rest per **unit**.
+- The usage form and the Alexia usage-PDF import on a borrel's page use the list
+  valid on that borrel's date; the page names which list applies.
+
 ## Admin pages (`/admin/ppp/*`)
 
 | Page | What |
@@ -213,6 +242,7 @@ Managed under **Admin → PPP → Bartenders**.
 | **Activities** | List borrels (auto-synced from Alexia + manual), close/reopen, rename, **total revenue (PPP member orders + SumUp card)** with the split underneath, **cost of goods**, and a **green ▲ profit / red ▼ loss** badge when costs are uploaded (large, per event). SumUp comes from each borrel's saved snapshot; past borrels not saved yet are fetched once in the background (which saves them) + order counts + **discount given** (specials / total), order list (each order shows the **🍺 tapper** — the bartender who rang it up). **Closing** shows the discount totals. Each links to its detail page. |
 | **Delete activity** | On the Activities list, **Delete** removes an activity that has **no PPP orders** — e.g. an external activity or a free drink synced from Alexia. It's disabled (and the API returns `409`) once an activity has orders. Its specials, usage and saved SumUp go with it. Because Alexia events have no id (matched by name + day), the deleted event's key is stored in `PppDismissedEvent` so the **Alexia sync never re-imports it**. |
 | **Activity detail** (`/admin/ppp/activities/[id]`) | Manage the borrel's **drink specials**, and see its full **profit/loss** (see below): revenue, cost of goods, discounts, per-drink. Manage specials as before (also in advance for future borrels). |
+| **SBZ prices** | The cost prices paid to SBZ, as versioned price lists — view, edit, upload the SBZ PDF; each list applies from its date onward. See [SBZ prices](#sbz-prices-cost-of-goods). |
 | **Member roles** | Create/edit roles with a `%` and/or `€` discount. Highest wins. |
 | **Bartenders** | Invite by email, set-password link, link to a member for card login, delete. |
 | **Invoices** | PPP orders grouped by borrel; status filter; **Export PPP to Congressus**; delete/clear test data. |
@@ -230,8 +260,8 @@ The activity detail page shows a full **profit/loss** for a borrel:
   drink** and merged with member charges. (Card payments made before SumUp's product
   catalog was set up have no drink name and show as "Card (unlabelled)".)
 - **Cost of goods** = the **SBZ usage**: **kegs in kg** (≈ liters), **bottles/cans/
-  shots as units**, priced from the SBZ price list (`src/lib/sbz.ts` — the fixed cost
-  catalog, incl./excl. BTW per item; update it when SBZ revises prices). Enter it by
+  shots as units**, priced from the **SBZ price list valid on the borrel's date**
+  (see [SBZ prices](#sbz-prices-cost-of-goods)), incl./excl. BTW per item. Enter it by
   hand, or **upload the Alexia "Verbruiksformulier" PDF** to auto-fill: it's parsed
   server-side (`src/lib/verbruik.ts` via `unpdf`) — the "Verbruik" unit counts and
   "Fustbier" keg weights (Totaal Gewicht kg) are read and mapped to SBZ items;
@@ -309,7 +339,8 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
   `PppProduct` (price, `specialPrice?`, `color?`, `vatCategory`, Congressus ids),
   `PppActivity` (`status`, `discountsActive`, `startsAt?`/`endsAt?` for the SumUp
   window), `PppActivityUsage` (per-activity SBZ usage: `sbzKey` + `quantity`, for
-  the P/L cost of goods), `PppActivityDiscount` (per-activity per-product special price),
+  the P/L cost of goods), `SbzPriceList` (`validFrom` unique, `label`, `source`) +
+  `SbzPrice` (`key`, name, section, `unit` LITER|UNIT, `vatRate`, excl./incl. cents), `PppActivityDiscount` (per-activity per-product special price),
   `PppInvoice` (defaults to CONFIRMED, no CONCEPT; `createdById?` → the bartender
   who tapped the order), `PppInvoiceLine` (`unitCents` charged + `listCents?` /
   `specialCents?` snapshots for discount reporting + `bartenderFree` marking a
@@ -346,7 +377,10 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
 **Admin** (`requireAdmin`): `/api/admin/ppp/products`, `…/categories`, `…/roles`,
 `…/bartenders` (+`/[id]`, `/[id]/resend`), `…/activities/[id]` (GET = detail + P/L,
 PUT = save SBZ usage; +`/discounts`, +`/sumup` = live card revenue, +`/import` =
-extract usage from an uploaded Alexia PDF),
+extract usage from an uploaded Alexia PDF), `…/sbz` (GET = all price lists +
+current; POST = save a list valid from a date, replacing one on the same date),
+`…/sbz/[id]` (DELETE a version, not the base), `…/sbz/parse` (POST an SBZ PDF →
+matched rows + valid-from date, nothing saved),
 `…/stats` (`?range=…|since_export`; returns `cogsInclCents`) +`/stats/sumup` (range card-income total), `…/invoices`; `/api/admin/members/[id]/roles`,
 `/api/admin/members/search`; and `POST /api/admin/invoices/export { scope }`.
 

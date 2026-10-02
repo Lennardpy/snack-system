@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { sumLineDiscounts } from "@/lib/roles";
 import { sbzCostInclCents } from "@/lib/sbz";
+import { loadSbzLists, sbzCatalogAt } from "@/lib/sbz-db";
 
 // Full activity list for the admin panel: order counts, revenue (+ saved SumUp), cost of goods
 // (from entered SBZ usage), and the discount given (specials-only + total) per
@@ -11,7 +12,7 @@ export async function GET() {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const [activities, invoices, usage] = await Promise.all([
+  const [activities, invoices, usage, sbzLists] = await Promise.all([
     prisma.pppActivity.findMany({
       orderBy: { date: "desc" },
       include: { sumup: { select: { revenueCents: true } } },
@@ -32,6 +33,7 @@ export async function GET() {
       },
     }),
     prisma.pppActivityUsage.findMany({ select: { activityId: true, sbzKey: true, quantity: true } }),
+    loadSbzLists(),
   ]);
 
   type Agg = { orders: number; revenue: number; specials: number; total: number };
@@ -46,10 +48,18 @@ export async function GET() {
     agg.set(inv.activityId, e);
   }
 
-  // Cost of goods per activity from the entered SBZ usage.
+  // Cost of goods per activity from the entered SBZ usage, priced with the SBZ
+  // price list valid on that activity's date.
+  const dateById = new Map(activities.map((a) => [a.id, a.date]));
+  const catalogs = new Map<string, ReturnType<typeof sbzCatalogAt>>();
   const cogs = new Map<string, number>();
   for (const u of usage) {
-    cogs.set(u.activityId, (cogs.get(u.activityId) ?? 0) + sbzCostInclCents(u.sbzKey, u.quantity));
+    let catalog = catalogs.get(u.activityId);
+    if (!catalog) {
+      catalog = sbzCatalogAt(sbzLists, dateById.get(u.activityId) ?? new Date());
+      catalogs.set(u.activityId, catalog);
+    }
+    cogs.set(u.activityId, (cogs.get(u.activityId) ?? 0) + sbzCostInclCents(catalog, u.sbzKey, u.quantity));
   }
 
   const result = activities

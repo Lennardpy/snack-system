@@ -357,3 +357,36 @@ model PppInvoiceLine {
   productId String
   product   PppProduct @relation(fields: [productId], references: [id])
 }
+
+// SBZ price list (what the association pays SBZ for drinks — the cost side of a
+// borrel's P/L). Versioned: each list is valid from `validFrom` until the next
+// one, and a borrel's cost of goods uses the list valid on the borrel's date, so
+// a new price list never changes the cost of earlier borrels.
+model SbzPriceList {
+  id        String     @id @default(cuid())
+  label     String // e.g. "SBZ price list effective 01/10/2026 (V2)"
+  validFrom DateTime   @unique // start of day (UTC) the prices apply from
+  source    String? // "initial", "PDF: <filename>", "manual edit"
+  createdAt DateTime   @default(now())
+  items     SbzPrice[]
+}
+
+// One item on a price list. `key` is stable across versions (usage is stored
+// against it): kegs are LITER (usage entered in kg ≈ liters), the rest UNIT.
+model SbzPrice {
+  id            String       @id @default(cuid())
+  key           String
+  name          String
+  section       String // "Beer", "On request", "Soft drinks", "Other"
+  unit          String // "LITER" | "UNIT"
+  vatRate       Int // 21 or 9
+  costExclCents Int // net, per liter (kegs) or per unit
+  costInclCents Int // gross (what SBZ invoices), per liter or per unit
+  onRequest     Boolean      @default(false)
+  sortOrder     Int          @default(0)
+
+  listId String
+  list   SbzPriceList @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, key])
+}

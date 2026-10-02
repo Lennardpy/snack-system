@@ -22,6 +22,7 @@ const SECTIONS: { title: string | null; links: { href: string; label: string; ic
       { href: "/admin/ppp/activities", label: "Activities", icon: "📅" },
       { href: "/admin/ppp/invoices", label: "Invoices", icon: "🧾" },
       { href: "/admin/ppp/roles", label: "Member roles", icon: "🎟️" },
+      { href: "/admin/ppp/sbz", label: "SBZ prices", icon: "🧾" },
       { href: "/admin/ppp/bartenders", label: "Bartenders", icon: "🧑‍🍳" },
     ],
   },

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { SBZ_PRODUCTS, type SbzSection } from "@/lib/sbz";
+import type { SbzProduct } from "@/lib/sbz";
 
 interface ProductLite { id: string; name: string; price: number; specialPrice: number | null }
 interface Discount { id: string; productId: string; priceCents: number; product: ProductLite }
@@ -19,7 +19,7 @@ interface DrinkRow { name: string; quantity: number; revenueCents: number; disco
 const euro = (c: number) => `€${(c / 100).toFixed(2)}`;
 const toCents = (s: string) => Math.max(0, Math.round(Number(s) * 100));
 
-const SECTIONS: SbzSection[] = ["Beer", "Soft drinks", "Other", "On request"];
+const SECTIONS = ["Beer", "Soft drinks", "Other", "On request"];
 
 export default function ActivityDetailPage() {
   const router = useRouter();
@@ -39,6 +39,13 @@ export default function ActivityDetailPage() {
     perDrink: [] as DrinkRow[],
   });
   const [usage, setUsage] = useState<Record<string, string>>({});
+  // The SBZ price list valid on this borrel's date (items + which list it is).
+  const [sbz, setSbz] = useState<{ label: string | null; validFrom: string | null; items: SbzProduct[] }>({
+    label: null,
+    validFrom: null,
+    items: [],
+  });
+  const sbzItems = sbz.items;
   const [savingUsage, setSavingUsage] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importNote, setImportNote] = useState("");
@@ -82,6 +89,7 @@ export default function ActivityDetailPage() {
       });
       const u: Record<string, string> = {};
       for (const e of d.usage ?? []) u[e.sbzKey] = String(e.quantity);
+      if (d.sbz) setSbz(d.sbz);
       setUsage(u);
     }
     setLoading(false);
@@ -120,12 +128,12 @@ export default function ActivityDetailPage() {
   // Live cost-of-goods from the usage form inputs (headline = incl. BTW).
   const liveCogsCents = useMemo(() => {
     let c = 0;
-    for (const p of SBZ_PRODUCTS) {
+    for (const p of sbzItems) {
       const q = Number(usage[p.key]);
       if (Number.isFinite(q) && q > 0) c += Math.round(p.costInclCents * q);
     }
     return c;
-  }, [usage]);
+  }, [usage, sbzItems]);
 
   const cardRevenueCents = sumup.state === "ok" ? sumup.revenueCents : 0;
   const totalRevenueCents = pnl.memberRevenueCents + cardRevenueCents;
@@ -168,7 +176,7 @@ export default function ActivityDetailPage() {
 
   async function saveUsage() {
     setSavingUsage(true);
-    const payload = SBZ_PRODUCTS.map((p) => ({ sbzKey: p.key, quantity: Number(usage[p.key]) || 0 })).filter(
+    const payload = sbzItems.map((p) => ({ sbzKey: p.key, quantity: Number(usage[p.key]) || 0 })).filter(
       (e) => e.quantity > 0
     );
     const res = await fetch(`/api/admin/ppp/activities/${id}`, {
@@ -384,7 +392,15 @@ export default function ActivityDetailPage() {
         <p className="mb-3 text-sm text-gray-500">
           Enter what was used, or <b>Import</b> the Alexia usage PDF to auto-fill — a second upload <b>adds
           onto</b> the current values. <b>Kegs in kg</b> (≈ liters), <b>bottles/cans/shots as units</b>. Cost is
-          the SBZ invoice price (incl. BTW).
+          the SBZ invoice price (incl. BTW)
+          {sbz.label && (
+            <>
+              {" "}from <b className="text-gray-300">{sbz.label}</b>
+              {" — "}the price list valid on this borrel&apos;s date
+              (<a href="/admin/ppp/sbz" className="text-amber-400 hover:underline">SBZ prices</a>)
+            </>
+          )}
+          .
         </p>
         {importNote && (
           <p className="mb-4 rounded-lg bg-gray-950/60 px-3 py-2 text-sm text-amber-200">{importNote}</p>
@@ -406,7 +422,7 @@ export default function ActivityDetailPage() {
                     className="rounded-lg bg-gray-800 px-2 py-1 outline-none focus:ring-2 focus:ring-amber-500"
                   >
                     <option value="">Ignore</option>
-                    {SBZ_PRODUCTS.filter((p) => p.unit === (u.isKeg ? "LITER" : "UNIT")).map((p) => (
+                    {sbzItems.filter((p) => p.unit === (u.isKeg ? "LITER" : "UNIT")).map((p) => (
                       <option key={p.key} value={p.key}>{p.name}</option>
                     ))}
                   </select>
@@ -418,7 +434,7 @@ export default function ActivityDetailPage() {
 
         <div className="grid gap-6 lg:grid-cols-2">
           {SECTIONS.map((section) => {
-            const items = SBZ_PRODUCTS.filter((p) => p.section === section);
+            const items = sbzItems.filter((p) => p.section === section);
             if (items.length === 0) return null;
             return (
               <div key={section}>
