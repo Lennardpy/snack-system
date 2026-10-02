@@ -6,10 +6,13 @@ export async function GET(req: NextRequest) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const status = req.nextUrl.searchParams.get("status") ?? "CONFIRMED";
+  // CONFIRMED = pending export, EXPORTED, or EXPORTING = needs check (an export's
+  // outcome was unknown — see /api/admin/invoices/reconcile).
+  const raw = req.nextUrl.searchParams.get("status");
+  const status = raw === "EXPORTED" || raw === "EXPORTING" ? raw : "CONFIRMED";
 
   const invoices = await prisma.saleInvoice.findMany({
-    where: { status: status as "CONFIRMED" | "EXPORTED" },
+    where: { status },
     include: {
       member: true,
       lines: { include: { product: true } },

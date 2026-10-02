@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { setSessionCookie } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import bcrypt from "bcryptjs";
@@ -43,17 +44,13 @@ export async function POST(req: NextRequest) {
     prisma.session.create({
       data: {
         userId: setup.userId,
+        kind: "password",
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       },
     }),
   ]);
 
   const res = NextResponse.json({ ok: true });
-  res.cookies.set("session", session.token, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    expires: session.expiresAt,
-  });
+  setSessionCookie(res, session);
   return res;
 }

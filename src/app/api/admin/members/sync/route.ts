@@ -129,12 +129,12 @@ async function pruneMissingMembers(congressusIds: Set<number>) {
   const [sss, ppp] = await Promise.all([
     prisma.saleInvoice.groupBy({
       by: ["memberId"],
-      where: { memberId: { in: toDeactivate }, status: "CONFIRMED" },
+      where: { memberId: { in: toDeactivate }, status: { in: ["CONFIRMED", "EXPORTING"] } },
       _sum: { totalCents: true },
     }),
     prisma.pppInvoice.groupBy({
       by: ["memberId"],
-      where: { memberId: { in: toDeactivate }, status: "CONFIRMED" },
+      where: { memberId: { in: toDeactivate }, status: { in: ["CONFIRMED", "EXPORTING"] } },
       _sum: { totalCents: true },
     }),
   ]);

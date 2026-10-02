@@ -8,7 +8,9 @@ trade-offs made for a shared, physical kiosk.
 
 ### Admin
 - Login (`POST /api/auth/login`) verifies a bcrypt password and sets an
-  **httpOnly** `session` cookie (7-day `Session` row).
+  **httpOnly**, **Secure** (in production), `SameSite=Lax` `session` cookie
+  (7-day `Session` row, `kind: "password"`). All logins go through
+  `createSession()` / `setSessionCookie()` in `src/lib/auth.ts`.
 - `requireAdmin()` (`src/lib/auth.ts`) loads the session, checks it isn't expired,
   and checks `role === "ADMIN"`. **Every** `/api/admin/*` handler calls it.
 - The admin pages are gated by a **server-side layout** (`requireAdmin()` →
@@ -18,6 +20,18 @@ trade-offs made for a shared, physical kiosk.
   on `/admin/*` and `/api/admin/*`. This is a fast pre-check; the real validation
   is `requireAdmin()` (a forged/expired cookie passes middleware but is rejected
   by the handler).
+
+### Bar POS (bartenders)
+- **Card login** (`POST /api/auth/card-login`) creates a short `kind: "card"`
+  session: **sliding 2 h** — each request extends it (the open POS polls every
+  10 s, so it stays alive while in use) — and **never longer than 16 h** after the
+  tap. A card login therefore can't linger on the shared bar PC into the next
+  borrel. (Before this, all sessions lasted 7 days, so last week's login expired
+  in the middle of the next weekly borrel, making charges fail with "Unauthorized".)
+- When the session ends while the POS is open, the POS shows **"Session ended — tap
+  a bartender card"**; the next tap signs in again in place, keeping the cart and
+  selected member. A fresh page load with an ended session redirects to the login.
+- Plus the client-side idle sign-out after 1 h without orders (see PPP.md).
 
 ### Shop (members)
 - A `ShopSession` token (random cuid) is created only by a **physical card tap**
@@ -63,6 +77,15 @@ a shared store (e.g. Redis).
 - Those pages declare `charset=utf-8` (header + meta) so emoji/diacritics render
   correctly.
 
+## HTTP security headers
+Set for every response in `next.config.ts`: `Strict-Transport-Security`
+(1 year, includeSubDomains), `X-Content-Type-Options: nosniff`,
+`Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY` and a
+CSP with `frame-ancestors 'none'; base-uri 'self'; object-src 'none'`. Token-bearing
+routes (`/api/card/verify`, `/api/auth/*`, `/set-password`, `/shop/*`) add
+`Cache-Control: no-store`. (A full script CSP needs nonces for Next's inline
+scripts — not done yet.)
+
 ## Deliberate trade-offs
 
 ### Card UIDs aren't secret
@@ -91,7 +114,15 @@ token instead of a cuid.
 
 - **Member deletion** is blocked while invoices exist.
 - **Invoice edit/delete** is blocked once an invoice is `EXPORTED` (already billed
-  in Congressus).
+  in Congressus) or `EXPORTING`.
+- **Export is never duplicated:** each export run atomically claims the orders it
+  exports (`CONFIRMED → EXPORTING` + run id) before calling Congressus, so a
+  concurrent run, double-click or retry can't bill them again. If the outcome is
+  unknown (timeout, 5xx, crash, DB write failure after success) the orders stay
+  `EXPORTING` and the invoices pages show a **"needs check"** warning; an admin
+  checks Congressus and resolves them (mark exported / back to pending) — allowed
+  only 10+ minutes after the claim. A clear rejection (4xx) returns them to pending
+  automatically.
 - **Bulk invoice clearing** requires a double confirmation in the UI and is
   intended for test-data cleanup only.
 

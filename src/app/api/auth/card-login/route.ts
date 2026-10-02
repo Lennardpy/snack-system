@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { normalizeUid } from "@/lib/card";
+import { createSession, setSessionCookie } from "@/lib/auth";
 
 // Log a bartender in by scanning their card. Only works for a card whose member
 // is linked to a BARTENDER/ADMIN account (User.memberId). A card UID is not a
@@ -35,16 +36,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Member is inactive" }, { status: 403 });
   }
 
-  const session = await prisma.session.create({
-    data: { userId: user.id, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
-  });
+  // A short, sliding "card" session (see src/lib/auth.ts): alive while the POS is
+  // used, gone 2 h after last use and at most 16 h — never carried to next borrel.
+  const session = await createSession(user.id, "card");
 
   const res = NextResponse.json({ ok: true, role: user.role });
-  res.cookies.set("session", session.token, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    expires: session.expiresAt,
-  });
+  setSessionCookie(res, session);
   return res;
 }

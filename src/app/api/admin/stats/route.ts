@@ -31,9 +31,9 @@ export async function GET(req: NextRequest) {
   // Confirmed + exported invoices count as actual sales.
   const invoices = await prisma.saleInvoice.findMany({
     where: sinceExport
-      ? { status: "CONFIRMED" } // unbilled = still to come
+      ? { status: { in: ["CONFIRMED", "EXPORTING"] } } // unbilled = still to come
       : {
-          status: { in: ["CONFIRMED", "EXPORTED"] },
+          status: { in: ["CONFIRMED", "EXPORTING", "EXPORTED"] },
           ...(from ? { confirmedAt: { gte: from } } : {}),
         },
     include: { lines: { include: { product: true } }, member: true },

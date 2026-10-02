@@ -177,8 +177,18 @@ is already `EXPORTED`.
 Deletes the invoice and its lines. `409` if already `EXPORTED`.
 
 ### `POST /api/admin/invoices/export`
-Groups `CONFIRMED` invoices by member × calendar month and creates one Congressus
-sale-invoice per group, then marks them `EXPORTED`.
+Atomically claims all `CONFIRMED` invoices of the scope (`CONFIRMED → EXPORTING`,
+tagged with this run's id — a concurrent run gets none), groups them by member ×
+calendar month and creates one Congressus sale-invoice per group, then marks them
+`EXPORTED`. A Congressus 4xx returns that group to `CONFIRMED`; an unknown outcome
+(timeout/5xx/network/DB failure after success) leaves it `EXPORTING` and counts it
+in `needsCheck`.
 ```json
-{ "ok": true, "exported": 12, "congressusInvoices": 3, "failed": 0, "errors": [] }
+{ "ok": true, "exported": 12, "congressusInvoices": 3, "failed": 0, "needsCheck": 0, "errors": [] }
 ```
+
+### `POST /api/admin/invoices/reconcile`
+Resolve orders stuck in `EXPORTING` after checking Congressus.
+Body `{ system: "sss"|"ppp", ids: [...], action: "exported"|"pending", congressusInvoiceId? }`.
+Only claims older than 10 minutes; `409` otherwise. The invoice lists accept
+`?status=EXPORTING` to list them.

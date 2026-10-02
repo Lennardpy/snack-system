@@ -24,9 +24,9 @@ export async function GET(req: NextRequest) {
 
   const invoices = await prisma.pppInvoice.findMany({
     where: sinceExport
-      ? { status: "CONFIRMED" } // unbilled = still to come
+      ? { status: { in: ["CONFIRMED", "EXPORTING"] } } // unbilled = still to come
       : {
-          status: { in: ["CONFIRMED", "EXPORTED"] },
+          status: { in: ["CONFIRMED", "EXPORTING", "EXPORTED"] },
           ...(from ? { confirmedAt: { gte: from } } : {}),
         },
     include: {
@@ -120,7 +120,7 @@ export async function GET(req: NextRequest) {
       select: { sbzKey: true, quantity: true, activity: { select: { date: true } } },
     }),
     prisma.pppInvoice.aggregate({
-      where: { activityId: { in: plIds }, status: { in: ["CONFIRMED", "EXPORTED"] } },
+      where: { activityId: { in: plIds }, status: { in: ["CONFIRMED", "EXPORTING", "EXPORTED"] } },
       _sum: { totalCents: true },
     }),
     loadSbzLists(),

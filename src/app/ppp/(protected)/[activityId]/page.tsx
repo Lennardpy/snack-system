@@ -98,6 +98,31 @@ export default function PosPage() {
   // The logged-in bartender's own member — they drink free from bartender-free
   // categories when charging their own card.
   const [selfMemberId, setSelfMemberId] = useState<string | null>(null);
+  // The server session ended (expired / signed out elsewhere). The POS stays as it
+  // is — cart and member kept — and the next card tap signs a bartender back in.
+  const [authLost, setAuthLost] = useState(false);
+  const authLostRef = useRef(false);
+  authLostRef.current = authLost;
+  const [reauthError, setReauthError] = useState("");
+  // A 401 from any POS request: returns true (that request failed). Before showing
+  // the "Session ended" overlay, re-check with a fresh request — a poll that was
+  // already in flight during a card re-login can return a stale 401.
+  const checkingAuth = useRef(false);
+  const sessionGone = useCallback((res: Response) => {
+    if (res.status !== 401) return false;
+    if (!checkingAuth.current) {
+      checkingAuth.current = true;
+      fetch("/api/ppp/me")
+        .then((r) => {
+          if (r.status === 401) setAuthLost(true);
+        })
+        .catch(() => {})
+        .finally(() => {
+          checkingAuth.current = false;
+        });
+    }
+    return true;
+  }, []);
   // Manual card-linking (when an unrecognised card is scanned at the bar).
   const [linkQuery, setLinkQuery] = useState("");
   const [linkResults, setLinkResults] = useState<MemberSearchResult[]>([]);
@@ -120,11 +145,15 @@ export default function PosPage() {
       if (aRes.ok) setActivity((await aRes.json()).activity);
       if (pRes.ok) setProducts((await pRes.json()).products);
     })();
+    loadSelf();
+  }, [activityId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function loadSelf() {
     fetch("/api/ppp/me")
       .then((r) => (r.ok ? r.json() : { memberId: null }))
       .then((d) => setSelfMemberId(d.memberId ?? null))
       .catch(() => setSelfMemberId(null));
-  }, [activityId]);
+  }
 
   // Activity drink specials, keyed by product (only when discounts are active).
   const discountsActive = activity?.discountsActive ?? false;
@@ -174,11 +203,12 @@ export default function PosPage() {
     if (!activity) return;
     const next = !activity.discountsActive;
     setActivity({ ...activity, discountsActive: next }); // optimistic
-    await fetch(`/api/ppp/activities/${activityId}`, {
+    const res = await fetch(`/api/ppp/activities/${activityId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ discountsActive: next }),
     });
+    if (sessionGone(res)) setActivity({ ...activity, discountsActive: !next }); // revert
   }
 
   const loadHistory = useCallback(async () => {
@@ -186,9 +216,10 @@ export default function PosPage() {
       fetch(`/api/ppp/invoices?activityId=${activityId}`),
       fetch(`/api/ppp/activities/${activityId}/customers`),
     ]);
+    if (sessionGone(hRes) || sessionGone(cRes)) return;
     if (hRes.ok) setHistory((await hRes.json()).invoices);
     if (cRes.ok) setCustomers((await cRes.json()).customers);
-  }, [activityId]);
+  }, [activityId, sessionGone]);
 
   // Poll order history + customers every 10s while on the page.
   useEffect(() => {
@@ -204,7 +235,31 @@ export default function PosPage() {
   };
 
   // ── Card scanning ───────────────────────────────────────────────────────────
+  // Sign a bartender back in with their card after the session ended (cart kept).
+  const reauthWithCard = useCallback(async (uid: string) => {
+    setReauthError("");
+    try {
+      const res = await fetch("/api/auth/card-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid }),
+      });
+      if (!res.ok) {
+        setReauthError((await res.json().catch(() => ({}))).error ?? "Card login failed");
+        return;
+      }
+      setAuthLost(false);
+      lastOrderAt.current = Date.now(); // a fresh sign-in restarts the idle clock
+      setIdleMsLeft(IDLE_LIMIT_MS);
+      loadSelf(); // possibly a different bartender now
+      loadHistory();
+    } catch {
+      setReauthError("Connection error");
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleScan = useCallback(async (uid: string) => {
+    if (authLostRef.current) return reauthWithCard(uid);
     setMember({ kind: "scanning" });
     try {
       const res = await fetch("/api/ppp/card/scan", {
@@ -212,6 +267,10 @@ export default function PosPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uid }),
       });
+      if (sessionGone(res)) {
+        setMember({ kind: "idle" });
+        return;
+      }
       const d = await res.json();
       if (res.ok && d.unlinked) {
         // Unrecognised card — let the bartender link it to a member by name.
@@ -234,7 +293,7 @@ export default function PosPage() {
     } catch {
       setMember({ kind: "error", message: "Connection error" });
     }
-  }, []);
+  }, [reauthWithCard, sessionGone]);
 
   // Debounced member search while linking an unrecognised card.
   const unlinkedUid = member.kind === "unlinked" ? member.uid : null;
@@ -247,6 +306,7 @@ export default function PosPage() {
     }
     const t = setTimeout(async () => {
       const res = await fetch(`/api/ppp/members/search?q=${encodeURIComponent(q)}`);
+      if (sessionGone(res)) return;
       if (res.ok) setLinkResults((await res.json()).members);
     }, 250);
     return () => clearTimeout(t);
@@ -262,6 +322,7 @@ export default function PosPage() {
       body: JSON.stringify({ uid: member.uid, memberId: m.id }),
     });
     setLinking(false);
+    if (sessionGone(res)) return; // keep the unlinked state; link again after re-login
     const d = await res.json();
     if (res.ok) {
       setMember({ kind: "found", id: d.memberId, firstName: d.firstName, lastName: d.lastName, roles: d.roles ?? [] });
@@ -375,6 +436,10 @@ export default function PosPage() {
       setMember({ kind: "idle" });
       setMobileView("products"); // back to the drinks grid for the next round
       loadHistory();
+    } else if (sessionGone(res)) {
+      // Not charged. Cart and member stay — confirm again (after a card tap if the
+      // "Session ended" overlay appears).
+      flashToast("Not charged — please confirm again");
     } else {
       const d = await res.json();
       flashToast(d.error ?? "Could not confirm order");
@@ -848,6 +913,34 @@ export default function PosPage() {
           {itemCount > 0 && <span className="tabular-nums text-amber-400">{euro(totalCents)}</span>}
         </button>
       </nav>
+
+      {authLost && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6">
+          <div className="w-full max-w-sm rounded-2xl border border-amber-600/60 bg-gray-900 p-6 text-center">
+            <p className="text-4xl">🪪</p>
+            <h2 className="mt-2 text-xl font-bold">Session ended</h2>
+            <p className="mt-1 text-sm text-gray-400">
+              Tap a bartender card to continue. The cart and selected member are kept
+              {itemCount > 0 ? ` (${itemCount} item${itemCount === 1 ? "" : "s"})` : ""}.
+            </p>
+            {mode === "nfc" && nfcStatus !== "scanning" && (
+              <button
+                onClick={startNfc}
+                className="mt-4 w-full rounded-lg bg-amber-600 py-2.5 text-sm font-semibold hover:bg-amber-500"
+              >
+                Enable NFC scanning
+              </button>
+            )}
+            {reauthError && <p className="mt-3 text-sm text-red-400">{reauthError}</p>}
+            <a
+              href={`/ppp/login?from=/ppp/${activityId}`}
+              className="mt-4 inline-block text-xs text-gray-500 underline hover:text-gray-300"
+            >
+              Sign in with email / password instead (cart is lost)
+            </a>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-xl bg-amber-600 px-5 py-3 font-medium shadow-lg">

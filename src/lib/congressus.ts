@@ -1,7 +1,8 @@
 // Congressus API v30 client
 // Auth: Bearer token via CONGRESSUS_API_TOKEN env var
 
-const BASE = "https://api.congressus.nl/v30";
+// Overridable only to point tests at a mock; production uses the real API.
+const BASE = process.env.CONGRESSUS_API_URL ?? "https://api.congressus.nl/v30";
 
 // SSS product folder in Congressus (id 5952, name "SSS")
 const SSS_FOLDER_ID = 5952;
@@ -320,6 +321,18 @@ function buildCongressusItems(
 // Lines with a known Congressus offer ID appear as real products on the invoice.
 // Lines without one fall back to "SSS purchases Mendix" at €0.01 × cents.
 // Items MUST be included in the initial POST (the API crashes with 500 if omitted).
+// An HTTP error response from Congressus. A 4xx means the request was rejected and
+// nothing was created; a 5xx (or a timeout / network error, which throw other
+// errors) leaves it unknown whether the invoice exists.
+export class CongressusHttpError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+  get definitelyNotCreated(): boolean {
+    return this.status >= 400 && this.status < 500;
+  }
+}
+
 export async function createSaleInvoice(
   memberId: number,
   lines: InvoiceLineItem[],
@@ -329,6 +342,7 @@ export async function createSaleInvoice(
 
   const res = await fetch(`${BASE}/sale-invoices`, {
     method: "POST",
+    signal: AbortSignal.timeout(30_000),
     headers: headers(),
     body: JSON.stringify({
       member_id: memberId,
@@ -341,8 +355,9 @@ export async function createSaleInvoice(
   });
 
   if (!res.ok) {
-    throw new Error(
-      `Congressus create invoice failed for member ${memberId}: ${res.status} ${await res.text()}`
+    throw new CongressusHttpError(
+      `Congressus create invoice failed for member ${memberId}: ${res.status} ${await res.text()}`,
+      res.status
     );
   }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import NeedsCheck from "../../NeedsCheck";
 import { useEffect, useMemo, useState } from "react";
 
 interface Line {
@@ -48,6 +49,7 @@ export default function PppInvoicesPage() {
   const [filter, setFilter] = useState<"CONFIRMED" | "EXPORTED">("CONFIRMED");
   const [exporting, setExporting] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [checkKey, setCheckKey] = useState(0); // refreshes the "needs check" panel
   const [busy, setBusy] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, LineDraft>>({});
@@ -73,7 +75,13 @@ export default function PppInvoicesPage() {
       `Created ${data.ppp?.congressusInvoices ?? 0} PPP Congressus invoice(s) covering ${data.ppp?.exported ?? 0} order(s).` +
         (data.ppp?.failed ? ` ${data.ppp.failed} failed.${errorDetail}` : "")
     );
+    if (data.needsCheck) {
+      setResult(
+        (r) => `${r}\n⚠️ ${data.needsCheck} order(s) need a check in Congressus — see the warning above.`
+      );
+    }
     setExporting(false);
+    setCheckKey((k) => k + 1);
     load();
   }
 
@@ -170,6 +178,8 @@ export default function PppInvoicesPage() {
           {result}
         </pre>
       )}
+
+      <NeedsCheck system="ppp" refreshKey={checkKey} onResolved={load} />
 
       <div className="mb-6 flex items-center gap-2">
         {(["CONFIRMED", "EXPORTED"] as const).map((s) => (

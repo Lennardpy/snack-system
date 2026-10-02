@@ -24,6 +24,11 @@ export default function ActivitySelectorPage() {
     // list always reflects what the bar committee has scheduled.
     await fetch("/api/ppp/alexia/sync", { method: "POST" }).catch(() => {});
     const res = await fetch("/api/ppp/activities");
+    if (res.status === 401) {
+      // Session ended while this page was open → sign in again.
+      router.replace("/ppp/login");
+      return;
+    }
     if (res.ok) setActivities((await res.json()).activities);
     setLoading(false);
   }

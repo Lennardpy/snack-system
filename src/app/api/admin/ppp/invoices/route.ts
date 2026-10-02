@@ -3,12 +3,13 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 
 // List PPP invoices for the admin invoices section.
-// ?status=CONFIRMED (pending export) | EXPORTED
+// ?status=CONFIRMED (pending export) | EXPORTED | EXPORTING (needs check)
 export async function GET(req: NextRequest) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const status = (req.nextUrl.searchParams.get("status") ?? "CONFIRMED") as "CONFIRMED" | "EXPORTED";
+  const raw = req.nextUrl.searchParams.get("status");
+  const status = raw === "EXPORTED" || raw === "EXPORTING" ? raw : "CONFIRMED";
 
   const invoices = await prisma.pppInvoice.findMany({
     where: { status },

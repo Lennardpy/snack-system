@@ -105,6 +105,8 @@ model SaleInvoice {
   totalCents  Int           @default(0)
   exportedAt          DateTime?
   congressusInvoiceId Int?
+  exportClaim         String? // id of the export run that claimed it (EXPORTING)
+  exportClaimedAt     DateTime?
   createdAt           DateTime      @default(now())
   confirmedAt DateTime?
 
@@ -127,6 +129,10 @@ model InvoiceLine {
 enum InvoiceStatus {
   CONCEPT
   CONFIRMED
+  // Claimed by a running Congressus export (see exportClaim). Stays here when the
+  // outcome is unknown (timeout / crash) until an admin reconciles it, so an
+  // export can never create the same Congressus invoice twice.
+  EXPORTING
   EXPORTED
 }
 
@@ -162,6 +168,9 @@ model Session {
   token     String   @unique @default(cuid())
   expiresAt DateTime
   createdAt DateTime @default(now())
+  // "password" (7 days) or "card" (bar POS: sliding 2 h of inactivity, max 16 h —
+  // see src/lib/auth.ts), so a card login never outlives the borrel.
+  kind      String   @default("password")
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -328,6 +337,8 @@ model PppInvoice {
   confirmedAt DateTime      @default(now())
   exportedAt          DateTime?
   congressusInvoiceId Int?
+  exportClaim         String? // id of the export run that claimed it (EXPORTING)
+  exportClaimedAt     DateTime?
 
   memberId   String
   member     Member       @relation(fields: [memberId], references: [id])

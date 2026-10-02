@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { createSession, setSessionCookie } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   // Throttle login attempts per IP to slow password brute-forcing.
@@ -16,20 +17,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
 
-  const session = await prisma.session.create({
-    data: {
-      userId: user.id,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-    },
-  });
+  const session = await createSession(user.id, "password"); // 7 days
 
   const res = NextResponse.json({ ok: true, role: user.role });
-  res.cookies.set("session", session.token, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    expires: session.expiresAt,
-  });
+  setSessionCookie(res, session);
 
   return res;
 }

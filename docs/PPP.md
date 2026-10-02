@@ -54,6 +54,12 @@ POS. The columns:
   session deleted) and sent to `/ppp/login` with a notice, ending the borrel on that
   device. A red banner warns during the last 5 minutes. The clock is wall-time
   based, so a phone that slept through the hour signs out as soon as it wakes.
+- **Session ended overlay** — card logins are short server-side sessions (sliding
+  2 h, max 16 h; see SECURITY.md). If the session ends while the POS is open, any
+  request returning 401 (re-checked once, to ignore a stale poll) shows **"Session
+  ended — tap a bartender card"**; the next tap signs in again in place and keeps
+  the cart and selected member. A confirm that hit the ended session says "Not
+  charged — please confirm again".
 - **Bottom (left column)** — **Regulars**: large circular buttons of members who
   have ordered at this borrel, most orders first. Tap one to charge them **without
   scanning** a card.

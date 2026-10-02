@@ -1,5 +1,6 @@
 "use client";
 
+import NeedsCheck from "../NeedsCheck";
 import { useEffect, useState } from "react";
 
 interface Line {
@@ -26,6 +27,7 @@ export default function InvoicesPage() {
   const [filter, setFilter] = useState<"CONFIRMED" | "EXPORTED">("CONFIRMED");
   const [exporting, setExporting] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [checkKey, setCheckKey] = useState(0); // refreshes the "needs check" panel
   const [editId, setEditId] = useState<string | null>(null);
   const [draftQty, setDraftQty] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
@@ -52,7 +54,13 @@ export default function InvoicesPage() {
       `Created ${data.sss?.congressusInvoices ?? data.congressusInvoices ?? 0} SSS Congressus invoice(s) covering ${data.sss?.exported ?? data.exported} purchase(s).` +
       (data.sss?.failed ? ` ${data.sss.failed} failed.${errorDetail}` : "")
     );
+    if (data.needsCheck) {
+      setResult(
+        (r) => `${r}\n⚠️ ${data.needsCheck} order(s) need a check in Congressus — see the warning above.`
+      );
+    }
     setExporting(false);
+    setCheckKey((k) => k + 1);
     load();
   }
 
@@ -136,6 +144,8 @@ export default function InvoicesPage() {
           {result}
         </pre>
       )}
+
+      <NeedsCheck system="sss" refreshKey={checkKey} onResolved={load} />
 
       <div className="mb-6 flex items-center gap-2">
         {(["CONFIRMED", "EXPORTED"] as const).map((s) => (

@@ -24,6 +24,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     include: { lines: { include: { product: { select: { price: true } } } } },
   });
   if (!invoice) return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
+  if (invoice.status === "EXPORTING") {
+    return NextResponse.json(
+      { error: "This order is being exported (or waiting for a check after an export) and can't be changed now." },
+      { status: 409 }
+    );
+  }
   if (invoice.status === "EXPORTED") {
     return NextResponse.json(
       { error: "This order was already exported to Congressus and can no longer be edited." },
@@ -73,6 +79,12 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const invoice = await prisma.pppInvoice.findUnique({ where: { id } });
   if (!invoice) return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
 
+  if (invoice.status === "EXPORTING") {
+    return NextResponse.json(
+      { error: "This order is being exported (or waiting for a check after an export) and can't be changed now." },
+      { status: 409 }
+    );
+  }
   if (invoice.status === "EXPORTED") {
     return NextResponse.json(
       { error: "This invoice was already exported to Congressus and cannot be deleted here." },

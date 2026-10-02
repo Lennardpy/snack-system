@@ -1,12 +1,23 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
-import { createSaleInvoice, InvoiceLineItem } from "@/lib/congressus";
+import { createSaleInvoice, CongressusHttpError, InvoiceLineItem } from "@/lib/congressus";
 import { requireAdmin } from "@/lib/auth";
 
 // The export creates TWO separate Congressus sale invoices per member per month —
 // one for SSS snacks, one for PPP drinks — from the same admin "Export" action.
 // Both reuse createSaleInvoice() (and its Mendix fallback for lines without a
 // Congressus offer id).
+//
+// Never twice: each run first CLAIMS the orders it exports — one atomic update
+// CONFIRMED → EXPORTING tagged with its run id — so a concurrent run, double click
+// or retry can't pick up the same orders. Per member-month group, after calling
+// Congressus:
+//   • success                         → EXPORTED (+ Congressus invoice id)
+//   • Congressus rejected it (4xx)    → back to CONFIRMED (nothing was created)
+//   • unknown (timeout, 5xx, network, crash, or our DB write failed after
+//     Congressus succeeded)          → stays EXPORTING ("needs check"); an admin
+//     checks Congressus and resolves it (POST /api/admin/invoices/reconcile).
 
 interface ExpLine {
   aggKey: string; // de-dup key within a member-month
@@ -27,7 +38,12 @@ interface ExportOutcome {
   exported: number; // source invoices marked EXPORTED
   congressusInvoices: number; // Congressus invoices created
   failed: number;
+  needsCheck: number; // orders left EXPORTING because the outcome is unknown
   errors: string[];
+}
+interface ClaimOps {
+  markExported: (invoiceIds: string[], congressusInvoiceId: number) => Promise<void>;
+  release: (invoiceIds: string[]) => Promise<void>; // back to CONFIRMED
 }
 
 function monthName(yearMonth: string): string {
@@ -39,13 +55,13 @@ function monthName(yearMonth: string): string {
 }
 
 // Group by member × calendar month, aggregate lines, and create one Congressus
-// invoice per group. `markExported` lets each source table update its own rows.
+// invoice per group. `ops` lets each source table update its own (claimed) rows.
 async function runExport(
   invoices: ExpInvoice[],
   referencePrefix: string,
-  markExported: (invoiceIds: string[], congressusInvoiceId: number) => Promise<void>
+  ops: ClaimOps
 ): Promise<ExportOutcome> {
-  const out: ExportOutcome = { exported: 0, congressusInvoices: 0, failed: 0, errors: [] };
+  const out: ExportOutcome = { exported: 0, congressusInvoices: 0, failed: 0, needsCheck: 0, errors: [] };
 
   type Group = {
     congressusMemberId: number;
@@ -89,9 +105,11 @@ async function runExport(
   for (const g of groups.values()) {
     const reference = `${referencePrefix} ${monthName(g.yearMonth)}`;
     const lines = Array.from(g.lineMap.values());
+    const label = `${referencePrefix} — ${g.memberName} (${g.yearMonth})`;
+    let congressusInvoiceId: number | null = null;
     try {
-      const congressusInvoiceId = await createSaleInvoice(g.congressusMemberId, lines, reference);
-      await markExported(g.invoiceIds, congressusInvoiceId);
+      congressusInvoiceId = await createSaleInvoice(g.congressusMemberId, lines, reference);
+      await ops.markExported(g.invoiceIds, congressusInvoiceId);
       out.exported += g.invoiceIds.length;
       out.congressusInvoices++;
       console.log(
@@ -99,8 +117,31 @@ async function runExport(
       );
     } catch (err) {
       out.failed++;
-      out.errors.push(`${referencePrefix} — ${g.memberName} (${g.yearMonth}): ${(err as Error).message}`);
       console.error(`[${referencePrefix}] Export failed for ${g.memberName} (${g.yearMonth}):`, err);
+      const msg = (err as Error).message;
+      if (congressusInvoiceId != null) {
+        // Created in Congressus, but marking it exported here failed.
+        out.needsCheck += g.invoiceIds.length;
+        out.errors.push(
+          `${label}: created in Congressus as #${congressusInvoiceId} but not marked exported here (${msg}). ` +
+            `Resolve under "Needs check" → mark exported.`
+        );
+      } else if (err instanceof CongressusHttpError && err.definitelyNotCreated) {
+        // Rejected by Congressus — nothing created, safe to retry later.
+        try {
+          await ops.release(g.invoiceIds);
+          out.errors.push(`${label}: ${msg} — not created, back to pending.`);
+        } catch {
+          out.needsCheck += g.invoiceIds.length;
+          out.errors.push(`${label}: ${msg} — not created; resolve under "Needs check" → back to pending.`);
+        }
+      } else {
+        // Timeout / 5xx / network: it may or may not exist in Congressus.
+        out.needsCheck += g.invoiceIds.length;
+        out.errors.push(
+          `${label}: ${msg} — outcome unknown. Check Congressus for this member, then resolve under "Needs check".`
+        );
+      }
     }
   }
 
@@ -121,13 +162,21 @@ export async function POST(req: Request) {
     /* no body → export all */
   }
 
-  const EMPTY: ExportOutcome = { exported: 0, congressusInvoices: 0, failed: 0, errors: [] };
+  const EMPTY: ExportOutcome = { exported: 0, congressusInvoices: 0, failed: 0, needsCheck: 0, errors: [] };
+  // This run's claim tag: only orders claimed with it are exported by this request.
+  const runId = randomUUID();
+  const claimedAt = new Date();
 
   // ── SSS snacks ──────────────────────────────────────────────────────────────
   let sss = EMPTY;
   if (scope !== "ppp") {
-  const sssInvoices = await prisma.saleInvoice.findMany({
+  // Claim every pending SSS order for this run (atomic; a concurrent run gets none).
+  await prisma.saleInvoice.updateMany({
     where: { status: "CONFIRMED" },
+    data: { status: "EXPORTING", exportClaim: runId, exportClaimedAt: claimedAt },
+  });
+  const sssInvoices = await prisma.saleInvoice.findMany({
+    where: { status: "EXPORTING", exportClaim: runId },
     include: { member: true, lines: { include: { product: true } } },
     orderBy: { confirmedAt: "asc" },
   });
@@ -145,14 +194,22 @@ export async function POST(req: Request) {
       congressusOfferId: l.product.congressusProductOfferId ?? null,
     })),
   }));
-  sss = await runExport(sssExp, "SSS", (ids, cid) =>
-    prisma.saleInvoice
-      .updateMany({
-        where: { id: { in: ids } },
-        data: { status: "EXPORTED", exportedAt: new Date(), congressusInvoiceId: cid },
-      })
-      .then(() => undefined)
-  );
+  sss = await runExport(sssExp, "SSS", {
+    markExported: (ids, cid) =>
+      prisma.saleInvoice
+        .updateMany({
+          where: { id: { in: ids }, exportClaim: runId },
+          data: { status: "EXPORTED", exportedAt: new Date(), congressusInvoiceId: cid, exportClaim: null },
+        })
+        .then(() => undefined),
+    release: (ids) =>
+      prisma.saleInvoice
+        .updateMany({
+          where: { id: { in: ids }, exportClaim: runId },
+          data: { status: "CONFIRMED", exportClaim: null, exportClaimedAt: null },
+        })
+        .then(() => undefined),
+  });
   }
 
   // ── PPP drinks ───────────────────────────────────────────────────────────────
@@ -160,8 +217,12 @@ export async function POST(req: Request) {
   if (scope !== "sss") {
   // Each line's description includes the activity name (e.g. "Pils – Borrel 28 jun"),
   // and same product at different activities stays on separate lines.
-  const pppInvoices = await prisma.pppInvoice.findMany({
+  await prisma.pppInvoice.updateMany({
     where: { status: "CONFIRMED" },
+    data: { status: "EXPORTING", exportClaim: runId, exportClaimedAt: claimedAt },
+  });
+  const pppInvoices = await prisma.pppInvoice.findMany({
+    where: { status: "EXPORTING", exportClaim: runId },
     include: { member: true, activity: true, lines: { include: { product: true } } },
     orderBy: { confirmedAt: "asc" },
   });
@@ -179,14 +240,22 @@ export async function POST(req: Request) {
       congressusOfferId: l.product.congressusProductOfferId ?? null,
     })),
   }));
-  ppp = await runExport(pppExp, "PPP", (ids, cid) =>
-    prisma.pppInvoice
-      .updateMany({
-        where: { id: { in: ids } },
-        data: { status: "EXPORTED", exportedAt: new Date(), congressusInvoiceId: cid },
-      })
-      .then(() => undefined)
-  );
+  ppp = await runExport(pppExp, "PPP", {
+    markExported: (ids, cid) =>
+      prisma.pppInvoice
+        .updateMany({
+          where: { id: { in: ids }, exportClaim: runId },
+          data: { status: "EXPORTED", exportedAt: new Date(), congressusInvoiceId: cid, exportClaim: null },
+        })
+        .then(() => undefined),
+    release: (ids) =>
+      prisma.pppInvoice
+        .updateMany({
+          where: { id: { in: ids }, exportClaim: runId },
+          data: { status: "CONFIRMED", exportClaim: null, exportClaimedAt: null },
+        })
+        .then(() => undefined),
+  });
   }
 
   return NextResponse.json({
@@ -195,6 +264,7 @@ export async function POST(req: Request) {
     exported: sss.exported + ppp.exported,
     congressusInvoices: sss.congressusInvoices + ppp.congressusInvoices,
     failed: sss.failed + ppp.failed,
+    needsCheck: sss.needsCheck + ppp.needsCheck,
     errors: [...sss.errors, ...ppp.errors],
     // Per-system breakdown.
     sss,

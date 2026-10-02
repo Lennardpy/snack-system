@@ -21,12 +21,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const [sss, ppp] = await Promise.all([
     prisma.saleInvoice.findMany({
-      where: { memberId: id, status: { in: ["CONFIRMED", "EXPORTED"] } },
+      where: { memberId: id, status: { in: ["CONFIRMED", "EXPORTING", "EXPORTED"] } },
       include: { lines: { include: { product: { select: { name: true } } } } },
       orderBy: { confirmedAt: "desc" },
     }),
     prisma.pppInvoice.findMany({
-      where: { memberId: id, status: { in: ["CONFIRMED", "EXPORTED"] } },
+      where: { memberId: id, status: { in: ["CONFIRMED", "EXPORTING", "EXPORTED"] } },
       include: {
         activity: { select: { name: true } },
         lines: { include: { product: { select: { name: true } } } },
@@ -37,7 +37,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const totals = (invs: { status: string; totalCents: number }[]) => ({
     spentCents: invs.reduce((s, i) => s + i.totalCents, 0),
-    openCents: invs.filter((i) => i.status === "CONFIRMED").reduce((s, i) => s + i.totalCents, 0),
+    openCents: invs.filter((i) => i.status !== "EXPORTED").reduce((s, i) => s + i.totalCents, 0),
     orders: invs.length,
   });
 
