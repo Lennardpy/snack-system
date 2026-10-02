@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     include: {
       member: { select: { firstName: true, lastName: true, email: true } },
       activity: { select: { name: true } },
-      lines: { include: { product: { select: { name: true } } } },
+      lines: { include: { product: { select: { name: true, price: true } } } },
     },
     orderBy: { confirmedAt: "desc" },
   });

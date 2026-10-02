@@ -245,7 +245,7 @@ lists** (`SbzPriceList` + `SbzPrice`), managed on **Admin → PPP → SBZ prices
 | **SBZ prices** | The cost prices paid to SBZ, as versioned price lists — view, edit, upload the SBZ PDF; each list applies from its date onward. See [SBZ prices](#sbz-prices-cost-of-goods). |
 | **Member roles** | Create/edit roles with a `%` and/or `€` discount. Highest wins. |
 | **Bartenders** | Invite by email, set-password link, link to a member for card login, delete. |
-| **Invoices** | PPP orders grouped by borrel; status filter; **Export PPP to Congressus**; delete/clear test data. |
+| **Invoices** | PPP orders grouped by borrel; status filter; **Export PPP to Congressus**; delete/clear test data. **Edit** a pending (not yet exported) order: change quantities, remove lines (removing all deletes the order), and **Remove discount** on a line — it's then charged at the drink's normal list price (drops the borrel special, role discount such as PilsCie/Board, or bartender free drink) and counts as undiscounted in all reports. Each discounted line shows why it was discounted. `PATCH /api/admin/ppp/invoices/[id]` `{ lines: [{ id, quantity?, removeDiscount? }] }`; exported orders return `409`. |
 
 Member **role assignment** is on the existing **Admin → Members** page (role chips
 + a toggle picker per member).
