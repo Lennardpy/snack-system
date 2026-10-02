@@ -7,10 +7,15 @@
 //   Board       → discountPercent 100            (free)
 //   PilsCie     → discountCents 75               (€0.75 off each drink)
 //   Bartenders  → discountPercent 25             (25% off)
+//
+// A role marked `ownDrinkOnly` (PilsCie) discounts just ONE drink per order — the
+// member's own — so a round bought for friends is charged at the normal price.
+// See priceOrder().
 
 export interface RoleDiscount {
   discountPercent: number;
   discountCents: number;
+  ownDrinkOnly?: boolean;
 }
 
 export function clampPercent(p: number): number {
@@ -95,6 +100,84 @@ export function activityDiscountedUnitPrice(
   );
 }
 
+// ── Whole-order pricing (own-drink-only roles) ────────────────────────────────
+
+export interface OrderItem {
+  productId: string;
+  quantity: number;
+  product: PricedProduct;
+  activitySpecialCents: number | null;
+  free?: boolean; // comped (bartender's own free drink) → €0, no role discount
+}
+export interface PricedOrderPart {
+  productId: string;
+  quantity: number;
+  unitCents: number;
+}
+
+// Prices a whole order for a member. Roles with `ownDrinkOnly` discount only ONE
+// unit — the member's own drink, chosen as the unit where they save the most
+// (ties → first item). Every other unit gets only the member's other roles. An
+// item whose own-drink unit differs in price is split into two parts (1 + rest).
+export function priceOrder(items: OrderItem[], roles: RoleDiscount[]): PricedOrderPart[] {
+  const everyUnit = roles.filter((r) => !r.ownDrinkOnly);
+  const hasOwnDrinkRole = everyUnit.length < roles.length;
+  const priced = items.map((it) => ({
+    it,
+    base: it.free ? 0 : activityDiscountedUnitPrice(it.product, it.activitySpecialCents, everyUnit),
+    own: it.free ? 0 : activityDiscountedUnitPrice(it.product, it.activitySpecialCents, roles),
+  }));
+
+  let ownIdx = -1;
+  if (hasOwnDrinkRole) {
+    let bestSaving = 0;
+    priced.forEach((p, i) => {
+      if (p.it.quantity > 0 && p.base - p.own > bestSaving) {
+        bestSaving = p.base - p.own;
+        ownIdx = i;
+      }
+    });
+  }
+
+  const parts: PricedOrderPart[] = [];
+  priced.forEach((p, i) => {
+    const { productId, quantity } = p.it;
+    if (i === ownIdx) {
+      parts.push({ productId, quantity: 1, unitCents: p.own });
+      if (quantity > 1) parts.push({ productId, quantity: quantity - 1, unitCents: p.base });
+    } else {
+      parts.push({ productId, quantity, unitCents: p.base });
+    }
+  });
+  return parts;
+}
+
+// Which role granted the discount on a charged line, and how much (per unit) —
+// for the per-role cost reports. Capped at the discount actually given, so a
+// full-price unit of a round (own-drink-only role not applied) costs nothing, and
+// credited to an every-drink role when that alone explains the price.
+export function attributeRoleDiscount(
+  preRoleCents: number,
+  unitCents: number,
+  roles: (RoleDiscount & { name: string })[],
+  ignoreFixed: boolean
+): { role: string; amountCents: number } | null {
+  const actual = Math.max(0, preRoleCents - unitCents);
+  if (actual === 0 || roles.length === 0) return null;
+  const best = (rs: (RoleDiscount & { name: string })[]) =>
+    rs.reduce<{ role: string; amt: number }>(
+      (b, r) => {
+        const amt = roleDiscountAmount(preRoleCents, r, ignoreFixed);
+        return amt > b.amt ? { role: r.name, amt } : b;
+      },
+      { role: "", amt: 0 }
+    );
+  const everyDrink = best(roles.filter((r) => !r.ownDrinkOnly));
+  const pick = everyDrink.amt > 0 && everyDrink.amt >= actual ? everyDrink : best(roles);
+  if (!pick.role || pick.amt === 0) return null;
+  return { role: pick.role, amountCents: Math.min(pick.amt, actual) };
+}
+
 // ── Discount/budget reporting ─────────────────────────────────────────────────
 // Sum the discount given across PPP invoice lines, split into:
 //   • specialsCents — only the activity drink specials (list → special price)
@@ -125,5 +208,6 @@ export function formatRoleDiscount(role: RoleDiscount): string {
   const parts: string[] = [];
   if (role.discountPercent > 0) parts.push(`-${clampPercent(role.discountPercent)}%`);
   if (role.discountCents > 0) parts.push(`-€${(clampCents(role.discountCents) / 100).toFixed(2)}`);
-  return parts.join(" + ") || "no discount";
+  const label = parts.join(" + ") || "no discount";
+  return role.ownDrinkOnly && parts.length > 0 ? `${label} · own drink` : label;
 }

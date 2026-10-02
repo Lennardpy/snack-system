@@ -131,7 +131,18 @@ A member can hold several roles (Board, PilsCie, Bartenders, …). Each role gra
 a **percentage** and/or a **fixed cents** discount (they stack within a role).
 Across a member's roles, the **best (largest) discount amount per drink wins** —
 so a fixed-cents role and a percentage role are always compared on the same
-footing. Examples: Board = 100 % (free), PilsCie = €0.75 off, Bartenders = 25 %.
+footing. Examples: Board = 100 % (free), PilsCie = €0.72 off, Bartenders = 25 %.
+
+**Own drink only** (`MemberRole.ownDrinkOnly`, on for PilsCie): the role's discount
+applies to **one drink per order** — the member's own — and the rest of the order is
+charged at the normal price. So a PilsCie member buying 3 beers (1 for themselves, 2
+for friends) pays 1 discounted + 2 full price. The discounted unit is the one where
+they save the most; other roles they hold (every-drink roles) still apply to the
+rest. Pricing is done for the whole order in `priceOrder()` (`src/lib/roles.ts`),
+server-side at confirm and identically in the POS cart (which shows "1 own drink
+discounted · 2 full price"); such a line is stored split (1 × discounted + rest ×
+full). Role-cost reports credit only the discount actually given
+(`attributeRoleDiscount()`). Toggle it per role on **Member roles**.
 
 ### Product special price (`PppProduct.specialPrice`)
 An optional permanent promo price on a drink. When set, the member pays the

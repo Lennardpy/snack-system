@@ -14,7 +14,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     where: { id },
     include: {
       cards: { orderBy: { createdAt: "asc" } },
-      roles: { select: { id: true, name: true, discountPercent: true, discountCents: true, color: true } },
+      roles: { select: { id: true, name: true, discountPercent: true, discountCents: true, ownDrinkOnly: true, color: true } },
     },
   });
   if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });

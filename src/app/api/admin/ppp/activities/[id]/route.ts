@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
-import { sumLineDiscounts, roleDiscountAmount } from "@/lib/roles";
+import { sumLineDiscounts, attributeRoleDiscount } from "@/lib/roles";
 import { SBZ_BY_KEY, sbzCostInclCents, sbzCostExclCents } from "@/lib/sbz";
 import { alexiaMatchKey } from "@/lib/alexia";
 
@@ -35,7 +35,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       where: { activityId: id },
       select: {
         totalCents: true,
-        member: { select: { roles: { select: { name: true, discountPercent: true, discountCents: true } } } },
+        member: { select: { roles: { select: { name: true, discountPercent: true, discountCents: true, ownDrinkOnly: true } } } },
         lines: {
           select: {
             quantity: true,
@@ -88,20 +88,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       const preRole = l.specialCents ?? l.listCents;
       if (preRole == null) continue;
       const ignoreFixed = l.specialCents != null;
-      let bestAmt = 0;
-      let bestRole = "";
-      for (const r of roles) {
-        const amt = roleDiscountAmount(preRole, r, ignoreFixed);
-        if (amt > bestAmt) {
-          bestAmt = amt;
-          bestRole = r.name;
-        }
-      }
-      if (bestAmt > 0 && bestRole) {
-        const e = roleCostMap.get(bestRole) ?? { costCents: 0, drinks: 0 };
-        e.costCents += bestAmt * l.quantity;
+      const attr = attributeRoleDiscount(preRole, l.unitCents, roles, ignoreFixed);
+      if (attr) {
+        const e = roleCostMap.get(attr.role) ?? { costCents: 0, drinks: 0 };
+        e.costCents += attr.amountCents * l.quantity;
         e.drinks += l.quantity;
-        roleCostMap.set(bestRole, e);
+        roleCostMap.set(attr.role, e);
       }
     }
   }

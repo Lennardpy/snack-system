@@ -9,7 +9,7 @@ export async function GET() {
   const members = await prisma.member.findMany({
     include: {
       cards: true,
-      roles: { select: { id: true, name: true, discountPercent: true, discountCents: true, color: true } },
+      roles: { select: { id: true, name: true, discountPercent: true, discountCents: true, ownDrinkOnly: true, color: true } },
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
   });

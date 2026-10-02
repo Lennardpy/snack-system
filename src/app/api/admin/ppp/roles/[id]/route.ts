@@ -9,7 +9,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { id } = await params;
   const body = await req.json();
-  const data: { name?: string; discountPercent?: number; discountCents?: number; color?: string | null } = {};
+  const data: {
+    name?: string;
+    discountPercent?: number;
+    discountCents?: number;
+    ownDrinkOnly?: boolean;
+    color?: string | null;
+  } = {};
 
   if (body.name !== undefined) {
     const trimmed = String(body.name).trim();
@@ -22,6 +28,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   if (body.discountPercent !== undefined) data.discountPercent = clampPercent(Number(body.discountPercent));
   if (body.discountCents !== undefined) data.discountCents = clampCents(Number(body.discountCents));
+  if (body.ownDrinkOnly !== undefined) data.ownDrinkOnly = body.ownDrinkOnly === true;
   if (body.color !== undefined) {
     data.color = typeof body.color === "string" && body.color.trim() ? body.color.trim() : null;
   }

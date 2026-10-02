@@ -18,7 +18,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const member = await prisma.member.update({
       where: { id },
       data: { roles: { set: roleIds.map((roleId: string) => ({ id: roleId })) } },
-      include: { roles: { select: { id: true, name: true, discountPercent: true, discountCents: true, color: true } } },
+      include: { roles: { select: { id: true, name: true, discountPercent: true, discountCents: true, ownDrinkOnly: true, color: true } } },
     });
     return NextResponse.json({ roles: member.roles });
   } catch {

@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
   const member = await prisma.member.findUnique({
     where: { id: memberId },
     include: {
-      roles: { select: { name: true, discountPercent: true, discountCents: true, color: true } },
+      roles: { select: { name: true, discountPercent: true, discountCents: true, ownDrinkOnly: true, color: true } },
     },
   });
   if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });

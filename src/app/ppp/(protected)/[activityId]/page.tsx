@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useCardReader } from "@/lib/useCardReader";
-import { activityDiscountedUnitPrice, activityUnitPrice, formatRoleDiscount } from "@/lib/roles";
+import { activityDiscountedUnitPrice, activityUnitPrice, formatRoleDiscount, priceOrder } from "@/lib/roles";
 
 interface Product {
   id: string;
@@ -35,6 +35,7 @@ interface MemberRoleInfo {
   name: string;
   discountPercent: number;
   discountCents: number;
+  ownDrinkOnly?: boolean;
   color: string | null;
 }
 interface Customer {
@@ -306,18 +307,45 @@ export default function PosPage() {
     (p: Product) => chargingSelf && p.category.bartenderFree,
     [chargingSelf]
   );
-  // Final unit price a member pays for a product, honouring the bartender free rule.
-  const unitPriceFor = useCallback(
-    (p: Product) =>
-      isFreeForBartender(p) ? 0 : activityDiscountedUnitPrice(p, specialFor(p.id), memberRoles),
-    [isFreeForBartender, specialFor, memberRoles]
-  );
+  // Price the whole cart the way the server will: bartender-free drinks are €0, and
+  // an own-drink-only role (PilsCie) discounts just one drink — the rest of a round
+  // is charged normally. Per product: line total + whether it holds the own drink.
+  const priced = useMemo(() => {
+    const parts = priceOrder(
+      cartLines.map((l) => ({
+        productId: l.product.id,
+        quantity: l.qty,
+        product: l.product,
+        activitySpecialCents: specialFor(l.product.id),
+        free: isFreeForBartender(l.product),
+      })),
+      memberRoles
+    );
+    const byProduct = new Map<string, { totalCents: number; ownDrink: boolean }>();
+    for (const part of parts) {
+      const e = byProduct.get(part.productId) ?? { totalCents: 0, ownDrink: false };
+      e.totalCents += part.unitCents * part.quantity;
+      byProduct.set(part.productId, e);
+    }
+    // Mark the line whose single unit got the own-drink discount (a split line, or
+    // a quantity-1 line priced below the every-drink price).
+    if (memberRoles.some((r) => r.ownDrinkOnly)) {
+      for (const part of parts) {
+        const everyDrink = memberRoles.filter((r) => !r.ownDrinkOnly);
+        const l = cartLines.find((c) => c.product.id === part.productId);
+        if (!l || isFreeForBartender(l.product) || part.quantity !== 1) continue;
+        const base = activityDiscountedUnitPrice(l.product, specialFor(l.product.id), everyDrink);
+        if (part.unitCents < base) byProduct.get(part.productId)!.ownDrink = true;
+      }
+    }
+    return byProduct;
+  }, [cartLines, memberRoles, specialFor, isFreeForBartender]);
   // "Gross" = effective price (special if set) before role discounts; total = after.
   const grossCents = cartLines.reduce(
     (s, l) => s + activityUnitPrice(l.product, specialFor(l.product.id)) * l.qty,
     0
   );
-  const totalCents = cartLines.reduce((s, l) => s + unitPriceFor(l.product) * l.qty, 0);
+  const totalCents = [...priced.values()].reduce((s, p) => s + p.totalCents, 0);
   const hasDiscount = totalCents < grossCents;
   const itemCount = cartLines.reduce((s, l) => s + l.qty, 0);
 
@@ -719,7 +747,14 @@ export default function PosPage() {
                   <ul className="space-y-3">
                     {cartLines.map((l) => (
                       <li key={l.product.id} className="flex items-center justify-between gap-2">
-                        <span className="min-w-0 flex-1 truncate text-base font-medium">{l.product.name}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-base font-medium">{l.product.name}</span>
+                          {priced.get(l.product.id)?.ownDrink && (
+                            <span className="block text-xs text-amber-400">
+                              {l.qty > 1 ? `1 own drink discounted · ${l.qty - 1} full price` : "own drink discounted"}
+                            </span>
+                          )}
+                        </span>
                         <div className="flex items-center gap-2">
                           <button onClick={() => dec(l.product.id)} className="h-10 w-10 rounded-lg bg-gray-800 text-2xl leading-none hover:bg-gray-700 active:scale-95">
                             −
@@ -729,7 +764,7 @@ export default function PosPage() {
                             +
                           </button>
                           <span className="w-16 text-right text-base text-gray-400 tabular-nums">
-                            {isFreeForBartender(l.product) ? "FREE" : euro(unitPriceFor(l.product) * l.qty)}
+                            {isFreeForBartender(l.product) ? "FREE" : euro(priced.get(l.product.id)?.totalCents ?? 0)}
                           </span>
                         </div>
                       </li>

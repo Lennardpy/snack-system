@@ -7,6 +7,7 @@ interface Role {
   name: string;
   discountPercent: number;
   discountCents: number;
+  ownDrinkOnly: boolean;
   color: string | null;
   sortOrder: number;
   _count: { members: number };
@@ -18,6 +19,7 @@ export default function RolesPage() {
   const [name, setName] = useState("");
   const [discount, setDiscount] = useState("");
   const [discountEuro, setDiscountEuro] = useState("");
+  const [ownDrinkOnly, setOwnDrinkOnly] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -43,6 +45,7 @@ export default function RolesPage() {
         name: trimmed,
         discountPercent: Number(discount || 0),
         discountCents: Math.round(Number(discountEuro || 0) * 100),
+        ownDrinkOnly,
       }),
     });
     setBusy(false);
@@ -50,6 +53,7 @@ export default function RolesPage() {
       setName("");
       setDiscount("");
       setDiscountEuro("");
+      setOwnDrinkOnly(false);
       load();
     } else {
       setError((await res.json()).error ?? "Could not create role");
@@ -76,6 +80,15 @@ export default function RolesPage() {
     });
   }
 
+  async function updateOwnDrinkOnly(id: string, value: boolean) {
+    setRoles((rs) => rs.map((r) => (r.id === id ? { ...r, ownDrinkOnly: value } : r)));
+    await fetch(`/api/admin/ppp/roles/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ownDrinkOnly: value }),
+    });
+  }
+
   async function remove(role: Role) {
     if (!confirm(`Delete role "${role.name}"? It will be removed from ${role._count.members} member(s).`)) return;
     const res = await fetch(`/api/admin/ppp/roles/${role.id}`, { method: "DELETE" });
@@ -88,7 +101,8 @@ export default function RolesPage() {
         <h1 className="text-3xl font-bold">Member roles</h1>
         <p className="text-gray-500">
           Roles grant a drink discount at the PPP bar. Highest discount wins when a member has several.
-          100% = free.
+          100% = free. <span className="text-gray-400">Own drink only</span>: the discount applies to one drink per
+          order (the member&apos;s own); the rest of a round is charged at the normal price.
         </p>
       </div>
 
@@ -126,6 +140,15 @@ export default function RolesPage() {
             className="w-28 rounded-lg bg-gray-800 px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500"
           />
         </div>
+        <label className="flex items-center gap-2 pb-2.5 text-sm text-gray-300">
+          <input
+            type="checkbox"
+            checked={ownDrinkOnly}
+            onChange={(e) => setOwnDrinkOnly(e.target.checked)}
+            className="h-4 w-4 accent-amber-500"
+          />
+          Own drink only
+        </label>
         <button
           type="submit"
           disabled={busy || !name.trim()}
@@ -141,7 +164,7 @@ export default function RolesPage() {
       ) : roles.length === 0 ? (
         <p className="text-gray-500">No roles yet. Add one above (e.g. Board at 100%).</p>
       ) : (
-        <ul className="max-w-2xl space-y-2">
+        <ul className="max-w-3xl space-y-2">
           {roles.map((r) => (
             <li
               key={r.id}
@@ -175,6 +198,18 @@ export default function RolesPage() {
                     onChange={(e) => updateCents(r.id, Number(e.target.value))}
                     className="w-20 rounded-lg bg-gray-800 px-3 py-1.5 text-right outline-none focus:ring-2 focus:ring-amber-500"
                   />
+                </label>
+                <label
+                  className="flex items-center gap-1.5 text-sm text-gray-400"
+                  title="Discount applies to one drink per order (their own); a round for friends is charged normally"
+                >
+                  <input
+                    type="checkbox"
+                    checked={r.ownDrinkOnly}
+                    onChange={(e) => updateOwnDrinkOnly(r.id, e.target.checked)}
+                    className="h-4 w-4 accent-amber-500"
+                  />
+                  Own drink only
                 </label>
                 {r.discountPercent >= 100 && <span className="text-xs text-green-400">free</span>}
                 <button

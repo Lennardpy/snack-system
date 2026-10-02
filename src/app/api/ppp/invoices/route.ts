@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireBartender } from "@/lib/auth";
-import { activityDiscountedUnitPrice } from "@/lib/roles";
+import { priceOrder, type OrderItem } from "@/lib/roles";
 
 // Live order history for an activity. Query: ?activityId=
 export async function GET(req: NextRequest) {
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
   // we can apply the best (highest) discount they qualify for.
   const member = await prisma.member.findUnique({
     where: { id: memberId },
-    include: { roles: { select: { discountPercent: true, discountCents: true } } },
+    include: { roles: { select: { discountPercent: true, discountCents: true, ownDrinkOnly: true } } },
   });
   if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });
   if (!member.active) return NextResponse.json({ error: "Member inactive" }, { status: 403 });
@@ -99,15 +99,9 @@ export async function POST(req: NextRequest) {
   // be spoofed and only applies to the bartender operating this POS.
   const chargingSelf = user.memberId != null && user.memberId === memberId;
 
-  const lineData: {
-    productId: string;
-    quantity: number;
-    unitCents: number;
-    listCents: number;
-    specialCents: number | null;
-    bartenderFree: boolean;
-  }[] = [];
-  let totalCents = 0;
+  // Validate products, then price the whole order at once: an own-drink-only role
+  // (PilsCie) discounts just one unit — the rest of a round is charged normally.
+  const items: OrderItem[] = [];
   for (const [productId, quantity] of qtyByProduct) {
     const product = productById.get(productId);
     if (!product) {
@@ -116,26 +110,33 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    const bartenderFree = chargingSelf && product.category.bartenderFree;
-    // Snapshot the discounted unit price: activity special (if active) > product
-    // special > price, then role discounts (fixed-cent skipped on any special).
-    // A bartender-free line is comped to €0 (the association covers listCents).
-    const activitySpecial = specialMap.get(productId) ?? null;
-    const unitCents = bartenderFree
-      ? 0
-      : activityDiscountedUnitPrice(product, activitySpecial, member.roles);
-    // Snapshots for budget/discount reporting at close: the normal list price and
-    // the activity drink-special price that applied (null if no activity special).
-    lineData.push({
+    items.push({
       productId,
       quantity,
-      unitCents,
-      listCents: product.price,
-      specialCents: activitySpecial,
-      bartenderFree,
+      product,
+      // Activity special (if active) > product special > price, then role discounts
+      // (fixed-cent skipped on any special).
+      activitySpecialCents: specialMap.get(productId) ?? null,
+      // A bartender-free line is comped to €0 (the association covers listCents).
+      free: chargingSelf && product.category.bartenderFree,
     });
-    totalCents += unitCents * quantity;
   }
+  const itemById = new Map(items.map((it) => [it.productId, it]));
+
+  // Snapshots for budget/discount reporting at close: the normal list price and
+  // the activity drink-special price that applied (null if no activity special).
+  const lineData = priceOrder(items, member.roles).map((part) => {
+    const it = itemById.get(part.productId)!;
+    return {
+      productId: part.productId,
+      quantity: part.quantity,
+      unitCents: part.unitCents,
+      listCents: it.product.price,
+      specialCents: it.activitySpecialCents,
+      bartenderFree: it.free ?? false,
+    };
+  });
+  const totalCents = lineData.reduce((sum, l) => sum + l.unitCents * l.quantity, 0);
 
   const invoice = await prisma.pppInvoice.create({
     data: {

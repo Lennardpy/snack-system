@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { name, discountPercent, discountCents, color } = await req.json();
+  const { name, discountPercent, discountCents, ownDrinkOnly, color } = await req.json();
   const trimmed = (name ?? "").trim();
   if (!trimmed) return NextResponse.json({ error: "Name is required" }, { status: 400 });
 
@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
       name: trimmed,
       discountPercent: clampPercent(Number(discountPercent ?? 0)),
       discountCents: clampCents(Number(discountCents ?? 0)),
+      ownDrinkOnly: ownDrinkOnly === true,
       color: typeof color === "string" && color.trim() ? color.trim() : null,
       sortOrder: (last?.sortOrder ?? 0) + 1,
     },

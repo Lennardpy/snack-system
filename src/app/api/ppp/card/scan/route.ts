@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       member: {
         include: {
           roles: {
-            select: { name: true, discountPercent: true, discountCents: true, color: true },
+            select: { name: true, discountPercent: true, discountCents: true, ownDrinkOnly: true, color: true },
           },
         },
       },

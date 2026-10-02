@@ -35,6 +35,9 @@ model MemberRole {
   // discount per product wins. PilsCie = 75 cents off each drink → discountCents 75.
   discountPercent Int      @default(0) // 0–100; 100 = free
   discountCents   Int      @default(0) // fixed cents off per product unit
+  // "Own drink only": the discount applies to ONE drink per order (the member's
+  // own); the rest of the order (rounds for friends) is charged normally. PilsCie.
+  ownDrinkOnly    Boolean  @default(false)
   color           String? // optional hex for the admin/POS chip
   sortOrder       Int      @default(0)
   createdAt       DateTime @default(now())
