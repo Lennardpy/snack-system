@@ -86,10 +86,30 @@ export default function PosPage() {
   const { activityId } = useParams<{ activityId: string }>();
 
   const [activity, setActivity] = useState<Activity | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [rawProducts, setProducts] = useState<Product[]>([]);
   const [activeCat, setActiveCat] = useState<string>("all");
   const [cart, setCart] = useState<Record<string, number>>({});
   const [member, setMember] = useState<MemberState>({ kind: "idle" });
+  // Wall Street mode: live market prices (polled), the tick they belong to, and
+  // each drink's move since the previous tick (for the ▲▼ on the tiles).
+  const [ws, setWs] = useState<{
+    tickIndex: number;
+    prices: Map<string, number>;
+    moves: Map<string, number>;
+    crash: boolean;
+  } | null>(null);
+  const wsPrevRef = useRef<{ tickIndex: number; prices: Map<string, number> } | null>(null);
+  // Wall Street drinks are priced at the market price (it replaces the price and
+  // any borrel special). External cards keep the normal internal prices.
+  const products = useMemo(
+    () =>
+      ws && member.kind !== "external"
+        ? rawProducts.map((p) =>
+            ws.prices.has(p.id) ? { ...p, price: ws.prices.get(p.id)!, specialPrice: null } : p
+          )
+        : rawProducts,
+    [rawProducts, ws, member.kind]
+  );
   const [tab, setTab] = useState<"cart" | "history">("cart");
   // On phones the products grid and the cart don't fit side-by-side, so we show
   // one at a time and switch with a bottom tab bar. Ignored at lg+ (both shown).
@@ -165,9 +185,38 @@ export default function PosPage() {
     [activity]
   );
   const specialFor = useCallback(
-    (productId: string): number | null => (discountsActive ? specialMap.get(productId) ?? null : null),
-    [discountsActive, specialMap]
+    (productId: string): number | null =>
+      discountsActive && !ws?.prices.has(productId) ? specialMap.get(productId) ?? null : null,
+    [discountsActive, specialMap, ws]
   );
+
+  // Poll the Wall Street market (cheap when it's off).
+  useEffect(() => {
+    let stop = false;
+    async function poll() {
+      const res = await fetch(`/api/wallstreet?activityId=${activityId}&history=0`).catch(() => null);
+      if (stop || !res?.ok) return;
+      const d = await res.json();
+      if (!d.active) {
+        wsPrevRef.current = null;
+        setWs(null);
+        return;
+      }
+      const prices = new Map<string, number>(d.drinks.map((x: { id: string; cents: number }) => [x.id, x.cents]));
+      const prev = wsPrevRef.current;
+      if (prev?.tickIndex === d.tickIndex) return;
+      const moves = new Map<string, number>();
+      if (prev) for (const [id, c] of prices) moves.set(id, c - (prev.prices.get(id) ?? c));
+      wsPrevRef.current = { tickIndex: d.tickIndex, prices };
+      setWs({ tickIndex: d.tickIndex, prices, moves, crash: d.crashUntil != null });
+    }
+    poll();
+    const t = setInterval(poll, 4_000);
+    return () => {
+      stop = true;
+      clearInterval(t);
+    };
+  }, [activityId]);
 
   // Leave this borrel and go back to the activity list. (Logging out lives on the
   // selector.) Confirmed, so it's not triggered by an accidental tap mid-service.
@@ -484,7 +533,7 @@ export default function PosPage() {
         : await fetch("/api/ppp/invoices", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ memberId: member.id, activityId, lines }),
+            body: JSON.stringify({ memberId: member.id, activityId, lines, wallstreetTick: ws?.tickIndex }),
           });
     setConfirming(false);
     if (res.ok) {
@@ -561,6 +610,18 @@ export default function PosPage() {
           )}
         </div>
         <div className="flex items-center gap-2 lg:gap-4">
+          {ws && (
+            <a
+              href="/wallstreet"
+              target="_blank"
+              className={`rounded-full px-3 py-1.5 text-sm font-bold ${
+                ws.crash ? "animate-pulse bg-red-600 text-white" : "bg-emerald-600/90 text-white"
+              }`}
+              title="Wall Street mode — prices move with demand. Opens the public board."
+            >
+              {ws.crash ? "💥 CRASH" : "📈 Wall Street"}
+            </a>
+          )}
           {/* Specials toggle — bartenders flip this off when a special runs out. */}
           {specialMap.size > 0 && (
             <button
@@ -658,6 +719,8 @@ export default function PosPage() {
                 const effective = activityUnitPrice(p, specialFor(p.id));
                 const isSpecial = effective !== p.price;
                 const onBorrelSpecial = specialFor(p.id) != null;
+                const wsMove = member.kind !== "external" ? ws?.moves.get(p.id) : undefined;
+                const onWallstreet = member.kind !== "external" && !!ws?.prices.has(p.id);
                 const qty = cart[p.id] ?? 0;
                 const free = isFreeForBartender(p);
                 return (
@@ -681,6 +744,20 @@ export default function PosPage() {
                     {onBorrelSpecial && (
                       <span className="absolute right-1.5 top-1.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-black">
                         SPECIAL
+                      </span>
+                    )}
+                    {onWallstreet && (
+                      <span
+                        className={`absolute right-1.5 top-1.5 rounded-full px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${
+                          wsMove && wsMove > 0
+                            ? "bg-red-600 text-white"
+                            : wsMove && wsMove < 0
+                            ? "bg-emerald-500 text-black"
+                            : "bg-gray-700 text-gray-200"
+                        }`}
+                      >
+                        {wsMove && wsMove > 0 ? "▲" : wsMove && wsMove < 0 ? "▼" : "📈"}
+                        {wsMove ? ` ${euro(Math.abs(wsMove))}` : ""}
                       </span>
                     )}
                     <span className="text-xl font-bold leading-tight">{p.name}</span>

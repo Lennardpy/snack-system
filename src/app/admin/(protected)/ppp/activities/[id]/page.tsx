@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { SbzProduct } from "@/lib/sbz";
 import ExternalTabs from "./ExternalTabs";
+import WallStreet from "./WallStreet";
 
 interface ProductLite { id: string; name: string; price: number; specialPrice: number | null }
 interface Discount { id: string; productId: string; priceCents: number; product: ProductLite }
@@ -302,6 +303,8 @@ export default function ActivityDetailPage() {
           </button>
         </div>
       </div>
+
+      <WallStreet activityId={id} isOpen={activity.status === "OPEN"} />
 
       {/* ── Profit / loss ─────────────────────────────────────────────────── */}
       <section className="mb-6 max-w-5xl rounded-2xl border border-gray-800 bg-gray-900 p-6">

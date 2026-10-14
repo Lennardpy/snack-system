@@ -274,6 +274,33 @@ model PppActivity {
   usage     PppActivityUsage[]
   sumup     PppActivitySumup?
   externalTabs PppExternalTab[]
+
+  // Wall Street mode: the selected drinks' prices move with demand every tick
+  // (src/lib/wallstreet.ts) and are shown on the public /wallstreet page.
+  wallstreetActive     Boolean   @default(false)
+  wallstreetStartedAt  DateTime? // tick 0; ticks are counted from here
+  wallstreetVolatility String    @default("HIGH") // LOW | MEDIUM | HIGH
+  wallstreetMinPct     Int       @default(50) // floor, % of the drink's normal price
+  wallstreetMaxPct     Int       @default(200) // ceiling, % of the drink's normal price
+  wallstreetProductIds String[]  @default([])
+  wallstreetCrashUntil DateTime? // "market crash": every drink at the floor until then
+  wallstreetTicks      PppWallstreetTick[]
+}
+
+// One Wall Street price update. `index` = whole ticks since wallstreetStartedAt,
+// unique per activity, so concurrent requests can never compute the same tick twice.
+model PppWallstreetTick {
+  id     String   @id @default(cuid())
+  index  Int
+  at     DateTime @default(now())
+  // { [productId]: { m: multiplier of the normal price, c: price in cents } }
+  prices Json
+  crash  Boolean  @default(false)
+
+  activityId String
+  activity   PppActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@unique([activityId, index])
 }
 
 // An Alexia event the admin deleted from PPP (e.g. an external activity or a free

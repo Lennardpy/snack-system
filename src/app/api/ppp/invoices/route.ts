@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireBartender } from "@/lib/auth";
 import { priceOrder, type OrderItem } from "@/lib/roles";
+import { wallstreetChargePrices } from "@/lib/wallstreet";
 
 // Live order history for an activity. Query: ?activityId=
 export async function GET(req: NextRequest) {
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ invoices });
 }
 
-// Confirm an order. Body: { memberId, activityId, lines: [{ productId, quantity }] }
+// Confirm an order. Body: { memberId, activityId, lines: [{ productId, quantity }], wallstreetTick? }
 // Creates one CONFIRMED PppInvoice + its lines in a single transaction. Prices are
 // looked up server-side and snapshotted onto each line — the client's prices are
 // never trusted. The member is resolved from the shared Member table.
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
   const user = await requireBartender();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { memberId, activityId, lines } = await req.json();
+  const { memberId, activityId, lines, wallstreetTick } = await req.json();
 
   if (!memberId || !activityId || !Array.isArray(lines) || lines.length === 0) {
     return NextResponse.json(
@@ -94,6 +95,11 @@ export async function POST(req: NextRequest) {
   });
   const productById = new Map(products.map((p) => [p.id, p]));
 
+  // Wall Street mode: its drinks cost the market price (of the tick the POS
+  // showed, if recent) instead of their price and any borrel special. Role
+  // discounts and bartender free drinks apply on top as usual.
+  const wallstreet = await wallstreetChargePrices(activityId, wallstreetTick);
+
   // The on-shift bartender drinks free from bartender-free categories when they
   // charge THEIR OWN card. Keyed off the session user's linked member, so it can't
   // be spoofed and only applies to the bartender operating this POS.
@@ -110,13 +116,14 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    const wsCents = wallstreet?.get(productId);
     items.push({
       productId,
       quantity,
-      product,
+      product: wsCents != null ? { ...product, price: wsCents, specialPrice: null } : product,
       // Activity special (if active) > product special > price, then role discounts
       // (fixed-cent skipped on any special).
-      activitySpecialCents: specialMap.get(productId) ?? null,
+      activitySpecialCents: wsCents != null ? null : specialMap.get(productId) ?? null,
       // A bartender-free line is comped to €0 (the association covers listCents).
       free: chargingSelf && product.category.bartenderFree,
     });

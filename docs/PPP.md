@@ -257,6 +257,45 @@ lists** (`SbzPriceList` + `SbzPrice`), managed on **Admin → PPP → SBZ prices
 Member **role assignment** is on the existing **Admin → Members** page (role chips
 + a toggle picker per member).
 
+## Wall Street mode
+
+A borrel game: the selected drinks' prices move with demand, shown live on the
+public board **`/wallstreet`** (snacks.51vo.nl/wallstreet) for a screen at the bar.
+
+- **Admin → Activities → Details → 📈 Wall Street mode:** choose the drinks (≥ 2),
+  **volatility** (Low / Medium / High, default High), **floor** and **ceiling** (% of
+  the drink's normal price, default 50–200%), then **▶ Start**. **■ Stop** returns to
+  normal prices. **💥 Crash (1 min)** drops every drink to the floor for 60 s,
+  immediately; afterwards prices climb back. Settings can be changed while running
+  (applied from the next tick). Starting again begins a fresh market (old ticks are
+  deleted). It only runs while the activity is OPEN.
+- **Price model** (`src/lib/wallstreet.ts`): every **20 s** (a tick) each drink's
+  multiplier `m` of its normal price (special price if set, else price) changes by
+  (1) **demand pressure** — its share of the drinks sold since the last tick (member
+  orders + external cards) minus an equal share 1/n, scaled by how busy it was (full
+  effect from 5 drinks per tick); this sums to zero, so when one drink rises the others
+  fall; (2) **random noise** per the volatility (σ 1.5% / 2.5% / 4.5%, mean removed
+  so it is zero-sum too); (3) **mean reversion** of 4% towards the normal price. It's
+  clamped to floor/ceiling and the price rounded to €0.05. Volatility also sets the
+  demand strength (k 0.15 / 0.25 / 0.35).
+- **Ticks** (`PppWallstreetTick`) are computed lazily by whichever request asks first
+  (board, POS, order) and stored with a unique (activity, index) — concurrent
+  requests can't compute a tick twice. The board shows the last 30 minutes.
+- **At the POS:** the header shows **📈 Wall Street** (a link to the board; **💥
+  CRASH** during a crash), and each Wall Street drink tile shows its market price with
+  a **▲/▼ move** since the previous tick. The market price **replaces the price and any
+  borrel special**; role discounts (percent and fixed) and bartender free drinks apply
+  on top as usual. The POS polls every 4 s and sends the tick it showed
+  (`wallstreetTick`); the server charges **that tick's** prices if it's recent (≤ ~65 s),
+  so a price change between tapping and confirming doesn't change the bill. Lines
+  snapshot the market price as `listCents`. **External cards** keep their normal
+  internal prices.
+- **The board** (`src/app/wallstreet`): line chart of every drink's price (crash
+  periods shaded red), a price board (vs. normal %, ▲/▼ vs. the previous tick — red =
+  dearer, green = cheaper), a countdown to the next tick, a scrolling ticker tape, and
+  a crash banner. Shows "The market is closed" when nothing runs and starts by itself.
+  Polls `GET /api/wallstreet` every 3 s.
+
 ## External cards
 
 An **external card** (`ExternalCard`) is a bar card that isn't linked to any member,
@@ -393,6 +432,9 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
   who tapped the order), `PppInvoiceLine` (`unitCents` charged + `listCents?` /
   `specialCents?` snapshots for discount reporting + `bartenderFree` marking a
   comped bartender line).
+- `PppActivity.wallstreet*` (`Active`, `StartedAt`, `Volatility`, `MinPct`, `MaxPct`,
+  `ProductIds[]`, `CrashUntil`) + `PppWallstreetTick` (`index` unique per activity,
+  `at`, `prices` JSON `{ productId: { m, c } }`, `crash`).
 - `ExternalCard` (`uid` unique, `name`) → `PppExternalTab` (per activity × card:
   `title?`, `priceLevel` INTERNAL|INTERNAL_PLUS_10|TUSSEN|EXTERNAL, `cardName`
   snapshot; card deletion sets `cardId` null) → `PppExternalOrder` (`createdById?`) →
@@ -419,7 +461,7 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
 | GET/POST | `/api/ppp/external/orders` | External orders at a borrel (`?activityId=`, for the POS history) / add an order to the card's tab `{ cardId, activityId, lines }` |
 | GET | `/api/ppp/members/search?q=` | Member typeahead for linking an unrecognised card |
 | POST | `/api/ppp/card/link` | Link a scanned card `{ uid, memberId }` → member (name + roles); `409` if already linked |
-| GET/POST | `/api/ppp/invoices` | Order history (`?activityId=`, incl. the `createdBy` tapper) / confirm an order (records the tapper) |
+| GET/POST | `/api/ppp/invoices` | Order history (`?activityId=`, incl. the `createdBy` tapper) / confirm an order (records the tapper; `wallstreetTick` = the Wall Street tick the POS showed) |
 
 **Public**:
 
@@ -427,6 +469,7 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
 |--------|------|---------|
 | POST | `/api/auth/card-login` | Sign a bartender in by card (linked member) |
 | GET/POST | `/api/auth/set-password` | Validate / consume a set-password token |
+| GET | `/api/wallstreet` | Wall Street board data: running market (or `?activityId=`), current prices, last hour of ticks (`?history=0` skips them); `{ active: false }` when off. Rate-limited 240/min/IP |
 
 **Admin** (`requireAdmin`): `/api/admin/ppp/products`, `…/categories`, `…/roles`,
 `…/bartenders` (+`/[id]`, `/[id]/resend`), `…/activities/[id]` (GET = detail + P/L,
@@ -437,6 +480,8 @@ current; POST = save a list valid from a date, replacing one on the same date),
 matched rows + valid-from date, nothing saved),
 `…/external-cards` (GET list / POST `{ uid, name }`; +`/[id]` PATCH rename / DELETE),
 `…/activities/[id]/external` (the borrel's external tabs with breakdown),
+`…/activities/[id]/wallstreet` (GET settings + drinks + live state; PATCH
+`{ active?, volatility?, minPct?, maxPct?, productIds?, crash? }`),
 `…/external-tabs/[id]` (PATCH `{ title?, priceLevel? }` / DELETE; +`/pdf` download),
 `…/external-orders/[id]` (DELETE one order; an emptied tab is removed),
 `…/stats` (`?range=…|since_export`; returns `cogsInclCents`, `pl.externalIncomeCents` (internal prices), `abProfitCents`) +`/stats/sumup` (range card-income total), `…/invoices`; `/api/admin/members/[id]/roles`,

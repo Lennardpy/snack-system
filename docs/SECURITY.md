@@ -60,12 +60,13 @@ trade-offs made for a shared, physical kiosk.
 | `POST /api/card/register` | Rate-limited 10/min/IP. |
 | `GET /api/images/products/*` | Product images only (non-sensitive); path-traversal guarded. |
 | `GET /api/health` | No data. |
+| `GET /api/wallstreet` | The Wall Street board: only the running borrel's name and drink names/prices. Rate-limited 240/min/IP (a board + POS poll every few seconds). Can create at most one price tick per 20 s per activity (unique index). |
 
 ## Rate limiting
 
 `src/lib/rate-limit.ts` is an in-memory sliding-window limiter keyed by client IP
 (from `x-forwarded-for`). Applied to `login` (10/min), `card/scan` (30/min), and
-`card/register` (10/min). It is per-instance; for multi-instance scaling, swap for
+`card/register` (10/min), and `wallstreet` (240/min). It is per-instance; for multi-instance scaling, swap for
 a shared store (e.g. Redis).
 
 ## Injection & output safety

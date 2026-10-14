@@ -109,6 +109,22 @@ Two tabs: **Pending export** (confirmed, awaiting billing) and **Exported**
 > Exported invoices are read-only here. They've been sent to Congressus, so
 > corrections after export must be made in Congressus directly.
 
+## Wall Street (bar)
+
+Drink prices that move with demand, for a borrel game.
+
+1. **Activities → Details / P&L → 📈 Wall Street mode.** Tick the drinks, choose the
+   volatility (High is wild) and the floor/ceiling (default 50%–200% of the normal
+   price), then **▶ Start Wall Street**.
+2. Put **snacks.51vo.nl/wallstreet** on a screen at the bar (no login): a live graph
+   of every drink's price, the current prices and a ticker tape.
+3. Every 20 seconds prices update: what's being bought gets more expensive, the rest
+   gets cheaper, plus random swings. The POS charges the market price shown on its
+   tiles (member discounts still apply).
+4. **💥 Crash (1 min)** — every drink at the bottom price for a minute. Fun at a
+   chosen moment.
+5. **■ Stop** at the end: normal prices again. (Closing the activity also stops it.)
+
 ## External cards (bar)
 
 For external parties at a borrel: give them an **external card** — a bar card not
