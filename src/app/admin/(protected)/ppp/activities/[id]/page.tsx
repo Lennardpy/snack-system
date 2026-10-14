@@ -304,8 +304,6 @@ export default function ActivityDetailPage() {
         </div>
       </div>
 
-      <WallStreet activityId={id} isOpen={activity.status === "OPEN"} />
-
       {/* ── Profit / loss ─────────────────────────────────────────────────── */}
       <section className="mb-6 max-w-5xl rounded-2xl border border-gray-800 bg-gray-900 p-6">
         <h2 className="mb-1 text-lg font-semibold">Profit / loss</h2>
@@ -532,7 +530,7 @@ export default function ActivityDetailPage() {
       )}
 
       {/* ── Drink specials ────────────────────────────────────────────────── */}
-      <section className="max-w-5xl rounded-2xl border border-gray-800 bg-gray-900 p-6">
+      <section className="mb-6 max-w-5xl rounded-2xl border border-gray-800 bg-gray-900 p-6">
         <div className="mb-1 flex items-center justify-between">
           <h2 className="text-lg font-semibold">Drink specials</h2>
           <span
@@ -606,6 +604,8 @@ export default function ActivityDetailPage() {
           </ul>
         )}
       </section>
+
+      <WallStreet activityId={id} isOpen={activity.status === "OPEN"} />
     </div>
   );
 }
