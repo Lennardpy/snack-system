@@ -149,6 +149,7 @@ model User {
   sessions      Session[]
   passwordSetup PasswordSetupToken?
   pppInvoicesTapped PppInvoice[] @relation("PppTapper")
+  pppExternalOrdersTapped PppExternalOrder[] @relation("PppExternalTapper")
 }
 
 // One-time link to set an account password (used for inviting bartenders).
@@ -250,6 +251,7 @@ model PppProduct {
   category          PppProductCategory @relation(fields: [categoryId], references: [id])
   invoiceLines      PppInvoiceLine[]
   activityDiscounts PppActivityDiscount[]
+  externalLines     PppExternalLine[]
 }
 
 model PppActivity {
@@ -271,6 +273,7 @@ model PppActivity {
   discounts PppActivityDiscount[]
   usage     PppActivityUsage[]
   sumup     PppActivitySumup?
+  externalTabs PppExternalTab[]
 }
 
 // An Alexia event the admin deleted from PPP (e.g. an external activity or a free
@@ -400,4 +403,72 @@ model SbzPrice {
   list   SbzPriceList @relation(fields: [listId], references: [id], onDelete: Cascade)
 
   @@unique([listId, key])
+}
+
+// ── PPP — external cards ──────────────────────────────────────────────────────
+// A bar card that is NOT linked to a member, e.g. handed to an external party at
+// a borrel. Its UID never exists in `Card` (and vice versa). Drinks tapped on it
+// go onto that borrel's external tab, which is invoiced outside Congressus: the
+// admin sets a title + price level on the borrel page and downloads a PDF.
+model ExternalCard {
+  id        String   @id @default(cuid())
+  uid       String   @unique
+  name      String // e.g. "External card 1"
+  createdAt DateTime @default(now())
+
+  tabs PppExternalTab[]
+}
+
+// Price level for an external tab, a multiple of the internal selling price.
+enum ExternalPriceLevel {
+  INTERNAL // ×1.0 — what members pay
+  INTERNAL_PLUS_10 // ×1.1
+  TUSSEN // ×1.5
+  EXTERNAL // ×2.0
+}
+
+// Everything one external card drank at one borrel.
+model PppExternalTab {
+  id         String             @id @default(cuid())
+  title      String? // shown on the PDF, e.g. "Borrel ACME — 8 October"
+  priceLevel ExternalPriceLevel @default(EXTERNAL)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  activityId String
+  activity   PppActivity   @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  // Kept (null) when the card itself is deleted later, so the tab stays billable.
+  cardId     String?
+  card       ExternalCard? @relation(fields: [cardId], references: [id], onDelete: SetNull)
+  cardName   String // snapshot of the card's name when the tab was opened
+  orders     PppExternalOrder[]
+
+  @@unique([activityId, cardId])
+}
+
+// One confirm on the POS for an external card.
+model PppExternalOrder {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  tabId       String
+  tab         PppExternalTab    @relation(fields: [tabId], references: [id], onDelete: Cascade)
+  createdById String?
+  createdBy   User?             @relation("PppExternalTapper", fields: [createdById], references: [id], onDelete: SetNull)
+  lines       PppExternalLine[]
+}
+
+model PppExternalLine {
+  id        String @id @default(cuid())
+  quantity  Int
+  // Internal selling price per unit (incl. VAT) at sale time: the drink's special
+  // price if set, else its price — no borrel specials or role discounts. The tab's
+  // price level multiplies this.
+  unitCents Int
+  vatRate   Int // 0, 9 or 21 — snapshot of the drink's VAT at sale time
+
+  orderId   String
+  order     PppExternalOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   PppProduct       @relation(fields: [productId], references: [id])
 }

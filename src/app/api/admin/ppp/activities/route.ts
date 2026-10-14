@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 import { sumLineDiscounts } from "@/lib/roles";
 import { sbzCostInclCents } from "@/lib/sbz";
 import { loadSbzLists, sbzCatalogAt } from "@/lib/sbz-db";
+import { externalSplitByActivity } from "@/lib/external-db";
 
 // Full activity list for the admin panel: order counts, revenue (+ saved SumUp), cost of goods
 // (from entered SBZ usage), and the discount given (specials-only + total) per
@@ -12,7 +13,7 @@ export async function GET() {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const [activities, invoices, usage, sbzLists] = await Promise.all([
+  const [activities, invoices, usage, sbzLists, external] = await Promise.all([
     prisma.pppActivity.findMany({
       orderBy: { date: "desc" },
       include: { sumup: { select: { revenueCents: true } } },
@@ -34,6 +35,7 @@ export async function GET() {
     }),
     prisma.pppActivityUsage.findMany({ select: { activityId: true, sbzKey: true, quantity: true } }),
     loadSbzLists(),
+    externalSplitByActivity(),
   ]);
 
   type Agg = { orders: number; revenue: number; specials: number; total: number };
@@ -72,6 +74,10 @@ export async function GET() {
         date: a.date,
         orderCount: e?.orders ?? 0,
         revenueCents: e?.revenue ?? 0,
+        // External cards' tabs (incl. VAT): internal-price part (revenue, in the
+        // P/L) and the price level's markup (AB profit, not in the P/L).
+        externalCents: external.get(a.id)?.internalCents ?? 0,
+        abProfitCents: external.get(a.id)?.abProfitCents ?? 0,
         specialsDiscountCents: e?.specials ?? 0,
         totalDiscountCents: e?.total ?? 0,
         cogsInclCents: cogs.get(a.id) ?? 0,

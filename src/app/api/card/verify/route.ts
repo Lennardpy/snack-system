@@ -107,7 +107,8 @@ export async function POST(req: NextRequest) {
 
   // Guard against race condition: card registered between email send and click
   const existingCard = await prisma.card.findUnique({ where: { uid: registration.uid } });
-  if (existingCard) {
+  const externalCard = await prisma.externalCard.findUnique({ where: { uid: registration.uid } });
+  if (existingCard || externalCard) {
     await prisma.cardRegistration.update({ where: { token }, data: { usedAt: new Date() } });
     return new NextResponse(errorPage("This card is already registered to an account."), {
       status: 409,

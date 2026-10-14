@@ -27,7 +27,8 @@ interface HistoryInvoice {
   id: string;
   totalCents: number;
   confirmedAt: string;
-  member: { firstName: string; lastName: string };
+  member: { firstName: string; lastName: string } | null;
+  external?: string; // external card name (order on the borrel's external tab)
   lines: { quantity: number; unitCents: number; product: { id: string; name: string } }[];
 }
 
@@ -64,6 +65,8 @@ type MemberState =
     }
   // A scanned card with no linked member — the bartender links it by searching.
   | { kind: "unlinked"; uid: string }
+  // An external card (no member): the order goes on the borrel's external tab.
+  | { kind: "external"; cardId: string; name: string }
   | { kind: "error"; message: string };
 
 const WS_URL =
@@ -212,12 +215,30 @@ export default function PosPage() {
   }
 
   const loadHistory = useCallback(async () => {
-    const [hRes, cRes] = await Promise.all([
+    const [hRes, cRes, eRes] = await Promise.all([
       fetch(`/api/ppp/invoices?activityId=${activityId}`),
       fetch(`/api/ppp/activities/${activityId}/customers`),
+      fetch(`/api/ppp/external/orders?activityId=${activityId}`),
     ]);
-    if (sessionGone(hRes) || sessionGone(cRes)) return;
-    if (hRes.ok) setHistory((await hRes.json()).invoices);
+    if (sessionGone(hRes) || sessionGone(cRes) || sessionGone(eRes)) return;
+    if (hRes.ok) {
+      const invoices: HistoryInvoice[] = (await hRes.json()).invoices;
+      const external: HistoryInvoice[] = eRes.ok
+        ? (await eRes.json()).orders.map(
+            (o: { id: string; createdAt: string; cardName: string; totalCents: number; lines: HistoryInvoice["lines"] }) => ({
+              id: o.id,
+              totalCents: o.totalCents,
+              confirmedAt: o.createdAt,
+              member: null,
+              external: o.cardName,
+              lines: o.lines,
+            })
+          )
+        : [];
+      setHistory(
+        [...invoices, ...external].sort((a, b) => Date.parse(b.confirmedAt) - Date.parse(a.confirmedAt)).slice(0, 50)
+      );
+    }
     if (cRes.ok) setCustomers((await cRes.json()).customers);
   }, [activityId, sessionGone]);
 
@@ -272,7 +293,10 @@ export default function PosPage() {
         return;
       }
       const d = await res.json();
-      if (res.ok && d.unlinked) {
+      if (res.ok && d.external) {
+        setMember({ kind: "external", cardId: d.cardId, name: d.name });
+        setMobileView("cart");
+      } else if (res.ok && d.unlinked) {
         // Unrecognised card — let the bartender link it to a member by name.
         setLinkQuery("");
         setLinkResults([]);
@@ -334,6 +358,30 @@ export default function PosPage() {
     }
   }
 
+  // Make the just-scanned unknown card an external card (no member), then charge it.
+  async function makeExternal() {
+    if (member.kind !== "unlinked") return;
+    const name = prompt("Name for this external card (optional), e.g. the party using it:", "");
+    if (name === null) return; // cancelled
+    setLinking(true);
+    const res = await fetch("/api/ppp/external/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uid: member.uid, name }),
+    });
+    setLinking(false);
+    if (sessionGone(res)) return;
+    const d = await res.json();
+    if (res.ok) {
+      setMember({ kind: "external", cardId: d.cardId, name: d.name });
+      setLinkQuery("");
+      setLinkResults([]);
+      flashToast(`${d.name} is now an external card`);
+    } else {
+      setMember({ kind: "error", message: d.error ?? "Could not register card" });
+    }
+  }
+
   const { mode, wsStatus, nfcStatus, startNfc } = useCardReader({
     onScan: handleScan,
     wsUrl: WS_URL,
@@ -361,6 +409,13 @@ export default function PosPage() {
     [cart, productById]
   );
   const memberRoles = member.kind === "found" ? member.roles : [];
+  // External cards are charged the internal selling price (no borrel specials or
+  // role discounts); the board picks the invoice price level afterwards.
+  const isExternal = member.kind === "external";
+  const cartSpecialFor = useCallback(
+    (productId: string) => (isExternal ? null : specialFor(productId)),
+    [isExternal, specialFor]
+  );
   // The on-shift bartender (this logged-in user) drinks free from bartender-free
   // categories when charging their OWN card.
   const chargingSelf = member.kind === "found" && selfMemberId != null && member.id === selfMemberId;
@@ -377,7 +432,7 @@ export default function PosPage() {
         productId: l.product.id,
         quantity: l.qty,
         product: l.product,
-        activitySpecialCents: specialFor(l.product.id),
+        activitySpecialCents: cartSpecialFor(l.product.id),
         free: isFreeForBartender(l.product),
       })),
       memberRoles
@@ -400,10 +455,10 @@ export default function PosPage() {
       }
     }
     return byProduct;
-  }, [cartLines, memberRoles, specialFor, isFreeForBartender]);
+  }, [cartLines, memberRoles, specialFor, cartSpecialFor, isFreeForBartender]);
   // "Gross" = effective price (special if set) before role discounts; total = after.
   const grossCents = cartLines.reduce(
-    (s, l) => s + activityUnitPrice(l.product, specialFor(l.product.id)) * l.qty,
+    (s, l) => s + activityUnitPrice(l.product, cartSpecialFor(l.product.id)) * l.qty,
     0
   );
   const totalCents = [...priced.values()].reduce((s, p) => s + p.totalCents, 0);
@@ -416,22 +471,30 @@ export default function PosPage() {
   };
 
   async function confirmOrder() {
-    if (member.kind !== "found" || cartLines.length === 0) return;
+    if ((member.kind !== "found" && member.kind !== "external") || cartLines.length === 0) return;
     setConfirming(true);
-    const res = await fetch("/api/ppp/invoices", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        memberId: member.id,
-        activityId,
-        lines: cartLines.map((l) => ({ productId: l.product.id, quantity: l.qty })),
-      }),
-    });
+    const lines = cartLines.map((l) => ({ productId: l.product.id, quantity: l.qty }));
+    const res =
+      member.kind === "external"
+        ? await fetch("/api/ppp/external/orders", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cardId: member.cardId, activityId, lines }),
+          })
+        : await fetch("/api/ppp/invoices", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ memberId: member.id, activityId, lines }),
+          });
     setConfirming(false);
     if (res.ok) {
       lastOrderAt.current = Date.now();
       setIdleMsLeft(IDLE_LIMIT_MS);
-      flashToast(`Charged ${member.firstName} ${euro(totalCents)}`);
+      flashToast(
+        member.kind === "external"
+          ? `Added ${euro(totalCents)} to ${member.name}'s tab`
+          : `Charged ${member.firstName} ${euro(totalCents)}`
+      );
       setCart({});
       setMember({ kind: "idle" });
       setMobileView("products"); // back to the drinks grid for the next round
@@ -751,6 +814,24 @@ export default function PosPage() {
                       </div>
                     )}
                   </div>
+                ) : member.kind === "external" ? (
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-gray-500">External card — goes on the borrel&apos;s tab</p>
+                        <p className="text-lg font-bold">🏷️ {member.name}</p>
+                      </div>
+                      <button
+                        onClick={() => setMember({ kind: "idle" })}
+                        className="rounded-lg bg-gray-800 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700"
+                      >
+                        Change
+                      </button>
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500">
+                      Internal prices shown, no specials — the board sets the invoice price afterwards.
+                    </p>
+                  </div>
                 ) : member.kind === "scanning" ? (
                   <p className="text-sm text-amber-400">Reading card…</p>
                 ) : member.kind === "unlinked" ? (
@@ -790,12 +871,21 @@ export default function PosPage() {
                     {linkQuery.trim().length >= 2 && linkResults.length === 0 && !linking && (
                       <p className="text-xs text-gray-600">No members found.</p>
                     )}
-                    <button
-                      onClick={() => { setMember({ kind: "idle" }); setLinkQuery(""); setLinkResults([]); }}
-                      className="text-xs text-gray-500 hover:text-gray-300"
-                    >
-                      Cancel
-                    </button>
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <button
+                        onClick={() => { setMember({ kind: "idle" }); setLinkQuery(""); setLinkResults([]); }}
+                        className="text-xs text-gray-500 hover:text-gray-300"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={makeExternal}
+                        disabled={linking}
+                        className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-300 hover:bg-gray-700 disabled:opacity-40"
+                      >
+                        🏷️ Not a member — use as external card
+                      </button>
+                    </div>
                   </div>
                 ) : member.kind === "error" ? (
                   <p className="text-sm text-red-400">{member.message} — tap again</p>
@@ -851,13 +941,15 @@ export default function PosPage() {
                 </div>
                 <button
                   onClick={confirmOrder}
-                  disabled={member.kind !== "found" || cartLines.length === 0 || confirming || !isOpen}
+                  disabled={(member.kind !== "found" && member.kind !== "external") || cartLines.length === 0 || confirming || !isOpen}
                   className="w-full rounded-2xl bg-amber-600 py-5 text-xl font-bold transition-colors hover:bg-amber-500 active:scale-[0.99] disabled:opacity-40"
                 >
                   {confirming
                     ? "Confirming…"
                     : member.kind === "found"
                     ? `Confirm — ${member.firstName}`
+                    : member.kind === "external"
+                    ? `Add to tab — ${member.name}`
                     : "Scan a card to confirm"}
                 </button>
               </div>
@@ -872,7 +964,7 @@ export default function PosPage() {
                     <li key={inv.id} className="rounded-lg border border-gray-800 p-3">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-semibold">
-                          {inv.member.firstName} {inv.member.lastName}
+                          {inv.member ? `${inv.member.firstName} ${inv.member.lastName}` : `🏷️ ${inv.external}`}
                         </span>
                         <span className="text-sm text-gray-400">{euro(inv.totalCents)}</span>
                       </div>

@@ -35,6 +35,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  if (await prisma.externalCard.findUnique({ where: { uid: normalised } })) {
+    return NextResponse.json({ error: "This is an external card — it can't be linked to a member" }, { status: 409 });
+  }
+
   const member = await prisma.member.findUnique({
     where: { id: memberId },
     include: {

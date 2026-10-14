@@ -5,6 +5,7 @@ import { attributeRoleDiscount } from "@/lib/roles";
 import { sbzCostInclCents } from "@/lib/sbz";
 import { loadSbzLists, sbzCatalogAt } from "@/lib/sbz-db";
 import { costedActivityIds, resolvePppRange } from "@/lib/ppp-pl";
+import { externalSplitByActivity, sumSplits } from "@/lib/external-db";
 
 // GET /api/admin/ppp/stats?range=7d|30d|90d|365d|all|since_export
 // PPP (bar) overview: financials, top borrels, top drinkers (by drinks), top drinks.
@@ -114,7 +115,7 @@ export async function GET(req: NextRequest) {
   // Profit/loss covers only borrels in the range with cost of goods uploaded, so
   // income and costs describe the same borrels. Member income = all their orders.
   const plIds = await costedActivityIds(resolved.from);
-  const [usage, plIncome, sbzLists] = await Promise.all([
+  const [usage, plIncome, sbzLists, plExternal, rangeExternal] = await Promise.all([
     prisma.pppActivityUsage.findMany({
       where: { activityId: { in: plIds } },
       select: { sbzKey: true, quantity: true, activity: { select: { date: true } } },
@@ -124,6 +125,10 @@ export async function GET(req: NextRequest) {
       _sum: { totalCents: true },
     }),
     loadSbzLists(),
+    externalSplitByActivity({ activityId: { in: plIds } }),
+    // AB profit: the markup on external-card tabs at borrels in the range (all of
+    // them, costs uploaded or not) — kept out of the profit/loss.
+    externalSplitByActivity(resolved.from ? { activity: { date: { gte: resolved.from } } } : {}),
   ]);
   // Each borrel's usage is priced with the SBZ list valid on its date.
   let cogsInclCents = 0;
@@ -160,8 +165,11 @@ export async function GET(req: NextRequest) {
     pl: {
       activityCount: plIds.length,
       pppIncomeCents: plIncome._sum.totalCents ?? 0,
+      // External cards at internal prices only; their markup is abProfitCents.
+      externalIncomeCents: sumSplits(plExternal).internalCents,
       cogsInclCents,
     },
+    abProfitCents: sumSplits(rangeExternal).abProfitCents,
     roleCosts,
     topBorrels,
     topDrinkers,

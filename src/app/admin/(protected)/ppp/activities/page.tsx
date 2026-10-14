@@ -9,6 +9,8 @@ interface Activity {
   date: string;
   orderCount: number;
   revenueCents: number;
+  externalCents: number; // external-card tabs at internal prices (revenue, in the P/L)
+  abProfitCents: number; // their price level's markup — AB profit, not in the P/L
   specialsDiscountCents: number;
   totalDiscountCents: number;
   cogsInclCents: number;
@@ -244,7 +246,7 @@ export default function AdminActivitiesPage() {
                   {(() => {
                     const card = sumupFor(a);
                     const cardCents = typeof card === "number" ? card : 0;
-                    const totalRevenue = a.revenueCents + cardCents;
+                    const totalRevenue = a.revenueCents + a.externalCents + cardCents;
                     const net = totalRevenue - a.cogsInclCents;
                     const settled = card !== "loading";
                     return (
@@ -273,8 +275,10 @@ export default function AdminActivitiesPage() {
                         </div>
                         {card !== null && (
                           <p className="mt-0.5 text-xs text-gray-500">
-                            PPP {euro(a.revenueCents)} · SumUp{" "}
+                            PPP {euro(a.revenueCents)}
+                            {a.externalCents > 0 && <> · External {euro(a.externalCents)}</>} · SumUp{" "}
                             {card === "loading" ? "loading…" : card === "n/a" ? "unavailable" : euro(card)}
+                            {a.abProfitCents > 0 && <> · AB profit {euro(a.abProfitCents)} (not in P/L)</>}
                           </p>
                         )}
                       </>

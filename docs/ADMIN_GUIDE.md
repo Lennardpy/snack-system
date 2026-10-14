@@ -109,6 +109,27 @@ Two tabs: **Pending export** (confirmed, awaiting billing) and **Exported**
 > Exported invoices are read-only here. They've been sent to Congressus, so
 > corrections after export must be made in Congressus directly.
 
+## External cards (bar)
+
+For external parties at a borrel: give them an **external card** — a bar card not
+linked to any member.
+
+- **PPP → External cards:** tap the card into the UID field, name it, **Add card**.
+  (At the bar, a bartender can also scan an unknown card → **Not a member — use as
+  external card**.)
+- At the bar, drinks on that card go on the **borrel's external tab** (shown at
+  internal prices; no specials or discounts). They are **not** billed via Congressus.
+- After the borrel: **Activities → Details / P&L → External cards**. Enter a
+  **Title** (e.g. the party's name and date), choose the **Price level** —
+  Internal, Internal + 10%, Tussen (1.5×) or External (2×) — check the breakdown and
+  **⬇ Download PDF**: title, borrel, every drink with unit and total prices excl. and
+  incl. VAT, VAT per rate and the total. Send it to the party and invoice it
+  yourself. Wrong taps can be removed under **Show orders**.
+- **Profit:** only the drinks at **internal prices** count in the borrel's and the
+  dashboard's profit/loss. The **markup** of Internal + 10%, Tussen or External on top
+  of that is **AB profit** — shown separately as **AB Profit (via PPP)** on the PPP
+  dashboard, never in the P/L.
+
 ## Typical monthly routine
 
 1. **Members → Sync from Congressus** (catch new/changed members).

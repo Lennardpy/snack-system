@@ -17,7 +17,8 @@ interface Stats {
   bartenderCostCents: number;
   bartenderDrinks: number;
   cogsInclCents: number;
-  pl: { activityCount: number; pppIncomeCents: number; cogsInclCents: number };
+  abProfitCents?: number;
+  pl: { activityCount: number; pppIncomeCents: number; externalIncomeCents?: number; cogsInclCents: number };
   roleCosts: { name: string; costCents: number; drinks: number }[];
   topBorrels: Borrel[];
   topDrinkers: Drinker[];
@@ -66,9 +67,10 @@ export default function PppDashboardPage() {
 
   const plCount = stats?.pl.activityCount ?? 0;
   const pppIncomeCents = stats?.pl.pppIncomeCents ?? 0;
+  const externalIncomeCents = stats?.pl.externalIncomeCents ?? 0;
   const cardIncomeCents = sumup.state === "ok" ? sumup.revenueCents : 0;
   const cogsCents = stats?.pl.cogsInclCents ?? 0;
-  const netPlCents = pppIncomeCents + cardIncomeCents - cogsCents;
+  const netPlCents = pppIncomeCents + externalIncomeCents + cardIncomeCents - cogsCents;
 
   const maxBorrel = Math.max(1, ...(stats?.topBorrels.map((b) => b.revenueCents) ?? [1]));
   const maxDrinker = Math.max(1, ...(stats?.topDrinkers.map((d) => d.drinks) ?? [1]));
@@ -120,7 +122,11 @@ export default function PppDashboardPage() {
           )}
         </p>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <Kpi label="Income — PPP (member)" value={stats ? euro(pppIncomeCents) : "—"} />
+          <Kpi
+            label="Income — PPP (member)"
+            value={stats ? euro(pppIncomeCents + externalIncomeCents) : "—"}
+            sub={externalIncomeCents > 0 ? `incl. ${euro(externalIncomeCents)} external cards (internal prices)` : undefined}
+          />
           <Kpi
             label="Income — SumUp (card)"
             value={sumup.state === "ok" ? euro(sumup.revenueCents) : sumup.state === "loading" ? "…" : "n/a"}
@@ -133,6 +139,16 @@ export default function PppDashboardPage() {
             accent={netPlCents >= 0 ? "green" : "red"}
           />
         </div>
+      </section>
+
+      {/* AB profit — the markup on external cards, deliberately outside the P/L */}
+      <section className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+        <Kpi
+          label="AB Profit (via PPP)"
+          value={stats ? euro(stats.abProfitCents ?? 0) : "—"}
+          accent={(stats?.abProfitCents ?? 0) > 0 ? "green" : undefined}
+          sub="External-card markup above internal prices · not in the P/L"
+        />
       </section>
 
       {/* Financials KPIs */}

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { SbzProduct } from "@/lib/sbz";
+import ExternalTabs from "./ExternalTabs";
 
 interface ProductLite { id: string; name: string; price: number; specialPrice: number | null }
 interface Discount { id: string; productId: string; priceCents: number; product: ProductLite }
@@ -29,6 +30,8 @@ export default function ActivityDetailPage() {
   const [pnl, setPnl] = useState({
     orders: 0,
     memberRevenueCents: 0,
+    externalRevenueCents: 0,
+    abProfitCents: 0,
     specialsDiscountCents: 0,
     totalDiscountCents: 0,
     bartenderCostCents: 0,
@@ -78,6 +81,8 @@ export default function ActivityDetailPage() {
       setPnl({
         orders: d.orderCount ?? 0,
         memberRevenueCents: d.memberRevenueCents ?? 0,
+        externalRevenueCents: d.externalRevenueCents ?? 0,
+        abProfitCents: d.abProfitCents ?? 0,
         specialsDiscountCents: d.specialsDiscountCents ?? 0,
         totalDiscountCents: d.totalDiscountCents ?? 0,
         bartenderCostCents: d.bartenderCostCents ?? 0,
@@ -136,7 +141,7 @@ export default function ActivityDetailPage() {
   }, [usage, sbzItems]);
 
   const cardRevenueCents = sumup.state === "ok" ? sumup.revenueCents : 0;
-  const totalRevenueCents = pnl.memberRevenueCents + cardRevenueCents;
+  const totalRevenueCents = pnl.memberRevenueCents + pnl.externalRevenueCents + cardRevenueCents;
   const netPlCents = totalRevenueCents - liveCogsCents;
 
   // Per-drink: member charges + SumUp card sales, merged by drink name.
@@ -302,7 +307,7 @@ export default function ActivityDetailPage() {
       <section className="mb-6 max-w-5xl rounded-2xl border border-gray-800 bg-gray-900 p-6">
         <h2 className="mb-1 text-lg font-semibold">Profit / loss</h2>
         <p className="mb-5 text-sm text-gray-500">
-          Revenue (member charges + SumUp card) minus the cost of goods you enter below.
+          Revenue (member charges + external cards + SumUp card) minus the cost of goods you enter below.
           SumUp is fetched live on the day and saved the day after.{" "}
           <button
             onClick={() => loadSumup(true)}
@@ -313,8 +318,17 @@ export default function ActivityDetailPage() {
           </button>
         </p>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className={`grid gap-4 sm:grid-cols-2 ${pnl.externalRevenueCents > 0 ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
           <Stat label="Member charges" value={euro(pnl.memberRevenueCents)} hint={`${pnl.orders} order${pnl.orders === 1 ? "" : "s"} (billed via Congressus)`} />
+          {pnl.externalRevenueCents > 0 && (
+            <Stat
+              label="External cards"
+              value={euro(pnl.externalRevenueCents)}
+              hint={`at internal prices${
+                pnl.abProfitCents > 0 ? ` · + ${euro(pnl.abProfitCents)} AB profit (markup, not in P/L)` : ""
+              }`}
+            />
+          )}
           <Stat
             label="Card revenue (SumUp)"
             value={
@@ -356,6 +370,8 @@ export default function ActivityDetailPage() {
           </div>
         </div>
       </section>
+
+      <ExternalTabs activityId={id} onChanged={load} />
 
       {/* ── Usage (cost of goods input) ───────────────────────────────────── */}
       <section className="mb-6 max-w-5xl rounded-2xl border border-gray-800 bg-gray-900 p-6">

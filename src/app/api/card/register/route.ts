@@ -24,6 +24,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Card already registered" }, { status: 409 });
   }
 
+  // External bar cards (not linked to a member) can't be registered to one.
+  if (await prisma.externalCard.findUnique({ where: { uid: normalised } })) {
+    return NextResponse.json({ error: "This card is an external bar card and can't be registered" }, { status: 409 });
+  }
+
   // Look up member by email
   const member = await prisma.member.findUnique({
     where: { email: email.trim().toLowerCase() },

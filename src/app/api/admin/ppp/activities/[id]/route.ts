@@ -5,6 +5,7 @@ import { sumLineDiscounts, attributeRoleDiscount } from "@/lib/roles";
 import { sbzCostInclCents, sbzCostExclCents, type SbzProduct } from "@/lib/sbz";
 import { loadSbzLists, sbzCatalogAt, sbzListAt } from "@/lib/sbz-db";
 import { alexiaMatchKey } from "@/lib/alexia";
+import { externalSplitByActivity } from "@/lib/external-db";
 
 // Activity detail + full profit/loss for the admin page:
 //   • the activity (+ its drink specials) and the drink catalog for the picker
@@ -17,7 +18,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const [activity, products, invoices, usage, sbzLists] = await Promise.all([
+  const [activity, products, invoices, usage, sbzLists, external] = await Promise.all([
     prisma.pppActivity.findUnique({
       where: { id },
       include: {
@@ -51,6 +52,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     }),
     prisma.pppActivityUsage.findMany({ where: { activityId: id }, select: { sbzKey: true, quantity: true } }),
     loadSbzLists(),
+    externalSplitByActivity({ activityId: id }),
   ]);
 
   if (!activity) return NextResponse.json({ error: "Activity not found" }, { status: 404 });
@@ -127,6 +129,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     products,
     orderCount: invoices.length,
     memberRevenueCents,
+    // External cards' tabs (incl. VAT): the internal-price part is revenue in the
+    // P/L; the markup of the price level is AB profit, kept out of the P/L.
+    externalRevenueCents: external.get(id)?.internalCents ?? 0,
+    abProfitCents: external.get(id)?.abProfitCents ?? 0,
     specialsDiscountCents: discount.specialsCents,
     totalDiscountCents: discount.totalCents,
     roleCosts,
@@ -193,6 +199,13 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     select: { name: true, date: true, startsAt: true, _count: { select: { invoices: true } } },
   });
   if (!activity) return NextResponse.json({ error: "Activity not found" }, { status: 404 });
+  const externalOrders = await prisma.pppExternalOrder.count({ where: { tab: { activityId: id } } });
+  if (externalOrders > 0) {
+    return NextResponse.json(
+      { error: `Cannot delete: this activity has ${externalOrders} external-card order(s).` },
+      { status: 409 }
+    );
+  }
   if (activity._count.invoices > 0) {
     return NextResponse.json(
       { error: `Cannot delete: this activity has ${activity._count.invoices} PPP order(s).` },

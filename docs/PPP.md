@@ -243,24 +243,63 @@ lists** (`SbzPriceList` + `SbzPrice`), managed on **Admin → PPP → SBZ prices
 
 | Page | What |
 |------|------|
-| **Dashboard** | A **Profit / loss** block for the range covering **only borrels with cost of goods uploaded** (so income and costs describe the same borrels) — **income split PPP (member) + SumUp (card)** minus **cost of goods** (summed SBZ usage) = one **net P/L** number. SumUp loads separately and comes from each borrel's **saved snapshot** (see below); only today's borrels hit the SumUp API. The general Revenue KPI still counts all orders. Plus financials (revenue, drinks sold, orders, borrels, drinkers, avg, **Bartender drinks** = association cost of comped bartender-free drinks) + rankings: **top borrels** by revenue, **top drinkers** by drinks, most popular drinks, and **Free drinks by role** — the association's cost of role-based free/discounted drinks split per role (e.g. Board = free drinks at list value, PilsCie = their discount); each line's discount is attributed to the role that granted it. Range selector includes **Since export** — the still-unbilled orders (status CONFIRMED) so you can see the money still to come; the subtitle shows the last export date. (The SSS dashboard has the same **Since export** range.) |
+| **Dashboard** | A **Profit / loss** block for the range covering **only borrels with cost of goods uploaded** (so income and costs describe the same borrels) — **income split PPP (member) + SumUp (card)** minus **cost of goods** (summed SBZ usage) = one **net P/L** number (external cards count at internal prices only). Next to it, **AB Profit (via PPP)**: the markup on external cards above internal prices, kept out of the P/L. SumUp loads separately and comes from each borrel's **saved snapshot** (see below); only today's borrels hit the SumUp API. The general Revenue KPI still counts all orders. Plus financials (revenue, drinks sold, orders, borrels, drinkers, avg, **Bartender drinks** = association cost of comped bartender-free drinks) + rankings: **top borrels** by revenue, **top drinkers** by drinks, most popular drinks, and **Free drinks by role** — the association's cost of role-based free/discounted drinks split per role (e.g. Board = free drinks at list value, PilsCie = their discount); each line's discount is attributed to the role that granted it. Range selector includes **Since export** — the still-unbilled orders (status CONFIRMED) so you can see the money still to come; the subtitle shows the last export date. (The SSS dashboard has the same **Since export** range.) |
 | **Drinks** | PPP catalog: categories, create/edit/publish/archive drinks with price, **special price**, VAT, and a 5-colour **tile colour** picker. |
 | **Activities** | List borrels (auto-synced from Alexia + manual), close/reopen, rename, **total revenue (PPP member orders + SumUp card)** with the split underneath, **cost of goods**, and a **green ▲ profit / red ▼ loss** badge when costs are uploaded (large, per event). SumUp comes from each borrel's saved snapshot; past borrels not saved yet are fetched once in the background (which saves them) + order counts + **discount given** (specials / total), order list (each order shows the **🍺 tapper** — the bartender who rang it up). **Closing** shows the discount totals. Each links to its detail page. |
 | **Delete activity** | On the Activities list, **Delete** removes an activity that has **no PPP orders** — e.g. an external activity or a free drink synced from Alexia. It's disabled (and the API returns `409`) once an activity has orders. Its specials, usage and saved SumUp go with it. Because Alexia events have no id (matched by name + day), the deleted event's key is stored in `PppDismissedEvent` so the **Alexia sync never re-imports it**. |
 | **Activity detail** (`/admin/ppp/activities/[id]`) | Manage the borrel's **drink specials**, and see its full **profit/loss** (see below): revenue, cost of goods, discounts, per-drink. Manage specials as before (also in advance for future borrels). |
 | **SBZ prices** | The cost prices paid to SBZ, as versioned price lists — view, edit, upload the SBZ PDF; each list applies from its date onward. See [SBZ prices](#sbz-prices-cost-of-goods). |
 | **Member roles** | Create/edit roles with a `%` and/or `€` discount. Highest wins. |
+| **External cards** | Bar cards **not linked to a member** (for external parties): add by tapping the card into the UID field + a name, rename, delete (past tabs are kept). See [External cards](#external-cards). |
 | **Bartenders** | Invite by email, set-password link, link to a member for card login, delete. |
 | **Invoices** | PPP orders grouped by borrel; status filter; **Export SSS + PPP to Congressus** (one combined invoice per member per month — same action as on the SSS page); delete/clear test data. **Edit** a pending (not yet exported) order: change quantities, remove lines (removing all deletes the order), and **Remove discount** on a line — it's then charged at the drink's normal list price (drops the borrel special, role discount such as PilsCie/Board, or bartender free drink) and counts as undiscounted in all reports. Each discounted line shows why it was discounted. `PATCH /api/admin/ppp/invoices/[id]` `{ lines: [{ id, quantity?, removeDiscount? }] }`; exported orders return `409`. |
 
 Member **role assignment** is on the existing **Admin → Members** page (role chips
 + a toggle picker per member).
 
+## External cards
+
+An **external card** (`ExternalCard`) is a bar card that isn't linked to any member,
+e.g. handed to an external party at a borrel. Its UID can never also be a member
+`Card` (both directions are checked: admin add, POS register, POS link, kiosk
+register/verify).
+
+- **Create:** Admin → **External cards** (tap the card into the UID field, give it a
+  name), or at the bar: scan an unknown card → **"Not a member — use as external
+  card"** (optional name; default "External card N").
+- **At the bar:** scanning it shows **🏷️ <name> — goes on the borrel's tab**. The cart
+  is priced at the **internal selling price** — the drink's special price if set,
+  else its price; **no borrel specials, role discounts or bartender free drinks**.
+  **Add to tab** creates a `PppExternalOrder` on that borrel's `PppExternalTab` (one tab
+  per card per borrel). Lines snapshot that internal price (`unitCents`) and the
+  drink's VAT rate (`vatRate` 0/9/21). External orders show in the POS history, are
+  **not** member orders and never go to Congressus.
+- **On the borrel's Details page** (section **External cards**): per tab set a
+  **Title** (printed on the PDF; default "<card> — <borrel>") and a **Price level**:
+  Internal ×1, Internal + 10% ×1.1, Tussen ×1.5, External ×2 (default External). The
+  breakdown shows per drink: qty, unit and total **excl. and incl. VAT** (VAT backed out
+  of the incl. price per line at the drink's rate), VAT per rate, and the totals.
+  **⬇ Download PDF** (`GET /api/admin/ppp/external-tabs/[id]/pdf`, `pdf-lib`,
+  `src/lib/external-pdf.ts`) gives the same breakdown with the title and borrel; the
+  price level itself isn't printed. Mistaken orders can be removed under **Show orders**.
+- **Revenue vs. AB profit:** a tab's total is split. The part at **internal prices**
+  counts as borrel revenue in the profit/loss — on the Details P/L ("External cards"),
+  the Activities list ("External €…") and the dashboard P/L (inside "Income — PPP").
+  The **markup** of the price level on top of that (Internal + 10% / Tussen / External)
+  is **AB profit**: kept **out of every P/L** and shown separately — on the PPP
+  dashboard as **AB Profit (via PPP)** (borrels in the range, costs uploaded or not),
+  on the tab, the Details "External cards" hint and the Activities list. Both incl. VAT.
+  A borrel with external orders can't be deleted.
+
+Pricing lives in `src/lib/external.ts` (`PRICE_LEVELS`, `externalBreakdown`);
+loading/revenue in `src/lib/external-db.ts`.
+
 ## Activity profit/loss
 
 The activity detail page shows a full **profit/loss** for a borrel:
 
 - **Revenue** = **member charges** (itemised PPP orders, billed via Congressus) +
+  **external cards** (each tab at its price level, incl. VAT — see [External cards](#external-cards)) +
   **card revenue from SumUp** (fetched live for the borrel's time window). SumUp
   records the **drink** on each card payment, so card revenue is attributed **per
   drink** and merged with member charges. (Card payments made before SumUp's product
@@ -354,6 +393,10 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
   who tapped the order), `PppInvoiceLine` (`unitCents` charged + `listCents?` /
   `specialCents?` snapshots for discount reporting + `bartenderFree` marking a
   comped bartender line).
+- `ExternalCard` (`uid` unique, `name`) → `PppExternalTab` (per activity × card:
+  `title?`, `priceLevel` INTERNAL|INTERNAL_PLUS_10|TUSSEN|EXTERNAL, `cardName`
+  snapshot; card deletion sets `cardId` null) → `PppExternalOrder` (`createdById?`) →
+  `PppExternalLine` (`quantity`, `unitCents` internal price incl. VAT, `vatRate`).
 - `MemberRole` (`discountPercent`, `discountCents`) ↔ `Member` (many-to-many).
 - `PasswordSetupToken` (bartender invites; non-expiring, single-use).
 - Reuses `User.memberId` to link a bartender to a member; reuses `Member` / `Card`
@@ -371,7 +414,9 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
 | POST | `/api/ppp/alexia/sync` | Import upcoming Stress borrels from Alexia |
 | GET | `/api/ppp/products` | Published drinks for the POS (incl. `category.bartenderFree`) |
 | GET | `/api/ppp/me` | The logged-in bartender's own linked member (for the free-drink rule) |
-| POST | `/api/ppp/card/scan` | UID → member (name + roles); returns `{ unlinked, uid }` if the card isn't linked yet |
+| POST | `/api/ppp/card/scan` | UID → member (name + roles); `{ external, cardId, name }` for an external card; `{ unlinked, uid }` if the card isn't known yet |
+| POST | `/api/ppp/external/register` | Make an unknown card external `{ uid, name? }` → `{ cardId, name }`; `409` if linked to a member |
+| GET/POST | `/api/ppp/external/orders` | External orders at a borrel (`?activityId=`, for the POS history) / add an order to the card's tab `{ cardId, activityId, lines }` |
 | GET | `/api/ppp/members/search?q=` | Member typeahead for linking an unrecognised card |
 | POST | `/api/ppp/card/link` | Link a scanned card `{ uid, memberId }` → member (name + roles); `409` if already linked |
 | GET/POST | `/api/ppp/invoices` | Order history (`?activityId=`, incl. the `createdBy` tapper) / confirm an order (records the tapper) |
@@ -390,7 +435,11 @@ extract usage from an uploaded Alexia PDF), `…/sbz` (GET = all price lists +
 current; POST = save a list valid from a date, replacing one on the same date),
 `…/sbz/[id]` (DELETE a version, not the base), `…/sbz/parse` (POST an SBZ PDF →
 matched rows + valid-from date, nothing saved),
-`…/stats` (`?range=…|since_export`; returns `cogsInclCents`) +`/stats/sumup` (range card-income total), `…/invoices`; `/api/admin/members/[id]/roles`,
+`…/external-cards` (GET list / POST `{ uid, name }`; +`/[id]` PATCH rename / DELETE),
+`…/activities/[id]/external` (the borrel's external tabs with breakdown),
+`…/external-tabs/[id]` (PATCH `{ title?, priceLevel? }` / DELETE; +`/pdf` download),
+`…/external-orders/[id]` (DELETE one order; an emptied tab is removed),
+`…/stats` (`?range=…|since_export`; returns `cogsInclCents`, `pl.externalIncomeCents` (internal prices), `abProfitCents`) +`/stats/sumup` (range card-income total), `…/invoices`; `/api/admin/members/[id]/roles`,
 `/api/admin/members/search`; and `POST /api/admin/invoices/export { scope }`.
 
 ## Environment
