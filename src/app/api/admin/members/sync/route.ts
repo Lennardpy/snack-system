@@ -90,7 +90,7 @@ async function pruneMissingMembers(congressusIds: Set<number>) {
   }
 
   const missing = await prisma.member.findMany({
-    where: { congressusId: { notIn: [...congressusIds] } },
+    where: { congressusId: { notIn: [...congressusIds] }, deletedAt: null },
     select: {
       id: true,
       firstName: true,

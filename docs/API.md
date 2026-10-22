@@ -122,8 +122,12 @@ Unlinks one card (e.g. a **lost card**): deletes only that `Card` row. The membe
 invoices and history stay; the UID becomes unregistered and can be linked again.
 
 ### `DELETE /api/admin/members/[id]`
-Deletes a member plus their cards & shop sessions (transaction). `409` if the
-member has any invoices.
+Deletes a member. `409` while they have unbilled orders (SSS or PPP, `CONFIRMED`/
+`EXPORTING`). With no purchase history the member is removed completely (cards,
+shop sessions, abandoned carts). With exported history they are **anonymised**
+instead: name → "Deleted member", email erased, cards/sessions/roles/carts and any
+bartender-account link removed, `congressusId` → null, `deletedAt` set — so past
+orders and revenue figures stay correct. Returns `{ ok, anonymised }`.
 
 ### `POST /api/admin/members/[id]/shop`
 Opens the kiosk shop **as this member**: replaces their sessions, creates a

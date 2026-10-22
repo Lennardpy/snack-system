@@ -41,8 +41,12 @@ All figures count **confirmed and exported** purchases in the chosen period.
   member can link a new (or the found) card again via the normal flow.
 - **🛒 Enter store** — opens the kiosk shop **as that member** so you can place an
   order on their behalf (e.g. manual sale). It behaves exactly like a card tap.
-- **Delete** — removes a member and their linked cards. Blocked if the member has
-  any invoices (delete/clear those first).
+- **Delete** — removes a member, their cards and roles. Only possible once nothing
+  is left to bill: unbilled orders must be exported to Congressus (or deleted) first.
+  A member with past (exported) purchases is **anonymised** rather than erased:
+  their personal details go, but their old orders stay as "Deleted member" so
+  revenue and P/L figures don't change. If they're still in Congressus, the next
+  sync adds them again as a fresh member (without their old history).
 
 > Cards are normally linked by members themselves via the email flow — you don't
 > link cards from the admin panel.

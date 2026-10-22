@@ -107,7 +107,14 @@ export default function MembersPage() {
   }
 
   async function remove(m: Member) {
-    if (!confirm(`Delete ${m.firstName} ${m.lastName}? This removes their cards and cannot be undone.`)) return;
+    if (
+      !confirm(
+        `Delete ${m.firstName} ${m.lastName}?\n\nTheir cards, roles and personal details are removed. ` +
+          `Past (exported) purchases are kept anonymously as "Deleted member", so revenue figures stay correct. ` +
+          `Only possible when nothing is left to bill. This cannot be undone.`
+      )
+    )
+      return;
     setBusyId(m.id);
     const res = await fetch(`/api/admin/members/${m.id}`, { method: "DELETE" });
     const data = await res.json();

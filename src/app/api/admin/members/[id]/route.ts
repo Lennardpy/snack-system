@@ -79,33 +79,71 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   });
 }
 
-// DELETE /api/admin/members/[id] — remove a member and their cards/sessions.
-// Invoices are preserved for accounting; we block deletion if any exist.
+// DELETE /api/admin/members/[id] — delete a member.
+//   • Blocked while they have unbilled orders (SSS or PPP, CONFIRMED/EXPORTING):
+//     export or delete those first, so no money is lost.
+//   • No purchase history at all → removed completely (cards, sessions too).
+//   • Only exported history → ANONYMISED instead: name/email erased, cards,
+//     sessions, roles and any bartender-account link removed, detached from
+//     Congressus, deletedAt set. The row stays so past orders and every revenue /
+//     P/L figure remain correct; they show as "Deleted member".
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-
-  const member = await prisma.member.findUnique({
-    where: { id },
-    include: { _count: { select: { invoices: true } } },
-  });
+  const member = await prisma.member.findUnique({ where: { id }, select: { id: true, email: true, deletedAt: true } });
   if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });
+  if (member.deletedAt) return NextResponse.json({ error: "Member is already deleted" }, { status: 409 });
 
-  if (member._count.invoices > 0) {
+  const unbilled = { status: { in: ["CONFIRMED" as const, "EXPORTING" as const] }, memberId: id };
+  const [openSss, openPpp, exportedSss, exportedPpp] = await Promise.all([
+    prisma.saleInvoice.count({ where: unbilled }),
+    prisma.pppInvoice.count({ where: unbilled }),
+    prisma.saleInvoice.count({ where: { memberId: id, status: "EXPORTED" } }),
+    prisma.pppInvoice.count({ where: { memberId: id, status: "EXPORTED" } }),
+  ]);
+  if (openSss + openPpp > 0) {
     return NextResponse.json(
-      { error: `Cannot delete: member has ${member._count.invoices} invoice(s). Delete those first.` },
+      {
+        error:
+          `Cannot delete: ${openSss + openPpp} order(s) are not billed yet ` +
+          `(${openSss} snack, ${openPpp} drink). Export them to Congressus (or delete them) first.`,
+      },
       { status: 409 }
     );
   }
 
-  // Remove dependent rows first (no cascade in schema).
-  await prisma.$transaction([
+  // Abandoned kiosk carts (CONCEPT) are never billed — always removed.
+  const concept = { memberId: id, status: "CONCEPT" as const };
+  const cleanup = [
+    prisma.invoiceLine.deleteMany({ where: { invoice: concept } }),
+    prisma.saleInvoice.deleteMany({ where: concept }),
     prisma.card.deleteMany({ where: { memberId: id } }),
     prisma.shopSession.deleteMany({ where: { memberId: id } }),
-    prisma.member.delete({ where: { id } }),
-  ]);
+    prisma.cardRegistration.deleteMany({ where: { email: member.email } }),
+    prisma.user.updateMany({ where: { memberId: id }, data: { memberId: null } }),
+  ];
 
-  return NextResponse.json({ ok: true });
+  if (exportedSss + exportedPpp === 0) {
+    await prisma.$transaction([...cleanup, prisma.member.delete({ where: { id } })]);
+    return NextResponse.json({ ok: true, anonymised: false });
+  }
+
+  await prisma.$transaction([
+    ...cleanup,
+    prisma.member.update({
+      where: { id },
+      data: {
+        firstName: "Deleted",
+        lastName: "member",
+        email: `deleted-${id}@deleted.invalid`,
+        active: false,
+        congressusId: null,
+        deletedAt: new Date(),
+        roles: { set: [] },
+      },
+    }),
+  ]);
+  return NextResponse.json({ ok: true, anonymised: true, exportedOrders: exportedSss + exportedPpp });
 }

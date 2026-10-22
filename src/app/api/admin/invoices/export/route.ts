@@ -35,13 +35,13 @@ interface ExpInvoice {
   system: System;
   id: string;
   memberId: string;
-  congressusMemberId: number;
+  congressusMemberId: number | null; // null = member deleted (can't be billed)
   memberName: string;
   when: Date;
   lines: ExpLine[];
 }
 interface Group {
-  congressusMemberId: number;
+  congressusMemberId: number | null;
   memberName: string;
   yearMonth: string;
   ids: Record<System, string[]>;
@@ -186,6 +186,13 @@ export async function POST() {
     const label = `${g.memberName} (${g.yearMonth})`;
     const orders = g.ids.sss.length + g.ids.ppp.length;
     let congressusInvoiceId: number | null = null;
+    if (g.congressusMemberId == null) {
+      // Unreachable in practice: a member can only be deleted once nothing is unbilled.
+      out.failed++;
+      await settle(runId, g.ids, "release").catch(() => {});
+      out.errors.push(`${label}: member has no Congressus id (deleted) — not exported, back to pending.`);
+      continue;
+    }
     try {
       congressusInvoiceId = await createSaleInvoice(
         g.congressusMemberId,

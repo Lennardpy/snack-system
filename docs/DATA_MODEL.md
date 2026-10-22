@@ -26,10 +26,11 @@ A person synced from Congressus. Only Primary and Secondary members are imported
 | Field | Type | Notes |
 |-------|------|-------|
 | `id` | String (cuid) | PK |
-| `congressusId` | Int | **unique** — the Congressus member id |
+| `congressusId` | Int? | **unique** — the Congressus member id; null once deleted (anonymised) |
 | `firstName`, `lastName` | String | |
 | `email` | String | **unique** — must match their Congressus login email |
 | `active` | Boolean | false if deleted/locked/archived/deceased in Congressus |
+| `deletedAt` | DateTime? | set when an admin deletes a member with exported history (row kept, anonymised, hidden from lists) |
 | `createdAt`, `updatedAt` | DateTime | |
 | Relations | `cards[]`, `invoices[]`, `user?` | |
 
@@ -163,7 +164,7 @@ enum UserRole      { ADMIN    MEMBER }
 
 ## Notes on deletion
 
-- Deleting a **member** is blocked while they have invoices; otherwise their cards and shop sessions are removed in a transaction.
+- Deleting a **member** is blocked while they have unbilled (`CONFIRMED`/`EXPORTING`) SSS or PPP orders. Without history they're removed with their cards, shop sessions and carts; with exported history they're anonymised (`deletedAt`, `congressusId` null) so their orders keep counting in reports.
 - Deleting/editing an **invoice** is blocked once it is `EXPORTED`.
 - There is no DB-level cascade from `SaleInvoice` to `InvoiceLine` (except `Session`→`User`), so the API deletes lines explicitly inside transactions.
 

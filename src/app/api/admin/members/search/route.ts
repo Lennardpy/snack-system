@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
   const tokens = q.split(/\s+/).filter(Boolean);
   const rows = await prisma.member.findMany({
     where: {
+      deletedAt: null,
       AND: tokens.map((t) => ({
         OR: [
           { firstName: { contains: t, mode: "insensitive" as const } },

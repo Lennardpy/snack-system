@@ -9,11 +9,16 @@ datasource db {
 
 model Member {
   id           String   @id @default(cuid())
-  congressusId Int      @unique
+  // null once the member is deleted (anonymised) — detached from Congressus, so a
+  // later sync creates them afresh if they're (still) a member there.
+  congressusId Int?     @unique
   firstName    String
   lastName     String
   email        String   @unique
   active       Boolean  @default(true)
+  // Set when an admin deletes a member who has exported purchase history: the row
+  // stays (anonymised) so past orders and revenue figures remain correct.
+  deletedAt    DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
