@@ -182,9 +182,10 @@ Deletes the invoice and its lines. `409` if already `EXPORTED`.
 
 ### `POST /api/admin/invoices/export`
 Atomically claims all `CONFIRMED` SSS **and** PPP orders (`CONFIRMED → EXPORTING`,
-tagged with this run's id — a concurrent run gets none), groups them by member ×
-calendar month and creates **one** Congressus sale-invoice per group with both the
-snack and drink lines (`"SSS & PPP <month>"`), then marks them `EXPORTED`. A
+tagged with this run's id — a concurrent run gets none), groups them by member
+(whatever month) and creates **one** Congressus sale-invoice per member with both
+the snack and drink lines (`"SSS & PPP <period>"`, e.g. "oktober 2026" or
+"september – oktober 2026"), then marks them `EXPORTED`. A
 Congressus 4xx returns that group to `CONFIRMED`; an unknown outcome
 (timeout/5xx/network/DB failure after success) leaves it `EXPORTING` and counts it
 in `needsCheck`. No body.

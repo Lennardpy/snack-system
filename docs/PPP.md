@@ -252,7 +252,7 @@ lists** (`SbzPriceList` + `SbzPrice`), managed on **Admin → PPP → SBZ prices
 | **Member roles** | Create/edit roles with a `%` and/or `€` discount. Highest wins. |
 | **External cards** | Bar cards **not linked to a member** (for external parties): add by tapping the card into the UID field + a name, rename, delete (past tabs are kept). See [External cards](#external-cards). |
 | **Bartenders** | Invite by email, set-password link, link to a member for card login, delete. |
-| **Invoices** | PPP orders grouped by borrel; status filter; **Export SSS + PPP to Congressus** (one combined invoice per member per month — same action as on the SSS page); delete/clear test data. **Edit** a pending (not yet exported) order: change quantities, remove lines (removing all deletes the order), and **Remove discount** on a line — it's then charged at the drink's normal list price (drops the borrel special, role discount such as PilsCie/Board, or bartender free drink) and counts as undiscounted in all reports. Each discounted line shows why it was discounted. `PATCH /api/admin/ppp/invoices/[id]` `{ lines: [{ id, quantity?, removeDiscount? }] }`; exported orders return `409`. |
+| **Invoices** | PPP orders grouped by borrel; status filter; **Export SSS + PPP to Congressus** (one combined invoice per member per export, whatever months the orders are from — same action as on the SSS page); delete/clear test data. **Edit** a pending (not yet exported) order: change quantities, remove lines (removing all deletes the order), and **Remove discount** on a line — it's then charged at the drink's normal list price (drops the borrel special, role discount such as PilsCie/Board, or bartender free drink) and counts as undiscounted in all reports. Each discounted line shows why it was discounted. `PATCH /api/admin/ppp/invoices/[id]` `{ lines: [{ id, quantity?, removeDiscount? }] }`; exported orders return `409`. |
 
 Member **role assignment** is on the existing **Admin → Members** page (role chips
 + a toggle picker per member).
@@ -387,8 +387,8 @@ PPP drinks live in their own Congressus folder, separate from SSS snacks. See
   `PppProduct.vatCategory`; set it in the Congressus UI if needed.
 - **One combined invoice** — `POST /api/admin/invoices/export` (from either
   invoices page, "Export SSS + PPP to Congressus") groups ALL `CONFIRMED` SSS and
-  PPP orders by member × month and creates **one** Congressus sale-invoice per group,
-  reference `"SSS & PPP <month>"`, holding both the snack lines and the drink lines —
+  PPP orders by member (any month) and creates **one** Congressus sale-invoice per
+  member, reference `"SSS & PPP <period>"` (e.g. "september – oktober 2026"), holding both the snack lines and the drink lines —
   so a member gets one invoice and one direct debit. PPP line descriptions include
   the activity name (`"Pils – Borrel 28 jun"`); the same product at different
   activities/prices stays on separate lines. Every line keeps its own offer id;

@@ -1,9 +1,9 @@
 // Shared confirm + result text for the combined SSS + PPP export (both invoices
-// pages trigger the same export: one Congressus invoice per member per month).
+// pages trigger the same export: one Congressus invoice per member per export).
 
 export const EXPORT_CONFIRM =
   "Export ALL pending orders — snacks (SSS) and drinks (PPP) together — to Congressus?\n\n" +
-  'Each member gets ONE invoice per month ("SSS & PPP <month>") with both their snacks and drinks.';
+  'Each member gets ONE invoice ("SSS & PPP <month>") with all their snacks and drinks — also when the orders span several months.';
 
 export function exportResultMessage(data: {
   congressusInvoices?: number;

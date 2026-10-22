@@ -11,7 +11,7 @@ and monthly sale-invoices (out). Client code lives in `src/lib/congressus.ts`.
 
 > The bar subsystem (PPP) reuses this same client. See [PPP.md](PPP.md). PPP
 > products live in folder **`8804`** (`webshop/ppp`). The export puts a member's
-> snacks AND drinks of a month on **one** Congressus invoice (`"SSS & PPP <month>"`)
+> pending snacks AND drinks on **one** Congressus invoice per export (`"SSS & PPP <period>"`)
 > — see below.
 
 ## Members (Congressus → SSS)
@@ -55,8 +55,9 @@ name/price via `POST /api/admin/sync-product-offers`.
    month** (see SECURITY.md for the duplicate-proof claim).
 2. For each group, create one Congressus sale-invoice via `POST /sale-invoices`:
    - `invoice_workflow_id: 605`, `use_direct_debit: true`
-   - `invoice_reference: "SSS & PPP <month> <year>"` (Dutch locale, e.g.
-     "SSS & PPP juni 2026") — snack and drink lines on the same invoice
+   - `invoice_reference: "SSS & PPP <period>"` (Dutch locale: "SSS & PPP juni 2026",
+     or "SSS & PPP mei – juni 2026" when the orders span months) — snack and drink
+     lines on the same invoice
    - **`items[]` built from the grouped lines** — one line per product using its
      offer id; any product without an offer id is rolled into a single fallback
      line using the **"SSS purchases Mendix"** product
@@ -95,8 +96,8 @@ The bar subsystem syncs the same way, into its own folder.
   returns 404. `{id}` is the **offer id** (object `id`), not the product entity id.
 - **One combined invoice** — `POST /api/admin/invoices/export` (from either
   invoices page, "Export SSS + PPP to Congressus") groups ALL `CONFIRMED` SSS and
-  PPP orders by member × month and creates **one** Congressus sale-invoice per group,
-  reference `"SSS & PPP <month>"`, holding both the snack lines and the drink lines —
+  PPP orders by member (any month) and creates **one** Congressus sale-invoice per
+  member, reference `"SSS & PPP <period>"` (e.g. "september – oktober 2026"), holding both the snack lines and the drink lines —
   so a member gets one invoice and one direct debit. PPP line descriptions include
   the activity name (`"Pils – Borrel 28 jun"`); the same product at different
   activities/prices stays on separate lines. Every line keeps its own offer id;

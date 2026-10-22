@@ -4,10 +4,11 @@ import { prisma } from "@/lib/prisma";
 import { createSaleInvoice, CongressusHttpError, InvoiceLineItem } from "@/lib/congressus";
 import { requireAdmin } from "@/lib/auth";
 
-// One combined export: ONE Congressus sale invoice per member per calendar month,
-// holding both their SSS snack lines and their PPP drink lines (reference
-// "SSS & PPP <month>"). One invoice → one direct debit per member, instead of
-// separate SSS and PPP invoices. Every line keeps its own Congressus product offer,
+// One combined export: ONE Congressus sale invoice per member per export, holding
+// all their pending SSS snack lines and PPP drink lines — whatever month the
+// orders are from. The reference names the period: "SSS & PPP oktober 2026", or
+// "SSS & PPP september – oktober 2026" when the orders span months. One invoice →
+// one direct debit per member, instead of separate SSS and PPP invoices. Every line keeps its own Congressus product offer,
 // so revenue per product stays correct. Reuses createSaleInvoice() (and its Mendix
 // fallback for lines without a Congressus offer id).
 //
@@ -19,7 +20,7 @@ import { requireAdmin } from "@/lib/auth";
 //   • Congressus rejected it (4xx)    → back to CONFIRMED (nothing was created)
 //   • unknown (timeout, 5xx, network, crash, or our DB write failed after
 //     Congressus succeeded)          → stays EXPORTING ("needs check"); an admin
-//     checks Congressus and resolves the whole group at once
+//     checks Congressus and resolves the member's group at once
 //     (POST /api/admin/invoices/reconcile).
 
 type System = "sss" | "ppp";
@@ -43,7 +44,7 @@ interface ExpInvoice {
 interface Group {
   congressusMemberId: number | null;
   memberName: string;
-  yearMonth: string;
+  months: Set<string>; // "YYYY-MM" of every order in the group
   ids: Record<System, string[]>;
   lineMap: Map<string, InvoiceLineItem>;
 }
@@ -56,6 +57,16 @@ function monthName(yearMonth: string): string {
     month: "long",
     year: "numeric",
   });
+}
+
+// "oktober 2026", or "september – oktober 2026" / "december 2026 – januari 2027".
+function periodName(months: Set<string>): string {
+  const sorted = [...months].sort();
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  if (first === last) return monthName(first);
+  const firstName = first.slice(0, 4) === last.slice(0, 4) ? monthName(first).replace(/\s+\d{4}$/, "") : monthName(first);
+  return `${firstName} – ${monthName(last)}`;
 }
 
 // Set a group's claimed orders (in both tables) to EXPORTED or back to CONFIRMED.
@@ -140,23 +151,23 @@ export async function POST() {
     })),
   ];
 
-  // ── Group by member × calendar month (snacks first, then drinks) ─────────────
+  // ── Group by member — all their pending orders, any month (snacks first) ─────
   const groups = new Map<string, Group>();
   for (const inv of all) {
     const d = inv.when;
     const yearMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const key = `${inv.memberId}-${yearMonth}`;
-    let g = groups.get(key);
+    let g = groups.get(inv.memberId);
     if (!g) {
       g = {
         congressusMemberId: inv.congressusMemberId,
         memberName: inv.memberName,
-        yearMonth,
+        months: new Set(),
         ids: { sss: [], ppp: [] },
         lineMap: new Map(),
       };
-      groups.set(key, g);
+      groups.set(inv.memberId, g);
     }
+    g.months.add(yearMonth);
     g.ids[inv.system].push(inv.id);
     for (const line of inv.lines) {
       const existing = g.lineMap.get(line.aggKey);
@@ -182,8 +193,8 @@ export async function POST() {
   };
 
   for (const g of groups.values()) {
-    const reference = `${REFERENCE_PREFIX} ${monthName(g.yearMonth)}`;
-    const label = `${g.memberName} (${g.yearMonth})`;
+    const reference = `${REFERENCE_PREFIX} ${periodName(g.months)}`;
+    const label = `${g.memberName} (${periodName(g.months)})`;
     const orders = g.ids.sss.length + g.ids.ppp.length;
     let congressusInvoiceId: number | null = null;
     if (g.congressusMemberId == null) {

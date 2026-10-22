@@ -99,8 +99,9 @@ Two tabs: **Pending export** (confirmed, awaiting billing) and **Exported**
 - **Delete invoice** (pending only) — remove a whole invoice.
 - **Export SSS + PPP to Congressus** (same button on the SSS and PPP invoices
   pages) — bills ALL pending snack and drink orders together: **one Congressus
-  invoice per member per month** ("SSS & PPP <month>") with both their snacks and
-  drinks, so each member gets one invoice and one direct debit. The orders then
+  invoice per member** with all their snacks and drinks — also when the orders are
+  from several months ("SSS & PPP oktober 2026", or "SSS & PPP september – oktober
+  2026") — so each member gets one invoice and one direct debit. The orders then
   move to the Exported tab. Run this once per billing cycle (e.g. monthly).
 - **⚠️ needs a check** — if Congressus didn't clearly answer (e.g. a timeout), the
   affected orders are locked and listed in a warning at the top. Check in Congressus
