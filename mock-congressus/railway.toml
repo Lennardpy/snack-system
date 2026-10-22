@@ -1,0 +1,8 @@
+# Staging only: the mock Congressus service (root directory mock-congressus).
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "node server.js"
+healthcheckPath = "/health"
+restartPolicyType = "on_failure"

@@ -1,0 +1,8 @@
+{
+  "name": "mock-congressus",
+  "private": true,
+  "description": "Mock Congressus v30 API for the staging environment only",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=20" },
+  "dependencies": { "pg": "^8.21.0" }
+}
