@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireMemberAdmin } from "@/lib/auth";
 import { inScope } from "@/lib/scope";
+import { rehomeCards, cardsByPerson } from "@/lib/memberships";
 
 // GET /api/admin/members/[id] — the member dashboard: cards (with UIDs), roles,
 // SSS + PPP spend totals, the open (confirmed, not yet exported) amount, and the
@@ -14,7 +15,6 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const member = await prisma.member.findUnique({
     where: { id },
     include: {
-      cards: { orderBy: { createdAt: "asc" } },
       roles: { select: { id: true, name: true, discountPercent: true, discountCents: true, ownDrinkOnly: true, color: true } },
     },
   });
@@ -75,7 +75,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       email: member.email,
       active: member.active,
       roles: member.roles,
-      cards: member.cards.map((c) => ({ id: c.id, uid: c.uid, name: c.name, createdAt: c.createdAt.toISOString() })),
+      // The person's cards, on whichever of their memberships they're stored.
+      cards: ((await cardsByPerson()).get(member.email.toLowerCase()) ?? []).map((c) => ({
+        id: c.id,
+        uid: c.uid,
+        name: c.name,
+        createdAt: c.createdAt.toISOString(),
+      })),
     },
     sss: totals(sss),
     ppp: totals(ppp),
@@ -125,10 +131,12 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
   // Abandoned kiosk carts (CONCEPT) are never billed — always removed.
   const concept = { memberId: id, status: "CONCEPT" as const };
+  // Someone also in the other association keeps their card there.
+  await rehomeCards(id);
   const cleanup = [
     prisma.invoiceLine.deleteMany({ where: { invoice: concept } }),
     prisma.saleInvoice.deleteMany({ where: concept }),
-    prisma.card.deleteMany({ where: { memberId: id } }),
+    prisma.card.deleteMany({ where: { memberId: id } }), // after rehomeCards: only cards with nowhere to go
     prisma.shopSession.deleteMany({ where: { memberId: id } }),
     prisma.cardRegistration.deleteMany({ where: { email: member.email } }),
     prisma.user.updateMany({ where: { memberId: id }, data: { memberId: null } }),

@@ -19,6 +19,8 @@ interface Activity {
   id: string;
   name: string;
   status: "OPEN" | "CLOSED";
+  associationId: "stress" | "dimensie"; // the host
+  joint: boolean;
   discountsActive: boolean;
   discounts: { productId: string; priceCents: number }[];
 }
@@ -978,13 +980,16 @@ export default function PosPage() {
                       >
                         Cancel
                       </button>
-                      <button
-                        onClick={makeExternal}
-                        disabled={linking}
-                        className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-300 hover:bg-gray-700 disabled:opacity-40"
-                      >
-                        🏷️ Not a member — use as external card
-                      </button>
+                      {/* External cards are Stress's: only at Stress (and joint) borrels. */}
+                      {activity?.associationId === "stress" && (
+                        <button
+                          onClick={makeExternal}
+                          disabled={linking}
+                          className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-300 hover:bg-gray-700 disabled:opacity-40"
+                        >
+                          🏷️ Not a member — use as external card
+                        </button>
+                      )}
                     </div>
                   </div>
                 ) : member.kind === "error" ? (

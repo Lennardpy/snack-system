@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { fetchAllMembers, congressusConfigured } from "@/lib/congressus";
 import { isAssociationId, type AssociationId } from "@/lib/associations";
+import { rehomeCards, moveCardsToStress } from "@/lib/memberships";
 import { requireMemberAdmin } from "@/lib/auth";
 import { inScope } from "@/lib/scope";
 
@@ -40,6 +41,7 @@ export async function POST(req: NextRequest) {
   let created = 0;
   let updated = 0;
   let skipped = 0;
+  let cardsMoved = prune.cardsMoved;
 
   for (const m of members) {
     // Skip members with no email — can't uniquely identify them
@@ -65,6 +67,9 @@ export async function POST(req: NextRequest) {
             active,
           },
         });
+        // No longer active (locked / archived…): their cards go to their other,
+        // active membership if they have one.
+        if (existing.active && !active) cardsMoved += await rehomeCards(existing.id);
         updated++;
       } else {
         // Check if email already taken by another member (data quality issue in Congressus)
@@ -74,7 +79,7 @@ export async function POST(req: NextRequest) {
         });
         if (emailTaken) { skipped++; continue; }
 
-        await prisma.member.create({
+        const createdMember = await prisma.member.create({
           data: {
             associationId: association,
             congressusId: m.id,
@@ -84,6 +89,9 @@ export async function POST(req: NextRequest) {
             active,
           },
         });
+        // A Dimensie member who now joins Stress: their card moves to the new Stress
+        // membership (kiosk; same rule as linking at the bar). Orders stay put.
+        if (association === "stress" && active) cardsMoved += await moveCardsToStress(createdMember);
         created++;
       }
     } catch (err) {
@@ -92,7 +100,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, association, created, updated, skipped, total: members.length, ...prune });
+  return NextResponse.json({ ok: true, association, created, updated, skipped, total: members.length, ...prune, cardsMoved });
 }
 
 // Members in our DB but not in the Congressus list: deleted when they have no
@@ -105,6 +113,7 @@ async function pruneMissingMembers(association: AssociationId, congressusIds: Se
       deleted: 0,
       deactivated: 0,
       openInvoices: [] as { name: string; openCents: number }[],
+      cardsMoved: 0,
       pruneSkipped: `Congressus returned ${congressusIds.size} members vs ${activeCount} active here — clean-up skipped as a safety measure.`,
     };
   }
@@ -126,6 +135,8 @@ async function pruneMissingMembers(association: AssociationId, congressusIds: Se
   const toDeactivate: string[] = [];
   for (const m of missing) {
     if (m._count.invoices === 0 && m._count.pppInvoices === 0 && !m.user) {
+      // Someone still in the other association keeps their card there.
+      await rehomeCards(m.id);
       await prisma.$transaction([
         prisma.card.deleteMany({ where: { memberId: m.id } }),
         prisma.shopSession.deleteMany({ where: { memberId: m.id } }),
@@ -137,6 +148,10 @@ async function pruneMissingMembers(association: AssociationId, congressusIds: Se
       if (m.active) deactivated++;
     }
   }
+  // Their cards go to their other, active membership (someone leaving one
+  // association keeps their card for the other).
+  let cardsMoved = 0;
+  for (const id of toDeactivate) cardsMoved += await rehomeCards(id);
   if (toDeactivate.length > 0) {
     await prisma.$transaction([
       prisma.member.updateMany({ where: { id: { in: toDeactivate } }, data: { active: false } }),
@@ -164,5 +179,5 @@ async function pruneMissingMembers(association: AssociationId, congressusIds: Se
     .filter((m) => (open.get(m.id) ?? 0) > 0)
     .map((m) => ({ name: `${m.firstName} ${m.lastName}`.trim(), openCents: open.get(m.id) ?? 0 }));
 
-  return { deleted, deactivated, openInvoices, pruneSkipped: null as string | null };
+  return { deleted, deactivated, openInvoices, cardsMoved, pruneSkipped: null as string | null };
 }

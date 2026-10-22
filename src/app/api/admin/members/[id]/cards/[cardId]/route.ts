@@ -14,8 +14,12 @@ export async function DELETE(
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id, cardId } = await params;
+  // The member must be in this login's scope; the card may be stored on any of
+  // that person's memberships (cards belong to the person, not one association).
+  const member = await prisma.member.findFirst({ where: { id, ...memberWhere(ctx.scope) }, select: { email: true } });
+  if (!member) return NextResponse.json({ error: "Card not found for this member" }, { status: 404 });
   const { count } = await prisma.card.deleteMany({
-    where: { id: cardId, memberId: id, member: memberWhere(ctx.scope) },
+    where: { id: cardId, member: { email: { equals: member.email, mode: "insensitive" } } },
   });
   if (count === 0) return NextResponse.json({ error: "Card not found for this member" }, { status: 404 });
   return NextResponse.json({ ok: true });

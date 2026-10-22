@@ -146,6 +146,13 @@ Requirements & behaviour:
   borrel their **Stress** membership pays, at a Dimensie borrel the Dimensie one.
   Linking a card at the bar searches by name with **one row per person**; the card
   is stored on the Stress membership if there is one (the snack kiosk is Stress's).
+  Cards belong to the **person**: both associations' admins see them (and can
+  unlink a lost one) on whichever membership they're stored. The member sync moves
+  cards when someone joins Stress (to the new Stress membership) and when a
+  membership is deactivated or removed (to their other, active membership);
+  earlier orders stay with the membership that paid. A person whose Stress
+  membership is inactive pays as Dimensie member at a joint borrel. Bartender
+  card login finds the account on either membership.
 - Roles and discounts are the paying member's own association's. A Dimensie
   bartender's own free drinks at a joint borrel are covered by Stress.
 - Every order line snapshots `baseCents` (price before role discounts / comps) and

@@ -101,6 +101,9 @@ export default function MembersView({ site }: { site: "sss" | "ppp" }) {
         ? data.pruneSkipped
         : `No longer in Congressus: ${data.deleted} removed, ${data.deactivated} deactivated (kept for their purchase history).`,
     ];
+    if (data.cardsMoved) {
+      parts.push(`${data.cardsMoved} card(s) moved to the member's other membership (same person, other association).`);
+    }
     if (data.openInvoices?.length) {
       parts.push(
         `Still to invoice: ${data.openInvoices
