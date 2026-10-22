@@ -51,6 +51,7 @@ interface MemberSearchResult {
   firstName: string;
   lastName: string;
   email: string;
+  associations: string[]; // memberships of this person that may pay here (one row per person)
   cardCount: number;
 }
 type MemberState =
@@ -61,6 +62,7 @@ type MemberState =
       id: string;
       firstName: string;
       lastName: string;
+      associationId?: string; // the paying membership's association
       roles: MemberRoleInfo[];
     }
   // A scanned card with no linked member — the bartender links it by searching.
@@ -120,7 +122,8 @@ export default function PosPage() {
   const [toast, setToast] = useState("");
   // The logged-in bartender's own member — they drink free from bartender-free
   // categories when charging their own card.
-  const [selfMemberId, setSelfMemberId] = useState<string | null>(null);
+  // All memberships of the logged-in bartender (someone in both associations has two).
+  const [selfMemberIds, setSelfMemberIds] = useState<string[]>([]);
   // The server session ended (expired / signed out elsewhere). The POS stays as it
   // is — cart and member kept — and the next card tap signs a bartender back in.
   const [authLost, setAuthLost] = useState(false);
@@ -163,7 +166,7 @@ export default function PosPage() {
     (async () => {
       const [aRes, pRes] = await Promise.all([
         fetch(`/api/ppp/activities/${activityId}`),
-        fetch("/api/ppp/products"),
+        fetch(`/api/ppp/products?activityId=${activityId}`),
       ]);
       if (aRes.ok) setActivity((await aRes.json()).activity);
       if (pRes.ok) setProducts((await pRes.json()).products);
@@ -173,9 +176,9 @@ export default function PosPage() {
 
   function loadSelf() {
     fetch("/api/ppp/me")
-      .then((r) => (r.ok ? r.json() : { memberId: null }))
-      .then((d) => setSelfMemberId(d.memberId ?? null))
-      .catch(() => setSelfMemberId(null));
+      .then((r) => (r.ok ? r.json() : { memberIds: [] }))
+      .then((d) => setSelfMemberIds(d.memberIds ?? []))
+      .catch(() => setSelfMemberIds([]));
   }
 
   // Activity drink specials, keyed by product (only when discounts are active).
@@ -335,7 +338,7 @@ export default function PosPage() {
       const res = await fetch("/api/ppp/card/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uid }),
+        body: JSON.stringify({ uid, activityId }),
       });
       if (sessionGone(res)) {
         setMember({ kind: "idle" });
@@ -357,6 +360,7 @@ export default function PosPage() {
           id: d.memberId,
           firstName: d.firstName,
           lastName: d.lastName,
+          associationId: d.associationId,
           roles: d.roles ?? [],
         });
         setMobileView("cart"); // a scanned card means we're about to confirm
@@ -366,7 +370,7 @@ export default function PosPage() {
     } catch {
       setMember({ kind: "error", message: "Connection error" });
     }
-  }, [reauthWithCard, sessionGone]);
+  }, [reauthWithCard, sessionGone, activityId]);
 
   // Debounced member search while linking an unrecognised card.
   const unlinkedUid = member.kind === "unlinked" ? member.uid : null;
@@ -378,12 +382,12 @@ export default function PosPage() {
       return;
     }
     const t = setTimeout(async () => {
-      const res = await fetch(`/api/ppp/members/search?q=${encodeURIComponent(q)}`);
+      const res = await fetch(`/api/ppp/members/search?q=${encodeURIComponent(q)}&activityId=${activityId}`);
       if (sessionGone(res)) return;
       if (res.ok) setLinkResults((await res.json()).members);
     }, 250);
     return () => clearTimeout(t);
-  }, [linkQuery, unlinkedUid]);
+  }, [linkQuery, unlinkedUid, activityId]);
 
   // Link the just-scanned card to the chosen member, then charge them.
   async function linkCard(m: MemberSearchResult) {
@@ -392,13 +396,20 @@ export default function PosPage() {
     const res = await fetch("/api/ppp/card/link", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ uid: member.uid, memberId: m.id }),
+      body: JSON.stringify({ uid: member.uid, memberId: m.id, activityId }),
     });
     setLinking(false);
     if (sessionGone(res)) return; // keep the unlinked state; link again after re-login
     const d = await res.json();
     if (res.ok) {
-      setMember({ kind: "found", id: d.memberId, firstName: d.firstName, lastName: d.lastName, roles: d.roles ?? [] });
+      setMember({
+        kind: "found",
+        id: d.memberId,
+        firstName: d.firstName,
+        lastName: d.lastName,
+        associationId: d.associationId,
+        roles: d.roles ?? [],
+      });
       setLinkQuery("");
       setLinkResults([]);
       flashToast(`Linked card to ${d.firstName} ${d.lastName}`);
@@ -467,7 +478,7 @@ export default function PosPage() {
   );
   // The on-shift bartender (this logged-in user) drinks free from bartender-free
   // categories when charging their OWN card.
-  const chargingSelf = member.kind === "found" && selfMemberId != null && member.id === selfMemberId;
+  const chargingSelf = member.kind === "found" && selfMemberIds.includes(member.id);
   const isFreeForBartender = useCallback(
     (p: Product) => chargingSelf && p.category.bartenderFree,
     [chargingSelf]
@@ -865,6 +876,11 @@ export default function PosPage() {
                         <p className="text-xs text-gray-500">Charging</p>
                         <p className="text-lg font-bold">
                           {member.firstName} {member.lastName}
+                          {member.associationId === "dimensie" && (
+                            <span className="ml-2 rounded-full bg-teal-900/60 px-2 py-0.5 align-middle text-xs font-semibold text-teal-300">
+                              Dimensie
+                            </span>
+                          )}
                         </p>
                       </div>
                       <button
@@ -937,7 +953,14 @@ export default function PosPage() {
                                 <span className="block truncate text-sm font-medium">
                                   {m.firstName} {m.lastName}
                                 </span>
-                                <span className="block truncate text-xs text-gray-500">{m.email}</span>
+                                <span className="block truncate text-xs text-gray-500">
+                                  {m.email}
+                                  {m.associations.map((a) => (
+                                    <span key={a} className="ml-1.5 rounded bg-gray-700 px-1.5 py-0.5 text-[10px] uppercase text-gray-300">
+                                      {a}
+                                    </span>
+                                  ))}
+                                </span>
                               </span>
                               <span className="flex-shrink-0 text-xs font-semibold text-amber-400">Link →</span>
                             </button>

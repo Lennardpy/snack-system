@@ -20,7 +20,7 @@ export default async function PppAdminLayout({ children }: { children: React.Rea
 
   const { user, scope } = ctx;
   const overall = isOverallAdmin(user);
-  // Shared things only the Stress side manages (Dimensie can't see them).
+  // Things only the Stress side has (Dimensie can't see them).
   const stressSide = scope === null || scope === "stress";
 
   const footer: NavLink[] = [
@@ -55,7 +55,7 @@ export default async function PppAdminLayout({ children }: { children: React.Rea
           {
             title: "Bar",
             links: [
-              ...(stressSide ? [{ href: "/ppp/admin/products", label: "Drinks", icon: "🍺" }] : []),
+              { href: "/ppp/admin/products", label: "Drinks", icon: "🍺" },
               ...(stressSide ? [{ href: "/ppp/admin/external-cards", label: "External cards", icon: "🏷️" }] : []),
               { href: "/ppp/admin/sbz", label: "SBZ prices", icon: "🧾" },
             ],

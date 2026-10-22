@@ -7,6 +7,9 @@ interface Activity {
   name: string;
   status: "OPEN" | "CLOSED";
   date: string;
+  associationId: "stress" | "dimensie"; // the host
+  joint: boolean; // Stress + Dimensie (the weekly Thursday drink)
+  readOnly: boolean; // Dimensie viewing a joint borrel Stress hosts
   orderCount: number;
   revenueCents: number;
   externalCents: number; // external-card tabs at internal prices (revenue, in the P/L)
@@ -81,8 +84,14 @@ export default function AdminActivitiesPage() {
   // One at a time: an unsaved borrel fans out into per-transaction SumUp requests.
   async function fetchMissingSumup(list: Activity[]) {
     const now = Date.now();
+    // SumUp is Stress's account: only Stress borrels (and not for Dimensie's view of a joint one).
     const todo = list.filter(
-      (a) => a.sumupCents == null && new Date(a.date).getTime() <= now && !sumupRequested.current.has(a.id)
+      (a) =>
+        a.sumupCents == null &&
+        a.associationId === "stress" &&
+        !a.readOnly &&
+        new Date(a.date).getTime() <= now &&
+        !sumupRequested.current.has(a.id)
     );
     for (const a of todo) {
       sumupRequested.current.add(a.id);
@@ -92,6 +101,18 @@ export default function AdminActivitiesPage() {
         .catch(() => ({ available: false }));
       setSumupFetched((m) => ({ ...m, [a.id]: d.available ? d.revenueCents : "n/a" }));
     }
+  }
+
+  async function patchJoint(a: Activity, joint: boolean) {
+    setActingId(a.id);
+    const res = await fetch(`/api/admin/ppp/activities/${a.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ joint }),
+    });
+    setActingId(null);
+    if (!res.ok) return alert((await res.json().catch(() => ({}))).error ?? "Could not save");
+    setActivities((list) => list.map((x) => (x.id === a.id ? { ...x, joint } : x)));
   }
 
   // SumUp card revenue for a row: saved, fetched here, still loading, or unknown.
@@ -239,6 +260,14 @@ export default function AdminActivitiesPage() {
                     >
                       {a.status === "OPEN" ? "Open" : "Closed"}
                     </span>
+                    {a.joint && (
+                      <span className="rounded-full bg-teal-500/15 px-2 py-0.5 text-xs font-medium text-teal-300">
+                        Joint · Stress &amp; Dimensie
+                      </span>
+                    )}
+                    {a.associationId === "dimensie" && (
+                      <span className="rounded-full bg-teal-900/60 px-2 py-0.5 text-xs font-medium text-teal-300">Dimensie</span>
+                    )}
                   </p>
                   <p className="text-xs text-gray-500">
                     {new Date(a.date).toLocaleDateString()} · {a.orderCount} order{a.orderCount === 1 ? "" : "s"}
@@ -304,6 +333,22 @@ export default function AdminActivitiesPage() {
                   >
                     {expanded === a.id ? "Hide orders" : "View orders"}
                   </button>
+                  {a.readOnly ? (
+                    <span className="text-xs text-gray-500" title="Stress hosts this borrel; you see your members' orders">
+                      View only
+                    </span>
+                  ) : (
+                  <>
+                  {a.associationId === "stress" && (
+                    <button
+                      onClick={() => patchJoint(a, !a.joint)}
+                      disabled={actingId === a.id}
+                      title="Joint: Dimensie members can pay here too (Stress prices, Stress pays the bar)"
+                      className="rounded-lg bg-gray-800 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 disabled:opacity-40"
+                    >
+                      {a.joint ? "Not joint" : "Make joint"}
+                    </button>
+                  )}
                   <button
                     onClick={() => rename(a)}
                     disabled={actingId === a.id}
@@ -334,6 +379,8 @@ export default function AdminActivitiesPage() {
                   >
                     Delete
                   </button>
+                  </>
+                  )}
                 </div>
               </div>
 

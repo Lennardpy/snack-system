@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 interface Activity {
@@ -72,9 +73,9 @@ export default function ActivitySelectorPage() {
           <p className="text-sm text-gray-400">Pick an activity or start a new one</p>
         </div>
         <div className="flex items-center gap-3">
-          <a href="/ppp/admin" className="text-sm text-gray-500 hover:text-gray-300">
+          <Link href="/ppp/admin" className="text-sm text-gray-500 hover:text-gray-300">
             Admin
-          </a>
+          </Link>
           <button
             onClick={logout}
             className="rounded-lg border border-gray-700 px-3 py-1.5 text-sm text-gray-300 transition-colors hover:bg-gray-800 hover:text-white"

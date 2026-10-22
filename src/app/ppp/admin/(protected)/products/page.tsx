@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ASSOCIATION_IDS, ASSOCIATION_LABEL, type AssociationId } from "@/lib/associations";
+import { usePppMe } from "@/lib/usePppMe";
 import { PPP_COLORS } from "@/lib/ppp-colors";
 
 type Vat = "ZERO" | "LOW" | "STANDARD";
@@ -75,19 +77,34 @@ export default function PppProductsPage() {
   // new category
   const [catName, setCatName] = useState("");
 
-  async function load() {
-    const res = await fetch("/api/admin/ppp/products");
+  // Each association has its own drink list (Stress's is also used at joint
+  // borrels). A Stress/Dimensie login sees its own; the overall admin switches.
+  const me = usePppMe();
+  const [association, setAssociation] = useState<AssociationId>("stress");
+  // The list being edited: the login's own, or the overall admin's pick. Dimensie
+  // doesn't do VAT, so its drinks have no VAT field.
+  const listOf: AssociationId = me?.associationId ?? association;
+  const showVat = listOf !== "dimensie";
+
+  async function load(which = association) {
+    const res = await fetch(`/api/admin/ppp/products?association=${which}`);
     if (res.ok) {
       const d = await res.json();
       setProducts(d.products);
       setCategories(d.categories);
-      if (!categoryId && d.categories[0]) setCategoryId(d.categories[0].id);
+      setCategoryId((cur) => (d.categories.some((c: Category) => c.id === cur) ? cur : d.categories[0]?.id ?? ""));
     }
     setLoading(false);
   }
   useEffect(() => {
     load();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function switchAssociation(a: AssociationId) {
+    setAssociation(a);
+    setLoading(true);
+    load(a);
+  }
 
   async function addCategory(e: React.FormEvent) {
     e.preventDefault();
@@ -96,7 +113,7 @@ export default function PppProductsPage() {
     const res = await fetch("/api/admin/ppp/categories", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: n }),
+      body: JSON.stringify({ name: n, association }),
     });
     if (res.ok) {
       setCatName("");
@@ -158,9 +175,25 @@ export default function PppProductsPage() {
   return (
     <div className="p-8">
       <div className="mb-2">
-        <h1 className="text-3xl font-bold">Drinks</h1>
+        <h1 className="flex items-center gap-3 text-3xl font-bold">
+          Drinks
+          {me?.overall && (
+            <span className="flex gap-1 rounded-xl bg-gray-900 p-1 text-sm font-medium">
+              {ASSOCIATION_IDS.map((a) => (
+                <button
+                  key={a}
+                  onClick={() => switchAssociation(a)}
+                  className={`rounded-lg px-3 py-1 ${association === a ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white"}`}
+                >
+                  {ASSOCIATION_LABEL[a]}
+                </button>
+              ))}
+            </span>
+          )}
+        </h1>
         <p className="text-gray-500">
-          Manage the PPP bar catalog. Drinks are created here — bartenders only sell them.
+          Manage the PPP bar catalog — this association&apos;s own borrels use it (joint borrels use Stress&apos;s).
+          Drinks are created here — bartenders only sell them.
           A <span className="text-amber-400">special price</span> overrides the price; on a
           special price only percentage role discounts apply (fixed-cent discounts are skipped).
         </p>
@@ -248,6 +281,7 @@ export default function PppProductsPage() {
                 className="w-28 rounded-lg bg-gray-800 px-3 py-2 outline-none focus:ring-2 focus:ring-amber-500"
               />
             </Field>
+            {showVat && (
             <Field label="VAT">
               <select
                 value={vat} onChange={(e) => setVat(e.target.value as Vat)}
@@ -258,6 +292,7 @@ export default function PppProductsPage() {
                 ))}
               </select>
             </Field>
+            )}
             <Field label="Tile colour">
               <div className="py-2">
                 <ColorSwatches value={color} onChange={setColor} />
@@ -292,7 +327,7 @@ export default function PppProductsPage() {
       ) : (
         <div className="space-y-2">
           {visible.map((p) => (
-            <ProductRow key={p.id} product={p} categories={categories} onChanged={load} />
+            <ProductRow key={p.id} product={p} categories={categories} showVat={showVat} onChanged={load} />
           ))}
         </div>
       )}
@@ -312,10 +347,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function ProductRow({
   product,
   categories,
+  showVat,
   onChanged,
 }: {
   product: Product;
   categories: Category[];
+  showVat: boolean;
   onChanged: () => void;
 }) {
   const [name, setName] = useState(product.name);
@@ -371,13 +408,15 @@ function ProductRow({
           className="w-20 rounded-lg bg-gray-800 px-2 py-2 text-right outline-none focus:ring-2 focus:ring-amber-500"
         />
       </label>
-      <select
-        value={vat} onChange={(e) => setVat(e.target.value as Vat)}
-        className="rounded-lg bg-gray-800 px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-500"
-        title="VAT"
-      >
-        {(["ZERO", "LOW", "STANDARD"] as Vat[]).map((v) => <option key={v} value={v}>{VAT_LABEL[v]}</option>)}
-      </select>
+      {showVat && (
+        <select
+          value={vat} onChange={(e) => setVat(e.target.value as Vat)}
+          className="rounded-lg bg-gray-800 px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-500"
+          title="VAT"
+        >
+          {(["ZERO", "LOW", "STANDARD"] as Vat[]).map((v) => <option key={v} value={v}>{VAT_LABEL[v]}</option>)}
+        </select>
+      )}
       <ColorSwatches value={color} onChange={setColor} />
 
       <div className="ml-auto flex items-center gap-2">

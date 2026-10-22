@@ -126,6 +126,35 @@ Requirements & behaviour:
   and add the deterministic transform in `normalizeUid()` (`src/lib/card.ts`,
   which already documents the spot). See [CARD_READER.md](CARD_READER.md).
 
+## Stress & Dimensie: borrel types, price lists, who pays
+
+| Borrel | Hosted by / pays the bar | Drink list | Who can pay |
+|---|---|---|---|
+| Stress | Stress | Stress | Stress members |
+| **Joint** (Thursday weekly drink) | Stress | Stress | Stress **and** Dimensie members |
+| Dimensie | Dimensie | Dimensie | Dimensie members |
+
+- `PppActivity.associationId` = host, `PppActivity.joint` = both can pay. Alexia
+  sets both; the admin can switch a Stress borrel to/from joint (**Make joint**),
+  but not stop it being joint once Dimensie members ordered there.
+- **Drink lists** — `PppProduct`/`PppProductCategory.associationId`: each
+  association manages its own on **Drinks** (the overall admin switches); the POS
+  and the order route only accept the host's drinks.
+- **Who pays** (`src/lib/memberships.ts`, enforced server-side on scan, link and
+  order) — someone in both associations has one `Member` row per association,
+  recognised by the **same email**. One card works for both: at a joint or Stress
+  borrel their **Stress** membership pays, at a Dimensie borrel the Dimensie one.
+  Linking a card at the bar searches by name with **one row per person**; the card
+  is stored on the Stress membership if there is one (the snack kiosk is Stress's).
+- Roles and discounts are the paying member's own association's. A Dimensie
+  bartender's own free drinks at a joint borrel are covered by Stress.
+- Every order line snapshots `baseCents` (price before role discounts / comps) and
+  `vatRate` — what Stress invoices Dimensie for Dimensie members' drinks.
+- **Visibility** — Dimensie bartenders see Dimensie and joint borrels at the POS;
+  the Dimensie admin sees joint borrels **read-only** (its members' orders only; no
+  order edits, SBZ usage, specials, Wall Street, external cards). External cards
+  only work at Stress borrels.
+
 ## Pricing & discounts
 
 Several discount mechanisms stack in a defined order. The shared logic lives in
@@ -405,8 +434,10 @@ can prepare specials in advance. Logic in `src/lib/alexia.ts`.
   `POST https://alex.ia.utwente.nl/api/1/` with
   `{"jsonrpc":"2.0","method":"event.upcoming_list","params":[true],"id":1}`. Events
   carry `name`, `organizer`, `locations`, `starts_at`, `ends_at` — but **no id**.
-- **Auto-sync** — `POST /api/ppp/alexia/sync` keeps only `organizer === "Stress"`
-  and **find-or-creates** a `PppActivity` for each (date = `starts_at`), matched by
+- **Auto-sync** — `POST /api/ppp/alexia/sync` keeps borrels organised by **Stress**
+  or **Dimensie** (the organiser becomes the hosting association; a Stress
+  "Weekly Drink" on a Thursday is marked **joint**, `isJointBorrel()`) and
+  **find-or-creates** a `PppActivity` for each (date = `starts_at`), matched by
   **name + calendar day** (no id exists). It runs when a bartender lands on `/ppp`
   **and** when an admin opens **Admin → PPP → Activities**, so new borrels appear
   automatically and the admin can pre-set specials on future ones.
@@ -416,7 +447,8 @@ can prepare specials in advance. Logic in `src/lib/alexia.ts`.
   activity makes the next sync re-create the original (a duplicate). A stable Alexia
   reference field would need a schema change.
 
-Configurable via `ALEXIA_API_URL` and `ALEXIA_ORGANIZER` (default `Stress`).
+Configurable via `ALEXIA_API_URL`, `ALEXIA_ORGANIZER` (default `Stress`) and
+`ALEXIA_ORGANIZER_DIMENSIE` (default `Dimensie`).
 
 ## Data model (PPP)
 

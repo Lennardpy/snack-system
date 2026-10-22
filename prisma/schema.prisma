@@ -20,6 +20,8 @@ model Association {
   roles      MemberRole[]
   users      User[]
   activities PppActivity[]
+  pppCategories PppProductCategory[]
+  pppProducts   PppProduct[]
 }
 
 model Member {
@@ -259,17 +261,26 @@ enum VatCategory {
 
 model PppProductCategory {
   id        String       @id @default(cuid())
-  name      String       @unique
+  // Each association has its own drink list (Dimensie for its own borrels);
+  // joint borrels use Stress's.
+  associationId String      @default("stress")
+  association   Association @relation(fields: [associationId], references: [id])
+  name      String
   sortOrder Int          @default(0)
   // When true, drinks in this category are FREE for the bartender currently
   // operating the POS when they charge their own card (the association covers
   // these — e.g. soft drinks & 0.0% for the on-shift bartender).
   bartenderFree Boolean  @default(false)
   products  PppProduct[]
+
+  @@unique([associationId, name])
 }
 
 model PppProduct {
   id        String   @id @default(cuid())
+  // The association whose drink list this is (always its category's association).
+  associationId String      @default("stress")
+  association   Association @relation(fields: [associationId], references: [id])
   name      String
   price     Int // cents
   // Optional special/promo price (cents). When set, this is what members pay and
@@ -303,6 +314,11 @@ model PppActivity {
   // The association hosting the borrel (pays the bar bill, owns the revenue).
   associationId String      @default("stress")
   association   Association @relation(fields: [associationId], references: [id])
+  // Joint borrel (the weekly Thursday drink): hosted by Stress — Stress's prices,
+  // Stress pays the bar bill — and members of BOTH associations can pay. Dimensie
+  // members' drinks go on Stress's monthly invoice to Dimensie. Someone in both
+  // associations is charged as a Stress member.
+  joint     Boolean        @default(false)
   name      String
   status    ActivityStatus @default(OPEN)
   date      DateTime       @default(now())
@@ -439,6 +455,11 @@ model PppInvoiceLine {
   // their own card for a bartender-free category. The association covers the cost
   // (= listCents); surfaced separately on the dashboard.
   bartenderFree Boolean @default(false)
+  // Price per unit BEFORE role discounts and bartender comps (Wall Street price,
+  // else borrel special, else drink special, else price) — what Stress charges
+  // Dimensie for a Dimensie member's drink at a joint borrel. Null on old rows.
+  baseCents Int?
+  vatRate   Int? // 0, 9 or 21 — the drink's VAT at sale time. Null on old rows.
 
   invoiceId String
   invoice   PppInvoice @relation(fields: [invoiceId], references: [id])

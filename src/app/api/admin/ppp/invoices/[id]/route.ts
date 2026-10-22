@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePpp } from "@/lib/auth";
-import { pppInvoiceWhere } from "@/lib/scope";
+import { pppInvoiceWhere, inScope, type Scope } from "@/lib/scope";
+
+// Orders are changed by the association hosting the borrel: Dimensie sees its
+// members' orders at a joint borrel (Stress's) but can't edit them.
+const hostsBorrel = (scope: Scope, hostId: string) => inScope(scope, hostId);
+const readOnlyResponse = () =>
+  NextResponse.json({ error: "This order is at a borrel Stress hosts — only Stress can change it." }, { status: 403 });
 
 // PATCH — edit a pending (not yet exported) PPP order.
 // Body: { lines: [{ id, quantity?, removeDiscount? }] }
@@ -22,9 +28,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const invoice = await prisma.pppInvoice.findFirst({
     where: { id, ...pppInvoiceWhere(ctx.scope) },
-    include: { lines: { include: { product: { select: { price: true } } } } },
+    include: {
+      activity: { select: { associationId: true } }, lines: { include: { product: { select: { price: true } } } } },
   });
   if (!invoice) return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
+  if (!hostsBorrel(ctx.scope, invoice.activity.associationId)) return readOnlyResponse();
   if (invoice.status === "EXPORTING") {
     return NextResponse.json(
       { error: "This order is being exported (or waiting for a check after an export) and can't be changed now." },
@@ -77,8 +85,12 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const invoice = await prisma.pppInvoice.findFirst({ where: { id, ...pppInvoiceWhere(ctx.scope) } });
+  const invoice = await prisma.pppInvoice.findFirst({
+    where: { id, ...pppInvoiceWhere(ctx.scope) },
+    include: { activity: { select: { associationId: true } } },
+  });
   if (!invoice) return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
+  if (!hostsBorrel(ctx.scope, invoice.activity.associationId)) return readOnlyResponse();
 
   if (invoice.status === "EXPORTING") {
     return NextResponse.json(

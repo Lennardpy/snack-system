@@ -27,6 +27,12 @@ existed before Dimensie joined belongs to Stress. `Member`, `MemberRole` and
 `PppActivity` (the host) carry `associationId` (default `stress`); `User.associationId`
 is null for the overall admin.
 
+Also per association: `PppProductCategory` / `PppProduct` (each association's drink
+list; category names unique per association). `PppActivity.joint` marks a joint
+borrel (Stress hosts, both associations pay). `PppInvoiceLine.baseCents` /
+`vatRate` snapshot the price before role discounts and the VAT rate. See PPP.md →
+"Stress & Dimensie".
+
 ### Member
 A person synced from their association's Congressus (Stress: Primary and Secondary;
 Dimensie: Lid and Extraordinary member). Someone in both associations has one row

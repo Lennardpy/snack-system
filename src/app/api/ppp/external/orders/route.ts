@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireBartender } from "@/lib/auth";
-import { activityInScope } from "@/lib/scope-db";
+import { activityVisible } from "@/lib/scope-db";
 import { posScope } from "@/lib/scope";
 import { VAT_RATE } from "@/lib/external";
 
@@ -18,8 +18,8 @@ export async function GET(req: NextRequest) {
 
   const activityId = req.nextUrl.searchParams.get("activityId");
   if (!activityId) return NextResponse.json({ error: "activityId is required" }, { status: 400 });
-  // Staff tied to an association only work at its borrels.
-  if (!(await activityInScope(activityId, posScope(user)))) {
+  // Staff tied to an association only work at its borrels (Dimensie also at joint ones).
+  if (!(await activityVisible(activityId, posScope(user)))) {
     return NextResponse.json({ error: "Activity not found" }, { status: 404 });
   }
 
@@ -54,8 +54,8 @@ export async function POST(req: NextRequest) {
   if (typeof cardId !== "string" || typeof activityId !== "string" || !Array.isArray(lines) || lines.length === 0) {
     return NextResponse.json({ error: "cardId, activityId and a non-empty lines[] are required" }, { status: 400 });
   }
-  // Staff tied to an association only work at its borrels.
-  if (!(await activityInScope(activityId, posScope(user)))) {
+  // Staff tied to an association only work at its borrels (Dimensie also at joint ones).
+  if (!(await activityVisible(activityId, posScope(user)))) {
     return NextResponse.json({ error: "Activity not found" }, { status: 404 });
   }
 
@@ -71,15 +71,19 @@ export async function POST(req: NextRequest) {
 
   const [card, activity, products] = await Promise.all([
     prisma.externalCard.findUnique({ where: { id: cardId } }),
-    prisma.pppActivity.findUnique({ where: { id: activityId }, select: { status: true } }),
+    prisma.pppActivity.findUnique({ where: { id: activityId }, select: { status: true, associationId: true } }),
+    // External cards are Stress's: Stress's drink list, at borrels Stress hosts.
     prisma.pppProduct.findMany({
-      where: { id: { in: [...qtyByProduct.keys()] }, archived: false },
+      where: { id: { in: [...qtyByProduct.keys()] }, archived: false, associationId: "stress" },
       select: { id: true, price: true, specialPrice: true, vatCategory: true },
     }),
   ]);
   if (!card) return NextResponse.json({ error: "External card not found" }, { status: 404 });
   if (!activity) return NextResponse.json({ error: "Activity not found" }, { status: 404 });
   if (activity.status !== "OPEN") return NextResponse.json({ error: "Activity is closed" }, { status: 409 });
+  if (activity.associationId !== "stress") {
+    return NextResponse.json({ error: "External cards only work at Stress borrels" }, { status: 409 });
+  }
 
   const productById = new Map(products.map((p) => [p.id, p]));
   const lineData = [];

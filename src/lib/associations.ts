@@ -6,3 +6,6 @@ export const ASSOCIATION_LABEL: Record<AssociationId, string> = { stress: "Stres
 
 export const isAssociationId = (v: unknown): v is AssociationId =>
   typeof v === "string" && (ASSOCIATION_IDS as string[]).includes(v);
+
+// An association from untrusted input (query/body), defaulting to Stress.
+export const pickAssociation = (v: unknown): AssociationId => (isAssociationId(v) ? v : "stress");

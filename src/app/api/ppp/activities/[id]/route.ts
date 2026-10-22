@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireBartender } from "@/lib/auth";
-import { activityInScope } from "@/lib/scope-db";
+import { activityInScope, activityVisible } from "@/lib/scope-db";
 import { posScope } from "@/lib/scope";
 
 // Activity for the POS: status, the discounts toggle, and the per-drink specials.
@@ -11,7 +11,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params;
   // Staff tied to an association only work at its borrels.
-  if (!(await activityInScope(id, posScope(user)))) {
+  if (!(await activityVisible(id, posScope(user)))) {
     return NextResponse.json({ error: "Activity not found" }, { status: 404 });
   }
   const activity = await prisma.pppActivity.findUnique({
@@ -25,6 +25,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       id: activity.id,
       name: activity.name,
       status: activity.status,
+      associationId: activity.associationId,
+      joint: activity.joint,
       discountsActive: activity.discountsActive,
       discounts: activity.discounts, // [{ productId, priceCents }]
     },
@@ -32,6 +34,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 // Soft-close / reopen / rename / toggle specials. Body: { status?, name?, discountsActive? }
+// Only by staff of the hosting association (not Dimensie at a joint borrel).
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await requireBartender();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

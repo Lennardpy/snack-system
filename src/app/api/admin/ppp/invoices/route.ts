@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePpp, requireStressExporter } from "@/lib/auth";
-import { pppInvoiceWhere } from "@/lib/scope";
+import { pppInvoiceWhere, activityWhere } from "@/lib/scope";
 
 // List PPP invoices for the admin invoices section.
 // ?status=CONFIRMED (pending export) | EXPORTED | EXPORTING (needs check)
@@ -38,7 +38,8 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "status must be EXPORTED or CONFIRMED" }, { status: 400 });
   }
 
-  const rows = await prisma.pppInvoice.findMany({ where: { status, ...pppInvoiceWhere(ctx.scope) }, select: { id: true } });
+  // Only orders at borrels this association hosts (not Dimensie's at joint ones).
+  const rows = await prisma.pppInvoice.findMany({ where: { status, activity: activityWhere(ctx.scope) }, select: { id: true } });
   const ids = rows.map((r) => r.id);
 
   if (ids.length > 0) {

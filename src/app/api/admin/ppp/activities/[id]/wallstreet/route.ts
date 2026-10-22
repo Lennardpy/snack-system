@@ -17,6 +17,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!(await activityInScope(id, ctx.scope))) {
     return NextResponse.json({ error: "Activity not found" }, { status: 404 });
   }
+  const host = await prisma.pppActivity.findUniqueOrThrow({ where: { id }, select: { associationId: true } });
   const [activity, products] = await Promise.all([
     prisma.pppActivity.findUnique({
       where: { id },
@@ -29,8 +30,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         wallstreetStartedAt: true,
       },
     }),
+    // The host's drink list.
     prisma.pppProduct.findMany({
-      where: { archived: false, published: true },
+      where: { archived: false, published: true, associationId: host.associationId },
       orderBy: [{ category: { sortOrder: "asc" } }, { sortOrder: "asc" }, { name: "asc" }],
       select: { id: true, name: true, price: true, specialPrice: true, category: { select: { name: true } } },
     }),
@@ -80,8 +82,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!Array.isArray(body.productIds) || body.productIds.some((x: unknown) => typeof x !== "string")) {
       return NextResponse.json({ error: "Invalid drinks" }, { status: 400 });
     }
+    const host = await prisma.pppActivity.findUniqueOrThrow({ where: { id }, select: { associationId: true } });
     const valid = await prisma.pppProduct.findMany({
-      where: { id: { in: body.productIds }, archived: false },
+      where: { id: { in: body.productIds }, archived: false, associationId: host.associationId },
       select: { id: true },
     });
     data.wallstreetProductIds = valid.map((p) => p.id);

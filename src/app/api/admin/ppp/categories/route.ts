@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePpp } from "@/lib/auth";
-import { isStressSide } from "@/lib/scope";
+import { categoryWhere, inScope } from "@/lib/scope";
+import { pickAssociation } from "@/lib/associations";
 
-export async function GET() {
+// Each association has its own drink list (categories + drinks). ?association=
+// picks one for the overall admin; other logins always get their own.
+export async function GET(req: NextRequest) {
   const ctx = await requirePpp();
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const association = ctx.scope ?? pickAssociation(req.nextUrl.searchParams.get("association"));
 
   const categories = await prisma.pppProductCategory.findMany({
+    where: { associationId: association },
     orderBy: { sortOrder: "asc" },
     include: { _count: { select: { products: true } } },
   });
@@ -18,9 +23,6 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   const ctx = await requirePpp();
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!isStressSide(ctx.scope)) {
-    return NextResponse.json({ error: "Not available for this association" }, { status: 403 });
-  }
 
   const { order } = await req.json();
   if (!Array.isArray(order) || order.some((id) => typeof id !== "string")) {
@@ -29,35 +31,40 @@ export async function PATCH(req: NextRequest) {
 
   await prisma.$transaction(
     order.map((id, index) =>
-      prisma.pppProductCategory.update({ where: { id }, data: { sortOrder: index } }),
+      prisma.pppProductCategory.updateMany({ where: { id, ...categoryWhere(ctx.scope) }, data: { sortOrder: index } }),
     ),
   );
 
-  const categories = await prisma.pppProductCategory.findMany({ orderBy: { sortOrder: "asc" } });
+  const categories = await prisma.pppProductCategory.findMany({
+    where: { id: { in: order }, ...categoryWhere(ctx.scope) },
+    orderBy: { sortOrder: "asc" },
+  });
   return NextResponse.json({ categories });
 }
 
 export async function POST(req: NextRequest) {
   const ctx = await requirePpp();
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!isStressSide(ctx.scope)) {
-    return NextResponse.json({ error: "Not available for this association" }, { status: 403 });
-  }
 
-  const { name } = await req.json();
+  const { name, association: requested } = await req.json();
   const trimmed = (name ?? "").trim();
   if (!trimmed) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
   }
+  // The login's own drink list; the overall admin picks one.
+  const association = ctx.scope ?? pickAssociation(requested);
+  if (!inScope(ctx.scope, association)) return NextResponse.json({ error: "Unknown association" }, { status: 400 });
 
-  const existing = await prisma.pppProductCategory.findUnique({ where: { name: trimmed } });
+  const existing = await prisma.pppProductCategory.findUnique({
+    where: { associationId_name: { associationId: association, name: trimmed } },
+  });
   if (existing) {
     return NextResponse.json({ error: "A category with that name already exists" }, { status: 409 });
   }
 
-  const last = await prisma.pppProductCategory.findFirst({ orderBy: { sortOrder: "desc" } });
+  const last = await prisma.pppProductCategory.findFirst({ where: { associationId: association }, orderBy: { sortOrder: "desc" } });
   const category = await prisma.pppProductCategory.create({
-    data: { name: trimmed, sortOrder: (last?.sortOrder ?? 0) + 1 },
+    data: { associationId: association, name: trimmed, sortOrder: (last?.sortOrder ?? 0) + 1 },
   });
   return NextResponse.json({ category });
 }

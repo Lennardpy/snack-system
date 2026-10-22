@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireBartender } from "@/lib/auth";
-import { activityWhere, posScope } from "@/lib/scope";
+import { activityVisibleWhere, posScope } from "@/lib/scope";
 
 // List activities for the bartender selector. OPEN first, and since auto-imported
 // Alexia borrels are all upcoming, OPEN ones are sorted SOONEST first (so today's
@@ -24,12 +24,16 @@ export async function GET() {
 
   const activities = await prisma.pppActivity.findMany({
     where: {
-      ...activityWhere(posScope(user)),
-      OR: [
-        // Today's borrels (any status).
-        { date: { gte: startOfToday, lt: startOfTomorrow } },
-        // A borrel that started before today but is still open (ran past midnight).
-        { status: "OPEN", date: { gte: carryoverFloor, lt: startOfToday } },
+      AND: [
+        activityVisibleWhere(posScope(user)),
+        {
+          OR: [
+            // Today's borrels (any status).
+            { date: { gte: startOfToday, lt: startOfTomorrow } },
+            // A borrel that started before today but is still open (ran past midnight).
+            { status: "OPEN", date: { gte: carryoverFloor, lt: startOfToday } },
+          ],
+        },
       ],
     },
     include: { _count: { select: { invoices: true } } },

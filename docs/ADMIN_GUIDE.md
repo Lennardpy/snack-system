@@ -8,8 +8,11 @@ admin sites, each with its own login:
 - **PPP admin** — the bar system for Stress and Dimensie, at
   **`ppp.51vo.nl/ppp/admin`**: Dashboard, Borrels, Invoices, Members, Member roles,
   Bartenders, Drinks, External cards and SBZ prices (see [PPP.md](PPP.md)). A Stress
-  login sees Stress, a Dimensie login only Dimensie (no drinks list, external cards
-  or SSS; SBZ prices read-only).
+  login sees Stress, a Dimensie login only Dimensie (its own drinks list for its own
+  borrels; no external cards or SSS; SBZ prices read-only). The Thursday **joint**
+  borrel is Stress's: Stress prices and bar bill, Dimensie members can pay there; the
+  Dimensie admin sees it read-only. Use **Make joint / Not joint** on a Stress borrel
+  if Alexia didn't mark it right.
 
 The **overall admin** sees everything on both sites and manages logins under
 **Accounts**: per login, tick SSS and/or PPP and pick the association (Stress,

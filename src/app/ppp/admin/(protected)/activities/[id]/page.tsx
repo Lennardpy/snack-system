@@ -28,6 +28,11 @@ export default function ActivityDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [activity, setActivity] = useState<Activity | null>(null);
   const [products, setProducts] = useState<ProductLite[]>([]);
+  // Dimensie viewing a joint borrel Stress hosts: only its members' orders, no editing.
+  const [readOnly, setReadOnly] = useState(false);
+  // Dimensie doesn't do VAT: its borrels' P/L is in plain amounts (what members
+  // pay, what SBZ invoices) with no BTW wording. (All P/L figures are gross anyway.)
+  const [noVat, setNoVat] = useState(false);
   const [pnl, setPnl] = useState({
     orders: 0,
     memberRevenueCents: 0,
@@ -79,6 +84,8 @@ export default function ActivityDetailPage() {
       const d = await res.json();
       setActivity(d.activity);
       setProducts(d.products);
+      setReadOnly(d.readOnly === true);
+      setNoVat(d.activity?.associationId === "dimensie");
       setPnl({
         orders: d.orderCount ?? 0,
         memberRevenueCents: d.memberRevenueCents ?? 0,
@@ -128,8 +135,8 @@ export default function ActivityDetailPage() {
     [id]
   );
   useEffect(() => {
-    loadSumup();
-  }, [loadSumup]);
+    if (!readOnly) loadSumup();
+  }, [loadSumup, readOnly]);
 
   // Live cost-of-goods from the usage form inputs (headline = incl. BTW).
   const liveCogsCents = useMemo(() => {
@@ -283,6 +290,9 @@ export default function ActivityDetailPage() {
             {activity.status === "OPEN" ? "Open" : "Closed"}
           </span>
         </div>
+        {readOnly ? (
+          <p className="text-sm text-gray-500">View only — Stress hosts this joint borrel; you see your members&apos; orders.</p>
+        ) : (
         <div className="flex items-center gap-2">
           <button
             onClick={() => {
@@ -302,8 +312,21 @@ export default function ActivityDetailPage() {
             {activity.status === "OPEN" ? "Close" : "Reopen"}
           </button>
         </div>
+        )}
       </div>
 
+      {readOnly && (
+        <section className="mb-6 max-w-5xl rounded-2xl border border-gray-800 bg-gray-900 p-6">
+          <h2 className="mb-4 text-lg font-semibold">Your members at this borrel</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Stat label="Orders" value={String(pnl.orders)} />
+            <Stat label="Charged to your members" value={euro(pnl.memberRevenueCents)} hint="invoiced to Dimensie by Stress" />
+          </div>
+        </section>
+      )}
+
+      {!readOnly && (
+      <>
       {/* ── Profit / loss ─────────────────────────────────────────────────── */}
       <section className="mb-6 max-w-5xl rounded-2xl border border-gray-800 bg-gray-900 p-6">
         <h2 className="mb-1 text-lg font-semibold">Profit / loss</h2>
@@ -347,7 +370,11 @@ export default function ActivityDetailPage() {
                 : "loading…"
             }
           />
-          <Stat label="Cost of goods" value={`− ${euro(liveCogsCents)}`} hint="from SBZ usage (incl. BTW)" />
+          <Stat
+            label="Cost of goods"
+            value={`− ${euro(liveCogsCents)}`}
+            hint={noVat ? "from SBZ usage (what SBZ invoices)" : "from SBZ usage (incl. BTW)"}
+          />
           <Stat
             label="Net profit / loss"
             value={`${netPlCents < 0 ? "−" : ""}${euro(Math.abs(netPlCents))}`}
@@ -373,8 +400,11 @@ export default function ActivityDetailPage() {
       </section>
 
       <ExternalTabs activityId={id} onChanged={load} />
+      </>
+      )}
 
       {/* ── Usage (cost of goods input) ───────────────────────────────────── */}
+      {!readOnly && (
       <section className="mb-6 max-w-5xl rounded-2xl border border-gray-800 bg-gray-900 p-6">
         <div className="mb-1 flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Usage (SBZ)</h2>
@@ -409,7 +439,7 @@ export default function ActivityDetailPage() {
         <p className="mb-3 text-sm text-gray-500">
           Enter what was used, or <b>Import</b> the Alexia usage PDF to auto-fill — a second upload <b>adds
           onto</b> the current values. <b>Kegs in kg</b> (≈ liters), <b>bottles/cans/shots as units</b>. Cost is
-          the SBZ invoice price (incl. BTW)
+          the SBZ invoice price{noVat ? "" : " (incl. BTW)"}
           {sbz.label && (
             <>
               {" "}from <b className="text-gray-300">{sbz.label}</b>
@@ -487,6 +517,8 @@ export default function ActivityDetailPage() {
         </div>
       </section>
 
+      )}
+
       {/* ── Per-drink breakdown (member charges + SumUp card) ─────────────── */}
       {mergedDrinks.length > 0 && (
         <section className="mb-6 max-w-5xl rounded-2xl border border-gray-800 bg-gray-900 p-6">
@@ -530,6 +562,8 @@ export default function ActivityDetailPage() {
       )}
 
       {/* ── Drink specials ────────────────────────────────────────────────── */}
+      {!readOnly && (
+      <>
       <section className="mb-6 max-w-5xl rounded-2xl border border-gray-800 bg-gray-900 p-6">
         <div className="mb-1 flex items-center justify-between">
           <h2 className="text-lg font-semibold">Drink specials</h2>
@@ -606,6 +640,8 @@ export default function ActivityDetailPage() {
       </section>
 
       <WallStreet activityId={id} isOpen={activity.status === "OPEN"} />
+      </>
+      )}
     </div>
   );
 }

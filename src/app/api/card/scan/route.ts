@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { membershipsOf } from "@/lib/memberships";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { normalizeUid } from "@/lib/card";
 
@@ -32,21 +33,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Card not registered" }, { status: 404 });
   }
 
-  if (!card.member.active) {
+  // The snack kiosk is Stress's (SSS orders are invoiced via Stress's Congressus):
+  // shop as the card holder's Stress membership — also when the card was linked to
+  // their Dimensie membership (someone in both associations, same email).
+  const stress = (await membershipsOf(card.member)).find((m) => m.associationId === "stress");
+  if (!stress) {
+    return NextResponse.json({ error: "The snack kiosk is for Stress members only" }, { status: 403 });
+  }
+  if (!stress.active) {
     return NextResponse.json({ error: "Member inactive" }, { status: 403 });
   }
 
-  // The snack kiosk is Stress's (SSS orders are invoiced via Stress's Congressus).
-  if (card.member.associationId !== "stress") {
-    return NextResponse.json({ error: "The snack kiosk is for Stress members only" }, { status: 403 });
-  }
-
   // Expire any existing session for this member
-  await prisma.shopSession.deleteMany({ where: { memberId: card.memberId } });
+  await prisma.shopSession.deleteMany({ where: { memberId: stress.id } });
 
   const session = await prisma.shopSession.create({
     data: {
-      memberId: card.memberId,
+      memberId: stress.id,
       expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
     },
   });

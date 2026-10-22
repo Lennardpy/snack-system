@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { normalizeUid } from "@/lib/card";
 import { requireBartender } from "@/lib/auth";
+import { resolvePayer } from "@/lib/memberships";
+import { activityVisible } from "@/lib/scope-db";
+import { posScope } from "@/lib/scope";
 
 // Bartender-operated scan at the bar POS. Resolves a tapped card UID to a member
 // so the bartender can confirm who they are charging.
@@ -24,24 +27,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
 
-  const { uid } = await req.json();
+  const { uid, activityId } = await req.json();
 
-  if (!uid || typeof uid !== "string") {
-    return NextResponse.json({ error: "Missing uid" }, { status: 400 });
+  if (!uid || typeof uid !== "string" || typeof activityId !== "string") {
+    return NextResponse.json({ error: "uid and activityId are required" }, { status: 400 });
+  }
+  const activity = await prisma.pppActivity.findUnique({ where: { id: activityId }, select: { associationId: true, joint: true } });
+  if (!activity || !(await activityVisible(activityId, posScope(user)))) {
+    return NextResponse.json({ error: "Activity not found" }, { status: 404 });
   }
 
-  const card = await prisma.card.findUnique({
-    where: { uid: normalizeUid(uid) },
-    include: {
-      member: {
-        include: {
-          roles: {
-            select: { name: true, discountPercent: true, discountCents: true, ownDrinkOnly: true, color: true },
-          },
-        },
-      },
-    },
-  });
+  const card = await prisma.card.findUnique({ where: { uid: normalizeUid(uid) }, select: { memberId: true } });
 
   if (!card) {
     // An external card (not linked to a member): its drinks go on this borrel's
@@ -55,16 +51,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ unlinked: true, uid: normalizeUid(uid) });
   }
 
-  if (!card.member.active) {
-    return NextResponse.json({ error: "Member inactive" }, { status: 403 });
-  }
+  // The card belongs to a person; charge the membership that pays at this borrel
+  // (Stress at a joint borrel for someone in both associations).
+  const result = await resolvePayer(card.memberId, activity);
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+  const { payer } = result;
 
-  // Return the member's roles; the POS computes the per-product discount from them
-  // (percent and/or fixed cents), so it can show the real total before confirming.
+  // Return the payer's roles (their own association's); the POS computes the
+  // per-product discount from them, so it can show the real total before confirming.
   return NextResponse.json({
-    memberId: card.member.id,
-    firstName: card.member.firstName,
-    lastName: card.member.lastName,
-    roles: card.member.roles,
+    memberId: payer.id,
+    firstName: payer.firstName,
+    lastName: payer.lastName,
+    associationId: payer.associationId,
+    roles: payer.roles,
   });
 }

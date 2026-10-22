@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { PRICE_LEVELS, type ExternalBreakdown, type ExternalPriceLevel } from "@/lib/external";
 
 // External cards used at this borrel: one tab per card. The admin sets the PDF
@@ -65,9 +66,9 @@ export default function ExternalTabs({ activityId, onChanged }: { activityId: st
         part counts in this borrel&apos;s profit/loss; the markup above it is <b>AB profit</b> (on the dashboard, not in
         the P/L). Manage the cards
         under{" "}
-        <a href="/ppp/admin/external-cards" className="text-amber-400 hover:underline">
+        <Link href="/ppp/admin/external-cards" className="text-amber-400 hover:underline">
           External cards
-        </a>
+        </Link>
         .
       </p>
 

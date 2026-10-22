@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePpp } from "@/lib/auth";
-import { isStressSide } from "@/lib/scope";
+import { productWhere, categoryWhere } from "@/lib/scope";
 
 const VAT = ["ZERO", "LOW", "STANDARD"] as const;
 type Vat = (typeof VAT)[number];
@@ -16,11 +16,10 @@ type Vat = (typeof VAT)[number];
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await requirePpp();
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!isStressSide(ctx.scope)) {
-    return NextResponse.json({ error: "Not available for this association" }, { status: 403 });
-  }
 
   const { id } = await params;
+  const current = await prisma.pppProduct.findFirst({ where: { id, ...productWhere(ctx.scope) } });
+  if (!current) return NextResponse.json({ error: "Product not found" }, { status: 404 });
   const body = await req.json();
 
   const data: {
@@ -52,7 +51,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         ? null
         : Math.max(0, Math.round(Number(body.specialPrice)));
   }
-  if (body.categoryId !== undefined) data.categoryId = String(body.categoryId);
+  if (body.categoryId !== undefined) {
+    // Only a category of the drink's own association.
+    const cat = await prisma.pppProductCategory.findFirst({
+      where: { id: String(body.categoryId), associationId: current.associationId, ...categoryWhere(ctx.scope) },
+    });
+    if (!cat) return NextResponse.json({ error: "Category not found" }, { status: 404 });
+    data.categoryId = cat.id;
+  }
   if (body.color !== undefined) {
     data.color = typeof body.color === "string" && body.color.trim() ? body.color.trim() : null;
   }
@@ -62,6 +68,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     data.vatCategory = body.vatCategory;
   }
+  // Dimensie doesn't do VAT: its drinks always stay at none.
+  if (current.associationId === "dimensie" && data.vatCategory !== undefined) data.vatCategory = "ZERO";
   if (body.published !== undefined) data.published = Boolean(body.published);
   if (body.archived !== undefined) data.archived = Boolean(body.archived);
   if (body.sortOrder !== undefined) data.sortOrder = Number(body.sortOrder);

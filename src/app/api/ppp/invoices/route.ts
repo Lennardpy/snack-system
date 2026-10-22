@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireBartender } from "@/lib/auth";
-import { activityInScope } from "@/lib/scope-db";
+import { activityVisible } from "@/lib/scope-db";
 import { posScope } from "@/lib/scope";
-import { priceOrder, type OrderItem } from "@/lib/roles";
+import { priceOrder, activityUnitPrice, type OrderItem } from "@/lib/roles";
+import { resolvePayer, samePerson } from "@/lib/memberships";
+import { VAT_RATE } from "@/lib/external";
 import { wallstreetChargePrices } from "@/lib/wallstreet";
 
 // Live order history for an activity. Query: ?activityId=
@@ -15,8 +17,8 @@ export async function GET(req: NextRequest) {
   if (!activityId) {
     return NextResponse.json({ error: "activityId is required" }, { status: 400 });
   }
-  // Staff tied to an association only work at its borrels.
-  if (!(await activityInScope(activityId, posScope(user)))) {
+  // Staff tied to an association only work at its borrels (Dimensie also at joint ones).
+  if (!(await activityVisible(activityId, posScope(user)))) {
     return NextResponse.json({ error: "Activity not found" }, { status: 404 });
   }
 
@@ -59,8 +61,8 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
-  // Staff tied to an association only work at its borrels.
-  if (!(await activityInScope(activityId, posScope(user)))) {
+  // Staff tied to an association only work at its borrels (Dimensie also at joint ones).
+  if (!(await activityVisible(activityId, posScope(user)))) {
     return NextResponse.json({ error: "Activity not found" }, { status: 404 });
   }
 
@@ -75,15 +77,6 @@ export async function POST(req: NextRequest) {
     qtyByProduct.set(productId, (qtyByProduct.get(productId) ?? 0) + quantity);
   }
 
-  // Member must exist in the shared member DB and be active. Pull their roles so
-  // we can apply the best (highest) discount they qualify for.
-  const member = await prisma.member.findUnique({
-    where: { id: memberId },
-    include: { roles: { select: { discountPercent: true, discountCents: true, ownDrinkOnly: true } } },
-  });
-  if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });
-  if (!member.active) return NextResponse.json({ error: "Member inactive" }, { status: 403 });
-
   // Activity must exist and be open to new orders. Pull its drink specials so we
   // can price them authoritatively (only when the activity's discounts are active).
   const activity = await prisma.pppActivity.findUnique({
@@ -94,14 +87,29 @@ export async function POST(req: NextRequest) {
   if (activity.status !== "OPEN") {
     return NextResponse.json({ error: "Activity is closed" }, { status: 409 });
   }
+  // The membership that pays here (resolved server-side, never trusted from the
+  // client): only members allowed at this borrel; someone in both associations
+  // pays as a Stress member at a joint borrel. Their own association's roles give
+  // the best (highest) discount they qualify for.
+  const payerResult = await resolvePayer(memberId, activity);
+  if (!payerResult.ok) return NextResponse.json({ error: payerResult.error }, { status: payerResult.status });
+  const payer = payerResult.payer;
+
   const specialMap = new Map(
     activity.discountsActive ? activity.discounts.map((d) => [d.productId, d.priceCents]) : []
   );
 
-  // Authoritative prices from the DB (never trust client-supplied prices).
+  // Authoritative prices from the DB (never trust client-supplied prices), from the
+  // drink list of the association hosting the borrel (Stress's at a joint borrel).
   const products = await prisma.pppProduct.findMany({
-    where: { id: { in: [...qtyByProduct.keys()] }, archived: false },
-    select: { id: true, price: true, specialPrice: true, category: { select: { bartenderFree: true } } },
+    where: { id: { in: [...qtyByProduct.keys()] }, archived: false, associationId: activity.associationId },
+    select: {
+      id: true,
+      price: true,
+      specialPrice: true,
+      vatCategory: true,
+      category: { select: { bartenderFree: true } },
+    },
   });
   const productById = new Map(products.map((p) => [p.id, p]));
 
@@ -112,8 +120,9 @@ export async function POST(req: NextRequest) {
 
   // The on-shift bartender drinks free from bartender-free categories when they
   // charge THEIR OWN card. Keyed off the session user's linked member, so it can't
-  // be spoofed and only applies to the bartender operating this POS.
-  const chargingSelf = user.memberId != null && user.memberId === memberId;
+  // be spoofed and only applies to the bartender operating this POS. (Same person
+  // across memberships: a Dimensie bartender charged as Stress member at a joint borrel.)
+  const chargingSelf = await samePerson(user.memberId, payer.email);
 
   // Validate products, then price the whole order at once: an own-drink-only role
   // (PilsCie) discounts just one unit — the rest of a round is charged normally.
@@ -141,8 +150,10 @@ export async function POST(req: NextRequest) {
   const itemById = new Map(items.map((it) => [it.productId, it]));
 
   // Snapshots for budget/discount reporting at close: the normal list price and
-  // the activity drink-special price that applied (null if no activity special).
-  const lineData = priceOrder(items, member.roles).map((part) => {
+  // the activity drink-special price that applied (null if no activity special);
+  // and for Stress's monthly invoice to Dimensie: the price before role discounts
+  // and bartender comps, and the drink's VAT rate.
+  const lineData = priceOrder(items, payer.roles).map((part) => {
     const it = itemById.get(part.productId)!;
     return {
       productId: part.productId,
@@ -151,13 +162,15 @@ export async function POST(req: NextRequest) {
       listCents: it.product.price,
       specialCents: it.activitySpecialCents,
       bartenderFree: it.free ?? false,
+      baseCents: activityUnitPrice(it.product, it.activitySpecialCents),
+      vatRate: VAT_RATE[productById.get(part.productId)!.vatCategory],
     };
   });
   const totalCents = lineData.reduce((sum, l) => sum + l.unitCents * l.quantity, 0);
 
   const invoice = await prisma.pppInvoice.create({
     data: {
-      memberId,
+      memberId: payer.id,
       activityId,
       totalCents,
       createdById: user.id, // the bartender/tapper who rang this up

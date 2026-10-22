@@ -19,8 +19,16 @@ export const scopeAssociations = (scope: Scope): AssociationId[] => (scope ? [sc
 export const isStressSide = (scope: Scope) => scope === null || scope === "stress";
 
 export const memberWhere = (scope: Scope): Prisma.MemberWhereInput => (scope ? { associationId: scope } : {});
+export const productWhere = (scope: Scope): Prisma.PppProductWhereInput => (scope ? { associationId: scope } : {});
+export const categoryWhere = (scope: Scope): Prisma.PppProductCategoryWhereInput => (scope ? { associationId: scope } : {});
 export const roleWhere = (scope: Scope): Prisma.MemberRoleWhereInput => (scope ? { associationId: scope } : {});
+// Borrels an association HOSTS (runs, pays for, owns the P/L of).
 export const activityWhere = (scope: Scope): Prisma.PppActivityWhereInput => (scope ? { associationId: scope } : {});
+// Borrels an association can SEE: its own, plus — for Dimensie — the joint borrels
+// Stress hosts (Dimensie bartenders work there; the Dimensie admin views them
+// read-only).
+export const activityVisibleWhere = (scope: Scope): Prisma.PppActivityWhereInput =>
+  scope === null ? {} : scope === "stress" ? { associationId: "stress" } : { OR: [{ associationId: scope }, { joint: true }] };
 // Bartender accounts of the association (the overall admin sees all).
 export const userWhere = (scope: Scope): Prisma.UserWhereInput => (scope ? { associationId: scope } : {});
 

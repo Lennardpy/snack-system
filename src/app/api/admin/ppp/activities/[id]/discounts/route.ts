@@ -23,7 +23,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     prisma.pppProduct.findUnique({ where: { id: productId } }),
   ]);
   if (!activity) return NextResponse.json({ error: "Activity not found" }, { status: 404 });
-  if (!product) return NextResponse.json({ error: "Drink not found" }, { status: 404 });
+  // A special is for a drink of the host's list.
+  if (!product || product.associationId !== activity.associationId) {
+    return NextResponse.json({ error: "Drink not found" }, { status: 404 });
+  }
 
   const discount = await prisma.pppActivityDiscount.upsert({
     where: { activityId_productId: { activityId, productId } },
