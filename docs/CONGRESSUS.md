@@ -118,6 +118,23 @@ The bar subsystem syncs the same way, into its own folder.
   lines without one use the Mendix fallback. Source rows (both tables) are marked
   `EXPORTED` with the same Congressus invoice id.
 
+## Dimensie's export (PPP → Dimensie's Congressus)
+
+`POST /api/admin/invoices/export` with `{ "association": "dimensie" }` (PPP admin,
+Dimensie or overall login) exports the pending drink orders of **Dimensie members**
+— at Dimensie borrels and joint borrels — to Dimensie's Congressus: one invoice per
+member per export, reference **"Borrels <period>"**, workflow `309`, direct debit,
+**no VAT**. Same claim / needs-check / €0 rules as the Stress export; the reconcile
+route lets each side resolve only its own members' orders.
+
+Invoice lines need a product in *Dimensie's* Congressus. `src/lib/export-offers.ts`
+looks it up in `PppProductOffer` (drink × association) and creates missing ones —
+Dimensie's own drinks and Stress drinks drunk at joint borrels — in a top-level
+**"PPP"** folder, which is created on the first export
+(`POST /product-folders`) and saved on `Association.congressusPppFolderId`
+(`CONGRESSUS_PPP_FOLDER_ID_DIMENSIE` overrides). If Congressus refuses, nothing is
+exported and every claimed order is released.
+
 ## Quick reference of quirks
 
 | Symptom | Cause | Handling |

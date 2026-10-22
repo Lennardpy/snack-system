@@ -1,9 +1,19 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
-import { createSaleInvoice, CongressusHttpError, InvoiceLineItem } from "@/lib/congressus";
-import { requireStressExporter } from "@/lib/auth";
+import { createSaleInvoice, congressusConfigured, CongressusHttpError, InvoiceLineItem } from "@/lib/congressus";
+import { requirePpp, requireStressExporter } from "@/lib/auth";
+import { pickAssociation, type AssociationId } from "@/lib/associations";
+import { pppOffersFor } from "@/lib/export-offers";
 
+// Each association exports ITS members to ITS own Congressus. Body: { association }
+// ("stress" default | "dimensie").
+//   • Stress   — snacks + drinks of Stress members, reference "SSS & PPP <period>",
+//                with VAT (from the products). SSS admin or Stress-side PPP admin.
+//   • Dimensie — drinks of Dimensie members (Dimensie borrels and joint ones),
+//                reference "Borrels <period>", no VAT; drinks get a product in
+//                Dimensie's Congressus on their first export. Dimensie/overall PPP admin.
+//
 // One combined export: ONE Congressus sale invoice per member per export, holding
 // all their pending SSS snack lines and PPP drink lines — whatever month the
 // orders are from. The reference names the period: "SSS & PPP oktober 2026", or
@@ -49,8 +59,7 @@ interface Group {
   lineMap: Map<string, InvoiceLineItem>;
 }
 
-const REFERENCE_PREFIX = "SSS & PPP";
-const ASSOCIATION = "stress" as const;
+const REFERENCE_PREFIX: Record<AssociationId, string> = { stress: "SSS & PPP", dimensie: "Borrels" };
 
 function monthName(yearMonth: string): string {
   const [year, month] = yearMonth.split("-");
@@ -92,18 +101,29 @@ async function settle(
   ]);
 }
 
-export async function POST() {
-  const admin = await requireStressExporter();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export async function POST(req: NextRequest) {
+  const body = await req.json().catch(() => ({}));
+  const association = pickAssociation(body?.association);
+  if (association === "stress") {
+    if (!(await requireStressExporter())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } else {
+    const ppp = await requirePpp();
+    if (!ppp || (ppp.scope !== null && ppp.scope !== association)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
+  if (!congressusConfigured(association)) {
+    return NextResponse.json({ error: `No Congressus API key configured for ${association}.` }, { status: 400 });
+  }
 
-  // ── Claim every pending SSS and PPP order of Stress members for this run ─────
-  // Each association's members are invoiced in its own Congressus; this export is
-  // Stress's. (Dimensie members' orders stay pending until their own export.)
+  // ── Claim every pending order of this association's members for this run ─────
+  // Each association's members are invoiced in its own Congressus. The snack kiosk
+  // is Stress's, so only Stress exports SSS orders.
   const runId = randomUUID();
   const claim = { status: "EXPORTING" as const, exportClaim: runId, exportClaimedAt: new Date() };
-  const pending = { status: "CONFIRMED" as const, member: { associationId: ASSOCIATION } };
+  const pending = { status: "CONFIRMED" as const, member: { associationId: association } };
   await prisma.$transaction([
-    prisma.saleInvoice.updateMany({ where: pending, data: claim }),
+    ...(association === "stress" ? [prisma.saleInvoice.updateMany({ where: pending, data: claim })] : []),
     prisma.pppInvoice.updateMany({ where: pending, data: claim }),
   ]);
 
@@ -119,6 +139,19 @@ export async function POST() {
       orderBy: { confirmedAt: "asc" },
     }),
   ]);
+
+  // Drinks' products in this association's Congressus (Dimensie: created when missing).
+  let offers: Map<string, number | null>;
+  try {
+    offers = await pppOffersFor(association, pppInvoices.flatMap((inv) => inv.lines.map((l) => l.productId)));
+  } catch (err) {
+    console.error(`[export] ${association}: preparing Congressus products failed`, err);
+    await settle(runId, { sss: sssInvoices.map((i) => i.id), ppp: pppInvoices.map((i) => i.id) }, "release");
+    return NextResponse.json(
+      { error: `Could not prepare the drinks' products in Congressus: ${(err as Error).message} — nothing was exported.` },
+      { status: 502 }
+    );
+  }
 
   const all: ExpInvoice[] = [
     ...sssInvoices.map((inv) => ({
@@ -150,7 +183,7 @@ export async function POST() {
         description: `${l.product.name} – ${inv.activity.name}`,
         quantity: l.quantity,
         unitCents: l.unitCents,
-        congressusOfferId: l.product.congressusProductOfferId ?? null,
+        congressusOfferId: offers.get(l.productId) ?? null,
       })),
     })),
   ];
@@ -198,7 +231,7 @@ export async function POST() {
   };
 
   for (const g of groups.values()) {
-    const reference = `${REFERENCE_PREFIX} ${periodName(g.months)}`;
+    const reference = `${REFERENCE_PREFIX[association]} ${periodName(g.months)}`;
     const label = `${g.memberName} (${periodName(g.months)})`;
     const orders = g.ids.sss.length + g.ids.ppp.length;
     let congressusInvoiceId: number | null = null;
@@ -221,7 +254,7 @@ export async function POST() {
     }
     try {
       congressusInvoiceId = await createSaleInvoice(
-        ASSOCIATION,
+        association,
         g.congressusMemberId,
         Array.from(g.lineMap.values()),
         reference
@@ -231,7 +264,7 @@ export async function POST() {
       out.pppOrders += g.ids.ppp.length;
       out.congressusInvoices++;
       console.log(
-        `[export] ${label}: ${g.ids.sss.length} SSS + ${g.ids.ppp.length} PPP order(s) → Congressus #${congressusInvoiceId}`
+        `[export] ${association} ${label}: ${g.ids.sss.length} SSS + ${g.ids.ppp.length} PPP order(s) → Congressus #${congressusInvoiceId}`
       );
     } catch (err) {
       out.failed++;
@@ -264,6 +297,7 @@ export async function POST() {
   }
 
   return NextResponse.json({
+    association,
     ok: out.failed === 0,
     exported: out.sssOrders + out.pppOrders,
     ...out,

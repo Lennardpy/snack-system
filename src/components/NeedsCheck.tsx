@@ -43,9 +43,11 @@ export default function NeedsCheck({
       fetch("/api/admin/invoices?status=EXPORTING"),
       fetch("/api/admin/ppp/invoices?status=EXPORTING"),
     ]);
-    if (!sssRes.ok || !pppRes.ok) return;
+    // A Dimensie login can't read SSS orders (the snack kiosk is Stress's): none then.
+    if (!pppRes.ok) return;
+    const sssList: StuckInvoice[] = sssRes.ok ? ((await sssRes.json()).invoices ?? []) : [];
     const stuck: { system: "sss" | "ppp"; inv: StuckInvoice }[] = [
-      ...((await sssRes.json()).invoices ?? []).map((inv: StuckInvoice) => ({ system: "sss" as const, inv })),
+      ...sssList.map((inv: StuckInvoice) => ({ system: "sss" as const, inv })),
       ...((await pppRes.json()).invoices ?? []).map((inv: StuckInvoice) => ({ system: "ppp" as const, inv })),
     ];
     // One group per export run × member = one (possible) Congressus invoice.

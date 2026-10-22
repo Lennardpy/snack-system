@@ -66,9 +66,10 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Sync to Congressus — creates a matching product in the association's PPP folder
-  // (Stress: 8804). Skipped while that association has no PPP folder configured yet.
-  if (congressusConfig(association).pppFolderId == null) return NextResponse.json({ product });
+  // Sync to Congressus — creates a matching product in Stress's PPP folder (8804).
+  // Only Stress drinks sync now; Dimensie's get their product in Dimensie's
+  // Congressus on its first export of them (src/lib/export-offers.ts).
+  if (association !== "stress" || congressusConfig(association).pppFolderId == null) return NextResponse.json({ product });
   try {
     const { offerId } = await createPppCongressusProduct(association, name, price / 100, vat);
     if (offerId !== null) {

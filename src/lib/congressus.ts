@@ -269,9 +269,9 @@ export async function createPppCongressusProduct(
   association: AssociationId,
   name: string,
   priceEuros: number,
-  _vatCategory: VatCategory = "LOW"
+  _vatCategory: VatCategory = "LOW",
+  folderId: number | null = CONFIG[association].pppFolderId
 ): Promise<{ offerId: number | null }> {
-  const folderId = CONFIG[association].pppFolderId;
   if (folderId == null) throw new Error(`No PPP product folder configured in ${association}'s Congressus`);
   const res = await fetch(`${BASE}/products`, {
     method: "POST",
@@ -308,6 +308,22 @@ export async function createPppCongressusProduct(
     a.product_offer_id > b.product_offer_id ? a : b
   );
   return { offerId: best.product_offer_id };
+}
+
+// Create a product folder at the top level of an association's Congressus (e.g.
+// "PPP" in Dimensie's, on its first export). Returns the folder id. Body shape as
+// confirmed when the Stress PPP folder was created (docs/CONGRESSUS.md).
+export async function createProductFolder(association: AssociationId, name: string): Promise<number> {
+  const res = await fetch(`${BASE}/product-folders`, {
+    method: "POST",
+    headers: headers(association),
+    body: JSON.stringify({ name, parent_id: null, published: false, slug: name.toLowerCase() }),
+  });
+  if (!res.ok) {
+    throw new CongressusHttpError(`Congressus (${association}) create folder failed: ${res.status} ${await res.text()}`, res.status);
+  }
+  const folder: { id: number } = await res.json();
+  return folder.id;
 }
 
 // ── Sale Invoices (export) ────────────────────────────────────────────────────

@@ -5,6 +5,12 @@ export const EXPORT_CONFIRM =
   "Export ALL pending orders — snacks (SSS) and drinks (PPP) together — to Congressus?\n\n" +
   'Each member gets ONE invoice ("SSS & PPP <month>") with all their snacks and drinks — also when the orders span several months.';
 
+// Dimensie's export: only drinks of Dimensie members, to Dimensie's Congressus.
+export const DIMENSIE_EXPORT_CONFIRM =
+  "Export all pending drink orders of Dimensie members to Dimensie's Congressus?\n\n" +
+  'Each member gets ONE invoice ("Borrels <month>") with all their drinks — at Dimensie borrels and joint ' +
+  "borrels — without VAT, collected by direct debit. Drinks without a product in Dimensie's Congressus get one first.";
+
 export function exportResultMessage(data: {
   congressusInvoices?: number;
   sssOrders?: number;

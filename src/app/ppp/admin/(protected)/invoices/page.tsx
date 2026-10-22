@@ -1,6 +1,6 @@
 "use client";
 
-import { EXPORT_CONFIRM, exportResultMessage } from "@/lib/export-message";
+import { EXPORT_CONFIRM, DIMENSIE_EXPORT_CONFIRM, exportResultMessage } from "@/lib/export-message";
 import { usePppMe } from "@/lib/usePppMe";
 import NeedsCheck from "@/components/NeedsCheck";
 import { useEffect, useMemo, useState } from "react";
@@ -50,10 +50,11 @@ export default function PppInvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [filter, setFilter] = useState<"CONFIRMED" | "EXPORTED">("CONFIRMED");
   const [exporting, setExporting] = useState(false);
-  // The export here is Stress's (one SSS + PPP invoice per Stress member);
-  // Dimensie's own export comes later, so a Dimensie login doesn't get the button.
+  // Each association exports its own members to its own Congressus: Stress (one
+  // SSS + PPP invoice per Stress member) and Dimensie (drinks only, no VAT).
   const me = usePppMe();
   const stressSide = me != null && (me.associationId === null || me.associationId === "stress");
+  const dimensieSide = me != null && (me.associationId === null || me.associationId === "dimensie");
   const [result, setResult] = useState<string | null>(null);
   const [checkKey, setCheckKey] = useState(0); // refreshes the "needs check" panel
   const [busy, setBusy] = useState(false);
@@ -67,11 +68,15 @@ export default function PppInvoicesPage() {
   }
   useEffect(load, [filter]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function runExport() {
-    if (!confirm(EXPORT_CONFIRM)) return;
+  async function runExport(association: "stress" | "dimensie") {
+    if (!confirm(association === "stress" ? EXPORT_CONFIRM : DIMENSIE_EXPORT_CONFIRM)) return;
     setExporting(true);
     setResult(null);
-    const res = await fetch("/api/admin/invoices/export", { method: "POST" });
+    const res = await fetch("/api/admin/invoices/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ association }),
+    });
     setResult(exportResultMessage(await res.json().catch(() => ({ error: `HTTP ${res.status}` }))));
     setExporting(false);
     setCheckKey((k) => k + 1);
@@ -158,15 +163,26 @@ export default function PppInvoicesPage() {
           <h1 className="text-3xl font-bold">PPP invoices</h1>
           <p className="text-gray-500">Borrel drink orders · {invoices.length} {filter.toLowerCase()}</p>
         </div>
-        {stressSide && (
-          <button
-            onClick={runExport}
-            disabled={exporting}
-            className="rounded-xl bg-green-600 px-5 py-2.5 font-semibold transition-colors hover:bg-green-500 disabled:opacity-40"
-          >
-            {exporting ? "Exporting…" : "Export Stress (SSS + PPP) to Congressus"}
-          </button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {stressSide && (
+            <button
+              onClick={() => runExport("stress")}
+              disabled={exporting}
+              className="rounded-xl bg-green-600 px-5 py-2.5 font-semibold transition-colors hover:bg-green-500 disabled:opacity-40"
+            >
+              {exporting ? "Exporting…" : "Export Stress (SSS + PPP) to Congressus"}
+            </button>
+          )}
+          {dimensieSide && (
+            <button
+              onClick={() => runExport("dimensie")}
+              disabled={exporting}
+              className="rounded-xl bg-teal-600 px-5 py-2.5 font-semibold transition-colors hover:bg-teal-500 disabled:opacity-40"
+            >
+              {exporting ? "Exporting…" : "Export Dimensie to Congressus"}
+            </button>
+          )}
+        </div>
       </div>
 
       {result && (

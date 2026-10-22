@@ -26,6 +26,11 @@ const { Client } = require("pg");
 
 const PORT = Number(process.env.PORT ?? 4555);
 const ADMIN_KEY = process.env.MOCK_ADMIN_KEY ?? "";
+// Staging's DB is a copy of production, so it holds REAL Congressus ids (e.g. the
+// Dimensie products linked by a migration) that this mock never created. With
+// MOCK_LENIENT=1 an unknown product offer or folder is accepted (as a product
+// without VAT / a new folder) instead of rejected.
+const LENIENT = process.env.MOCK_LENIENT === "1";
 const TOKENS = new Map(
   (process.env.MOCK_TOKENS ?? "")
     .split(",")
@@ -220,7 +225,11 @@ async function createInvoice(t, b, res) {
   }
   const items = [];
   for (const [i, it] of b.items.entries()) {
-    const p = t.products.find((x) => x.product_offer_id === it.product_offer_id);
+    let p = t.products.find((x) => x.product_offer_id === it.product_offer_id);
+    if (!p && LENIENT) {
+      p = product(it.product_offer_id, it.description ?? `Offer ${it.product_offer_id}`, it.price, 0, null);
+      t.products.push(p);
+    }
     if (!p) return send(res, 400, { message: `product_offer_id ${it.product_offer_id}: Not found` });
     if (p.is_archived) return send(res, 400, { message: `Product "${p.name}" is archived and cannot be used for new invoices` });
     items.push({
@@ -274,7 +283,10 @@ async function api(t, method, path, q, b, res) {
   }
   if (method === "POST" && path === "/products") {
     if (hasVatField(b)) return send(res, 500, "Internal Server Error", "text/plain");
-    if (!t.folders.some((f) => f.id === b.folder_id)) return send(res, 400, { message: "folder_id: Not found" });
+    if (!t.folders.some((f) => f.id === b.folder_id)) {
+      if (!LENIENT) return send(res, 400, { message: "folder_id: Not found" });
+      t.folders.push({ id: b.folder_id, name: `Folder ${b.folder_id}`, parent_id: null });
+    }
     const p = product(++nextOfferId, b.name, b.price, b.folder_id, null);
     t.products.push(p);
     // Quirk: the POST response carries the ENTITY id, not the offer id.

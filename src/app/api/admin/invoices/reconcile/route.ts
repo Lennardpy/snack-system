@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireStressExporter } from "@/lib/auth";
+import { requirePpp, requireStressExporter } from "@/lib/auth";
 
 // Resolve orders left in EXPORTING ("needs a check") after an export whose outcome
 // was unknown. One Congressus invoice holds a member-month's SSS AND PPP orders, so
@@ -19,8 +19,14 @@ const strings = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 
 export async function POST(req: NextRequest) {
-  const admin = await requireStressExporter();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Whoever may run an association's export may resolve its orders: the Stress side
+  // (SSS + Stress members' drinks), and a Dimensie/overall PPP admin (Dimensie
+  // members' drinks).
+  const stress = !!(await requireStressExporter());
+  const pppAdmin = await requirePpp();
+  const dimensie = !!pppAdmin && (pppAdmin.scope === null || pppAdmin.scope === "dimensie");
+  const associations = [...(stress ? ["stress"] : []), ...(dimensie ? ["dimensie"] : [])];
+  if (associations.length === 0) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
   const sssIds = strings(body.sssIds);
@@ -46,8 +52,11 @@ export async function POST(req: NextRequest) {
       : { status: "CONFIRMED" as const, exportClaim: null, exportClaimedAt: null };
 
   const [sss, ppp] = await prisma.$transaction([
-    prisma.saleInvoice.updateMany({ where: { id: { in: sssIds }, ...ready }, data }),
-    prisma.pppInvoice.updateMany({ where: { id: { in: pppIds }, ...ready }, data }),
+    prisma.saleInvoice.updateMany({ where: { id: { in: stress ? sssIds : [] }, ...ready }, data }),
+    prisma.pppInvoice.updateMany({
+      where: { id: { in: pppIds }, member: { associationId: { in: associations } }, ...ready },
+      data,
+    }),
   ]);
   const resolved = sss.count + ppp.count;
 

@@ -118,8 +118,13 @@ Two tabs: **Pending export** (confirmed, awaiting billing) and **Exported**
   to remove it; the total recalculates live. Use this when a member was charged
   for something by mistake or that wasn't actually in stock. **Save changes**.
 - **Delete invoice** (pending only) — remove a whole invoice.
+- **Export Dimensie to Congressus** (PPP invoices page, Dimensie and overall
+  logins) — bills Dimensie members' pending drinks (Dimensie and joint borrels) in
+  Dimensie's Congressus: one invoice per member ("Borrels <month>"), no VAT, direct
+  debit. Drinks get a product in Dimensie's Congressus the first time they're
+  exported.
 - **Export SSS + PPP to Congressus** (same button on the SSS and PPP invoices
-  pages) — bills ALL pending snack and drink orders together: **one Congressus
+  pages; on the PPP page "Export Stress") — bills ALL pending snack and drink orders together: **one Congressus
   invoice per member** with all their snacks and drinks — also when the orders are
   from several months ("SSS & PPP oktober 2026", or "SSS & PPP september – oktober
   2026") — so each member gets one invoice and one direct debit. Members who only

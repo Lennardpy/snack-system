@@ -15,6 +15,9 @@ model Association {
   id        String   @id
   name      String
   createdAt DateTime @default(now())
+  // The folder for PPP drink products in this association's Congressus, created on
+  // its first export when not set (Stress uses its fixed folder, see congressus.ts).
+  congressusPppFolderId Int?
 
   members    Member[]
   roles      MemberRole[]
@@ -22,6 +25,7 @@ model Association {
   activities PppActivity[]
   pppCategories PppProductCategory[]
   pppProducts   PppProduct[]
+  pppOffers     PppProductOffer[]
 }
 
 model Member {
@@ -307,6 +311,25 @@ model PppProduct {
   invoiceLines      PppInvoiceLine[]
   activityDiscounts PppActivityDiscount[]
   externalLines     PppExternalLine[]
+  offers            PppProductOffer[]
+}
+
+// A drink's product in ANOTHER association's Congressus — e.g. a Stress drink
+// bought by a Dimensie member at a joint borrel needs a product in Dimensie's
+// Congressus to be invoiced there. Created on that association's first export of
+// the drink. (A drink's product in its own association's Congressus: Stress keeps
+// using PppProduct.congressusProductOfferId; Dimensie drinks use this table too.)
+model PppProductOffer {
+  id        String   @id @default(cuid())
+  offerId   Int // product_offer_id in that association's Congressus
+  createdAt DateTime @default(now())
+
+  productId     String
+  product       PppProduct  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  associationId String
+  association   Association @relation(fields: [associationId], references: [id])
+
+  @@unique([productId, associationId])
 }
 
 model PppActivity {
