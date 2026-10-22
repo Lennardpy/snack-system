@@ -103,18 +103,6 @@ export default function AdminActivitiesPage() {
     }
   }
 
-  async function patchJoint(a: Activity, joint: boolean) {
-    setActingId(a.id);
-    const res = await fetch(`/api/admin/ppp/activities/${a.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ joint }),
-    });
-    setActingId(null);
-    if (!res.ok) return alert((await res.json().catch(() => ({}))).error ?? "Could not save");
-    setActivities((list) => list.map((x) => (x.id === a.id ? { ...x, joint } : x)));
-  }
-
   // SumUp card revenue for a row: saved, fetched here, still loading, or unknown.
   function sumupFor(a: Activity): number | "loading" | "n/a" | null {
     if (a.sumupCents != null) return a.sumupCents;
@@ -339,16 +327,6 @@ export default function AdminActivitiesPage() {
                     </span>
                   ) : (
                   <>
-                  {a.associationId === "stress" && (
-                    <button
-                      onClick={() => patchJoint(a, !a.joint)}
-                      disabled={actingId === a.id}
-                      title="Joint: Dimensie members can pay here too (Stress prices, Stress pays the bar)"
-                      className="rounded-lg bg-gray-800 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 disabled:opacity-40"
-                    >
-                      {a.joint ? "Not joint" : "Make joint"}
-                    </button>
-                  )}
                   <button
                     onClick={() => rename(a)}
                     disabled={actingId === a.id}

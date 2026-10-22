@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SBZ_SECTIONS, sbzKeyFor, type SbzPriceListInfo, type SbzProduct, type SbzUnit } from "@/lib/sbz";
+import { usePppMe } from "@/lib/usePppMe";
 
 // SBZ cost prices (what the association pays SBZ). Versioned: saving creates a
 // list valid from a chosen date; borrels before that date keep the older prices.
@@ -70,6 +71,9 @@ export default function SbzPricesPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // The price list is shared; only the Stress side edits it — Dimensie views it.
+  const me = usePppMe();
+  const canEdit = me != null && (me.associationId === null || me.associationId === "stress");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async (selectId?: string) => {
@@ -240,7 +244,10 @@ export default function SbzPricesPage() {
             borrels.
           </p>
         </div>
-        {!draft && (
+        {me && !canEdit && (
+          <span className="rounded-full bg-gray-800 px-3 py-1 text-xs text-gray-400">View only — Stress maintains this list</span>
+        )}
+        {!draft && canEdit && (
           <div className="flex gap-2">
             <button
               onClick={startEdit}
@@ -334,7 +341,7 @@ export default function SbzPricesPage() {
                     {viewed.source ? ` · ${viewed.source}` : ""}
                   </p>
                 </div>
-                {viewed.id !== lists[lists.length - 1]?.id && (
+                {canEdit && viewed.id !== lists[lists.length - 1]?.id && (
                   <button
                     onClick={() => deleteList(viewed)}
                     className="rounded-lg bg-gray-800 px-3 py-1.5 text-sm text-gray-300 hover:bg-red-600 hover:text-white"

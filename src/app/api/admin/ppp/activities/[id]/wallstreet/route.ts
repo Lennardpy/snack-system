@@ -49,6 +49,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!(await activityInScope(id, ctx.scope))) {
     return NextResponse.json({ error: "Activity not found" }, { status: 404 });
   }
+  // Wall Street is a Stress feature: not on Dimensie borrels.
+  const host = await prisma.pppActivity.findUnique({ where: { id }, select: { associationId: true } });
+  if (host?.associationId !== "stress") {
+    return NextResponse.json({ error: "Wall Street is only available at Stress borrels" }, { status: 400 });
+  }
   const activity = await prisma.pppActivity.findUnique({
     where: { id },
     select: { status: true, wallstreetActive: true, wallstreetMinPct: true, wallstreetMaxPct: true, wallstreetProductIds: true },

@@ -35,6 +35,8 @@ export default function WallStreet({ activityId, isOpen }: { activityId: string;
   const [live, setLive] = useState<Live | null>(null);
   const [form, setForm] = useState({ volatility: "HIGH" as Volatility, minPct: "50", maxPct: "200", ids: new Set<string>() });
   const [busy, setBusy] = useState(false);
+  // Collapsed until clicked (most borrels don't use it); the buttons stay visible.
+  const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(
@@ -109,9 +111,10 @@ export default function WallStreet({ activityId, isOpen }: { activityId: string;
         running ? "border-emerald-700/60 bg-emerald-950/20" : "border-gray-800 bg-gray-900"
       }`}
     >
-      <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2 text-lg font-semibold">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="flex cursor-pointer items-center gap-2 text-lg font-semibold" onClick={() => setOpen((o) => !o)}>
           📈 Wall Street mode
+          <span className="text-sm font-normal text-gray-500">{open ? "▴ hide" : "▾ show"}</span>
           <span
             className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
               running ? "bg-emerald-500/20 text-emerald-300" : "bg-gray-700/40 text-gray-400"
@@ -160,7 +163,9 @@ export default function WallStreet({ activityId, isOpen }: { activityId: string;
           )}
         </div>
       </div>
-      <p className="mb-4 text-sm text-gray-500">
+      {open && (
+      <>
+      <p className="mb-4 mt-1 text-sm text-gray-500">
         Prices of the selected drinks move every 20 seconds with demand: what sells goes up, the rest goes down, plus
         random swings. They replace the normal price and borrel specials at the POS; role discounts and bartender free
         drinks still apply, and orders are charged the price the bartender saw. External cards keep normal prices.
@@ -268,6 +273,8 @@ export default function WallStreet({ activityId, isOpen }: { activityId: string;
           )}
         </div>
       </div>
+      </>
+      )}
     </section>
   );
 }

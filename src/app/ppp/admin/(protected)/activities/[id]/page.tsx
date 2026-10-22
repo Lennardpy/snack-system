@@ -12,6 +12,8 @@ interface Activity {
   id: string;
   name: string;
   status: "OPEN" | "CLOSED";
+  associationId: "stress" | "dimensie"; // the host
+  joint: boolean; // Stress + Dimensie (the weekly Thursday drink)
   discountsActive: boolean;
   discounts: Discount[];
 }
@@ -30,9 +32,11 @@ export default function ActivityDetailPage() {
   const [products, setProducts] = useState<ProductLite[]>([]);
   // Dimensie viewing a joint borrel Stress hosts: only its members' orders, no editing.
   const [readOnly, setReadOnly] = useState(false);
-  // Dimensie doesn't do VAT: its borrels' P/L is in plain amounts (what members
-  // pay, what SBZ invoices) with no BTW wording. (All P/L figures are gross anyway.)
-  const [noVat, setNoVat] = useState(false);
+  // A Dimensie borrel: no VAT wording in its P/L (Dimensie doesn't do VAT; all
+  // figures are gross anyway), and no SumUp, external cards or Wall Street (Stress's).
+  const [dimensieBorrel, setDimensieBorrel] = useState(false);
+  // The SBZ usage list is long: collapsed until needed (Import / Save stay visible).
+  const [usageOpen, setUsageOpen] = useState(false);
   const [pnl, setPnl] = useState({
     orders: 0,
     memberRevenueCents: 0,
@@ -85,7 +89,7 @@ export default function ActivityDetailPage() {
       setActivity(d.activity);
       setProducts(d.products);
       setReadOnly(d.readOnly === true);
-      setNoVat(d.activity?.associationId === "dimensie");
+      setDimensieBorrel(d.activity?.associationId === "dimensie");
       setPnl({
         orders: d.orderCount ?? 0,
         memberRevenueCents: d.memberRevenueCents ?? 0,
@@ -134,9 +138,11 @@ export default function ActivityDetailPage() {
     },
     [id]
   );
+  // SumUp is Stress's account: only for Stress borrels (once loaded).
+  const host = activity?.associationId;
   useEffect(() => {
-    if (!readOnly) loadSumup();
-  }, [loadSumup, readOnly]);
+    if (host === "stress" && !readOnly) loadSumup();
+  }, [loadSumup, readOnly, host]);
 
   // Live cost-of-goods from the usage form inputs (headline = incl. BTW).
   const liveCogsCents = useMemo(() => {
@@ -176,6 +182,16 @@ export default function ActivityDetailPage() {
     const taken = new Set((activity?.discounts ?? []).map((d) => d.productId));
     return products.filter((p) => !taken.has(p.id));
   }, [products, activity]);
+
+  async function toggleJoint(joint: boolean) {
+    const res = await fetch(`/api/admin/ppp/activities/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ joint }),
+    });
+    if (!res.ok) return alert((await res.json().catch(() => ({}))).error ?? "Could not save");
+    setActivity((a) => (a ? { ...a, joint } : a));
+  }
 
   async function patchActivity(body: Record<string, unknown>) {
     const res = await fetch(`/api/ppp/activities/${id}`, {
@@ -289,11 +305,28 @@ export default function ActivityDetailPage() {
           >
             {activity.status === "OPEN" ? "Open" : "Closed"}
           </span>
+          {activity.joint && (
+            <span className="rounded-full bg-teal-500/15 px-2.5 py-0.5 text-xs font-medium text-teal-300">
+              Joint · Stress &amp; Dimensie
+            </span>
+          )}
+          {activity.associationId === "dimensie" && (
+            <span className="rounded-full bg-teal-900/60 px-2.5 py-0.5 text-xs font-medium text-teal-300">Dimensie</span>
+          )}
         </div>
         {readOnly ? (
           <p className="text-sm text-gray-500">View only — Stress hosts this joint borrel; you see your members&apos; orders.</p>
         ) : (
         <div className="flex items-center gap-2">
+          {activity.associationId === "stress" && (
+            <button
+              onClick={() => toggleJoint(!activity.joint)}
+              title="Joint: Dimensie members can pay here too (Stress prices, Stress pays the bar)"
+              className="rounded-lg bg-gray-800 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700"
+            >
+              {activity.joint ? "Not joint" : "Make joint"}
+            </button>
+          )}
           <button
             onClick={() => {
               const n = prompt("Rename activity", activity.name);
@@ -331,15 +364,21 @@ export default function ActivityDetailPage() {
       <section className="mb-6 max-w-5xl rounded-2xl border border-gray-800 bg-gray-900 p-6">
         <h2 className="mb-1 text-lg font-semibold">Profit / loss</h2>
         <p className="mb-5 text-sm text-gray-500">
-          Revenue (member charges + external cards + SumUp card) minus the cost of goods you enter below.
-          SumUp is fetched live on the day and saved the day after.{" "}
-          <button
-            onClick={() => loadSumup(true)}
-            disabled={sumup.state === "loading"}
-            className="text-amber-400 hover:text-amber-300 disabled:opacity-40"
-          >
-            ↻ Re-fetch SumUp
-          </button>
+          {dimensieBorrel ? (
+            "Revenue (member charges) minus the cost of goods you enter below."
+          ) : (
+            <>
+              Revenue (member charges + external cards + SumUp card) minus the cost of goods you enter below.
+              SumUp is fetched live on the day and saved the day after.{" "}
+              <button
+                onClick={() => loadSumup(true)}
+                disabled={sumup.state === "loading"}
+                className="text-amber-400 hover:text-amber-300 disabled:opacity-40"
+              >
+                ↻ Re-fetch SumUp
+              </button>
+            </>
+          )}
         </p>
 
         <div className={`grid gap-4 sm:grid-cols-2 ${pnl.externalRevenueCents > 0 ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
@@ -353,6 +392,7 @@ export default function ActivityDetailPage() {
               }`}
             />
           )}
+          {!dimensieBorrel && (
           <Stat
             label="Card revenue (SumUp)"
             value={
@@ -370,10 +410,11 @@ export default function ActivityDetailPage() {
                 : "loading…"
             }
           />
+          )}
           <Stat
             label="Cost of goods"
             value={`− ${euro(liveCogsCents)}`}
-            hint={noVat ? "from SBZ usage (what SBZ invoices)" : "from SBZ usage (incl. BTW)"}
+            hint={dimensieBorrel ? "from SBZ usage (what SBZ invoices)" : "from SBZ usage (incl. BTW)"}
           />
           <Stat
             label="Net profit / loss"
@@ -399,15 +440,20 @@ export default function ActivityDetailPage() {
         </div>
       </section>
 
-      <ExternalTabs activityId={id} onChanged={load} />
       </>
       )}
 
       {/* ── Usage (cost of goods input) ───────────────────────────────────── */}
       {!readOnly && (
       <section className="mb-6 max-w-5xl rounded-2xl border border-gray-800 bg-gray-900 p-6">
-        <div className="mb-1 flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">Usage (SBZ)</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <button onClick={() => setUsageOpen((o) => !o)} className="flex items-center gap-2 text-left">
+            <h2 className="text-lg font-semibold">Usage (SBZ)</h2>
+            <span className="text-sm text-gray-500">
+              {usageOpen ? "▴ hide" : "▾ show"} · {Object.values(usage).filter((v) => Number(v) > 0).length} item(s) ·{" "}
+              {euro(liveCogsCents)}
+            </span>
+          </button>
           <div className="flex items-center gap-2">
             <label
               className={`cursor-pointer rounded-xl bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 ${
@@ -436,10 +482,11 @@ export default function ActivityDetailPage() {
             </button>
           </div>
         </div>
-        <p className="mb-3 text-sm text-gray-500">
+        {usageOpen && (
+        <p className="mb-3 mt-1 text-sm text-gray-500">
           Enter what was used, or <b>Import</b> the Alexia usage PDF to auto-fill — a second upload <b>adds
           onto</b> the current values. <b>Kegs in kg</b> (≈ liters), <b>bottles/cans/shots as units</b>. Cost is
-          the SBZ invoice price{noVat ? "" : " (incl. BTW)"}
+          the SBZ invoice price{dimensieBorrel ? "" : " (incl. BTW)"}
           {sbz.label && (
             <>
               {" "}from <b className="text-gray-300">{sbz.label}</b>
@@ -449,8 +496,9 @@ export default function ActivityDetailPage() {
           )}
           .
         </p>
+        )}
         {importNote && (
-          <p className="mb-4 rounded-lg bg-gray-950/60 px-3 py-2 text-sm text-amber-200">{importNote}</p>
+          <p className="mb-4 mt-3 rounded-lg bg-gray-950/60 px-3 py-2 text-sm text-amber-200">{importNote}</p>
         )}
         {unmatched.length > 0 && (
           <div className="mb-5 rounded-xl border border-amber-800/40 bg-amber-900/10 p-4">
@@ -479,6 +527,8 @@ export default function ActivityDetailPage() {
           </div>
         )}
 
+        {usageOpen && (
+        <>
         <div className="grid gap-6 lg:grid-cols-2">
           {SECTIONS.map((section) => {
             const items = sbzItems.filter((p) => p.section === section);
@@ -515,6 +565,8 @@ export default function ActivityDetailPage() {
         <div className="mt-4 flex justify-end border-t border-gray-800 pt-3 text-sm">
           <span>Cost of goods (unsaved live): <b className="tabular-nums">{euro(liveCogsCents)}</b></span>
         </div>
+        </>
+        )}
       </section>
 
       )}
@@ -524,9 +576,15 @@ export default function ActivityDetailPage() {
         <section className="mb-6 max-w-5xl rounded-2xl border border-gray-800 bg-gray-900 p-6">
           <h2 className="mb-1 text-lg font-semibold">Per drink</h2>
           <p className="mb-4 text-sm text-gray-500">
-            Member charges + SumUp card sales per drink (SumUp records the drink on each card
-            payment). {sumup.state === "loading" && <span className="text-amber-400">Loading card sales…</span>}
-            {sumup.state === "unavailable" && <span className="text-gray-500">Card sales unavailable.</span>}
+            {dimensieBorrel ? (
+              "Member charges per drink."
+            ) : (
+              <>
+                Member charges + SumUp card sales per drink (SumUp records the drink on each card
+                payment). {sumup.state === "loading" && <span className="text-amber-400">Loading card sales…</span>}
+                {sumup.state === "unavailable" && <span className="text-gray-500">Card sales unavailable.</span>}
+              </>
+            )}
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -534,7 +592,7 @@ export default function ActivityDetailPage() {
                 <tr className="border-b border-gray-800 text-left text-xs uppercase tracking-wide text-gray-500">
                   <th className="py-2">Drink</th>
                   <th className="py-2 text-right">Member</th>
-                  <th className="py-2 text-right">Card</th>
+                  {!dimensieBorrel && <th className="py-2 text-right">Card</th>}
                   <th className="py-2 text-right">Sold</th>
                   <th className="py-2 text-right">Revenue</th>
                   <th className="py-2 text-right">Discount</th>
@@ -547,9 +605,11 @@ export default function ActivityDetailPage() {
                     <td className="py-2 text-right tabular-nums text-gray-400">
                       {d.memberQty > 0 ? `${d.memberQty}× · ${euro(d.memberRev)}` : "—"}
                     </td>
-                    <td className="py-2 text-right tabular-nums text-gray-400">
-                      {d.cardQty > 0 ? `${d.cardQty}× · ${euro(d.cardRev)}` : "—"}
-                    </td>
+                    {!dimensieBorrel && (
+                      <td className="py-2 text-right tabular-nums text-gray-400">
+                        {d.cardQty > 0 ? `${d.cardQty}× · ${euro(d.cardRev)}` : "—"}
+                      </td>
+                    )}
                     <td className="py-2 text-right tabular-nums">{d.memberQty + d.cardQty}×</td>
                     <td className="py-2 text-right font-medium tabular-nums">{euro(d.memberRev + d.cardRev)}</td>
                     <td className="py-2 text-right tabular-nums text-gray-400">{d.discount > 0 ? euro(d.discount) : "—"}</td>
@@ -639,7 +699,13 @@ export default function ActivityDetailPage() {
         )}
       </section>
 
-      <WallStreet activityId={id} isOpen={activity.status === "OPEN"} />
+      {/* External cards and Wall Street are Stress's (not on Dimensie borrels). */}
+      {activity.associationId === "stress" && (
+        <>
+          <ExternalTabs activityId={id} onChanged={load} />
+          <WallStreet activityId={id} isOpen={activity.status === "OPEN"} />
+        </>
+      )}
       </>
       )}
     </div>

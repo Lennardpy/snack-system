@@ -135,7 +135,7 @@ Requirements & behaviour:
 | Dimensie | Dimensie | Dimensie | Dimensie members |
 
 - `PppActivity.associationId` = host, `PppActivity.joint` = both can pay. Alexia
-  sets both; the admin can switch a Stress borrel to/from joint (**Make joint**),
+  sets both; the admin can switch a Stress borrel to/from joint (**Make joint** on its detail page),
   but not stop it being joint once Dimensie members ordered there.
 - **Drink lists** — `PppProduct`/`PppProductCategory.associationId`: each
   association manages its own on **Drinks** (the overall admin switches); the POS
