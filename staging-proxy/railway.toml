@@ -1,8 +1,0 @@
-# Staging only: proxy giving the PPP site its own domain (root directory staging-proxy).
-[build]
-builder = "nixpacks"
-
-[deploy]
-startCommand = "node server.js"
-healthcheckPath = "/__proxy_health"
-restartPolicyType = "on_failure"
