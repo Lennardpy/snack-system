@@ -36,6 +36,7 @@ export default async function PppAdminLayout({ children }: { children: React.Rea
       <SiteNav
         title="PPP Admin"
         subtitle="Bar system"
+        logo={scope === "dimensie" ? "/dimensie-logo.png" : "/stress-logo.svg"}
         badge={scope ? ASSOCIATION_LABEL[scope] : "All associations"}
         accent="amber"
         home="/ppp/admin/dashboard"

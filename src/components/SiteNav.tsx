@@ -21,6 +21,7 @@ export interface NavSection {
 export default function SiteNav({
   title,
   subtitle,
+  logo = "/stress-logo.svg",
   badge,
   accent,
   home,
@@ -30,6 +31,7 @@ export default function SiteNav({
 }: {
   title: string;
   subtitle: string;
+  logo?: string; // path in /public; Stress's logo unless the login is another association's
   badge?: string | null; // e.g. the association a PPP login works for
   accent: "blue" | "amber";
   home: string; // the dashboard link (exact-match active state)
@@ -52,7 +54,7 @@ export default function SiteNav({
   return (
     <aside className="sticky top-0 flex h-screen w-60 flex-shrink-0 flex-col overflow-y-auto border-r border-gray-800 bg-gray-900 p-4">
       <div className="mb-8 flex items-center gap-3 px-2 pt-2">
-        <Image src="/stress-logo.svg" alt="" width={36} height={36} priority className="select-none" />
+        <Image src={logo} alt="" width={36} height={36} priority className="select-none rounded object-contain" />
         <div className="leading-tight">
           <p className="font-bold">{title}</p>
           <p className="text-xs text-gray-500">{subtitle}</p>
