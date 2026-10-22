@@ -1,0 +1,7 @@
+{
+  "name": "staging-ppp-proxy",
+  "private": true,
+  "description": "Staging only: second domain for the PPP site",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=20" }
+}
