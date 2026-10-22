@@ -1,18 +1,32 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { fetchAllMembers } from "@/lib/congressus";
+import { fetchAllMembers, congressusConfigured } from "@/lib/congressus";
+import { isAssociationId, type AssociationId } from "@/lib/associations";
 import { requireAdmin } from "@/lib/auth";
 
-export async function POST() {
+// Sync ONE association's members from its own Congressus. Body: { association }
+// ("stress" | "dimensie", default "stress"). Everything — matching, the email
+// clash check and the clean-up of members no longer in Congressus — stays within
+// that association, so syncing Stress never touches Dimensie members and vice versa.
+export async function POST(req: NextRequest) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await req.json().catch(() => ({}));
+  const association: unknown = body?.association ?? "stress";
+  if (!isAssociationId(association)) {
+    return NextResponse.json({ error: "Unknown association" }, { status: 400 });
+  }
+  if (!congressusConfigured(association)) {
+    return NextResponse.json({ error: `No Congressus API key configured for ${association}.` }, { status: 400 });
+  }
 
   // Throws if any Congressus page fails, so a partial list never reaches the prune.
   let members: Awaited<ReturnType<typeof fetchAllMembers>>;
   try {
-    members = await fetchAllMembers();
+    members = await fetchAllMembers(association);
   } catch (err) {
-    console.error("Member sync: Congressus fetch failed", err);
+    console.error(`Member sync (${association}): Congressus fetch failed`, err);
     return NextResponse.json({ error: "Could not fetch members from Congressus — nothing was changed." }, { status: 502 });
   }
 
@@ -20,7 +34,7 @@ export async function POST() {
   // (removed there, or no longer an allowed member status). Otherwise they could
   // keep buying with no way to invoice them. Done before the upsert so a stale
   // record doesn't block a new member re-using its email.
-  const prune = await pruneMissingMembers(new Set(members.map((m) => m.id)));
+  const prune = await pruneMissingMembers(association, new Set(members.map((m) => m.id)));
 
   let created = 0;
   let updated = 0;
@@ -37,11 +51,12 @@ export async function POST() {
       !m.status?.deceased;
 
     try {
-      const existing = await prisma.member.findUnique({ where: { congressusId: m.id } });
+      const key = { associationId: association, congressusId: m.id };
+      const existing = await prisma.member.findUnique({ where: { associationId_congressusId: key } });
 
       if (existing) {
         await prisma.member.update({
-          where: { congressusId: m.id },
+          where: { associationId_congressusId: key },
           data: {
             firstName: m.first_name,
             lastName: m.last_name,
@@ -52,11 +67,15 @@ export async function POST() {
         updated++;
       } else {
         // Check if email already taken by another member (data quality issue in Congressus)
-        const emailTaken = await prisma.member.findUnique({ where: { email: m.email } });
+        // Within this association only — the same person may also be a member of the other one.
+        const emailTaken = await prisma.member.findUnique({
+          where: { associationId_email: { associationId: association, email: m.email } },
+        });
         if (emailTaken) { skipped++; continue; }
 
         await prisma.member.create({
           data: {
+            associationId: association,
             congressusId: m.id,
             firstName: m.first_name,
             lastName: m.last_name,
@@ -72,14 +91,14 @@ export async function POST() {
     }
   }
 
-  return NextResponse.json({ ok: true, created, updated, skipped, total: members.length, ...prune });
+  return NextResponse.json({ ok: true, association, created, updated, skipped, total: members.length, ...prune });
 }
 
 // Members in our DB but not in the Congressus list: deleted when they have no
 // history, otherwise deactivated (purchases blocked, history + open invoice kept).
 // Skipped when the list looks implausibly small, so an API hiccup can't wipe everyone.
-async function pruneMissingMembers(congressusIds: Set<number>) {
-  const activeCount = await prisma.member.count({ where: { active: true } });
+async function pruneMissingMembers(association: AssociationId, congressusIds: Set<number>) {
+  const activeCount = await prisma.member.count({ where: { associationId: association, active: true } });
   if (congressusIds.size === 0 || congressusIds.size < activeCount / 2) {
     return {
       deleted: 0,
@@ -90,7 +109,7 @@ async function pruneMissingMembers(congressusIds: Set<number>) {
   }
 
   const missing = await prisma.member.findMany({
-    where: { congressusId: { notIn: [...congressusIds] }, deletedAt: null },
+    where: { associationId: association, congressusId: { notIn: [...congressusIds] }, deletedAt: null },
     select: {
       id: true,
       firstName: true,

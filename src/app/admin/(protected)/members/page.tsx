@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatRoleDiscount } from "@/lib/roles";
+import { ASSOCIATION_IDS, ASSOCIATION_LABEL, type AssociationId } from "@/lib/associations";
 
 interface Role {
   id: string;
+  associationId: AssociationId;
   name: string;
   discountPercent: number;
   discountCents: number;
@@ -14,6 +16,7 @@ interface Role {
 
 interface Member {
   id: string;
+  associationId: AssociationId;
   congressusId: number;
   firstName: string;
   lastName: string;
@@ -43,7 +46,8 @@ export default function MembersPage() {
   const router = useRouter();
   const [members, setMembers] = useState<Member[]>([]);
   const [allRoles, setAllRoles] = useState<Role[]>([]);
-  const [syncing, setSyncing] = useState(false);
+  const [syncing, setSyncing] = useState<AssociationId | null>(null);
+  const [association, setAssociation] = useState<AssociationId | "all">("all");
   const [syncResult, setSyncResult] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -66,18 +70,22 @@ export default function MembersPage() {
     loadRoles();
   }, []);
 
-  async function sync() {
-    setSyncing(true);
+  async function sync(which: AssociationId) {
+    setSyncing(which);
     setSyncResult(null);
-    const res = await fetch("/api/admin/members/sync", { method: "POST" });
+    const res = await fetch("/api/admin/members/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ association: which }),
+    });
     const data = await res.json();
     if (!res.ok) {
-      setSyncResult(`Sync failed: ${data.error ?? res.status}`);
-      setSyncing(false);
+      setSyncResult(`${ASSOCIATION_LABEL[which]} sync failed: ${data.error ?? res.status}`);
+      setSyncing(null);
       return;
     }
     const parts = [
-      `Sync complete: ${data.created} created, ${data.updated} updated (${data.total} in Congressus).`,
+      `${ASSOCIATION_LABEL[which]} sync complete: ${data.created} created, ${data.updated} updated (${data.total} in Congressus).`,
       data.pruneSkipped
         ? data.pruneSkipped
         : `No longer in Congressus: ${data.deleted} removed, ${data.deactivated} deactivated (kept for their purchase history).`,
@@ -90,7 +98,7 @@ export default function MembersPage() {
       );
     }
     setSyncResult(parts.join(" "));
-    setSyncing(false);
+    setSyncing(null);
     load();
   }
 
@@ -144,9 +152,12 @@ export default function MembersPage() {
     }
   }
 
-  const filtered = members.filter((m) =>
-    `${m.firstName} ${m.lastName} ${m.email}`.toLowerCase().includes(search.toLowerCase())
+  const filtered = members.filter(
+    (m) =>
+      (association === "all" || m.associationId === association) &&
+      `${m.firstName} ${m.lastName} ${m.email}`.toLowerCase().includes(search.toLowerCase())
   );
+  const count = (a: AssociationId) => members.filter((m) => m.associationId === a).length;
 
   return (
     <div className="p-8">
@@ -162,13 +173,16 @@ export default function MembersPage() {
           >
             🎟️ Manage roles
           </a>
-          <button
-            onClick={sync}
-            disabled={syncing}
-            className="rounded-xl bg-blue-600 px-5 py-2.5 font-semibold transition-colors hover:bg-blue-500 disabled:opacity-40"
-          >
-            {syncing ? "Syncing…" : "Sync from Congressus"}
-          </button>
+          {ASSOCIATION_IDS.map((a) => (
+            <button
+              key={a}
+              onClick={() => sync(a)}
+              disabled={syncing !== null}
+              className="rounded-xl bg-blue-600 px-5 py-2.5 font-semibold transition-colors hover:bg-blue-500 disabled:opacity-40"
+            >
+              {syncing === a ? "Syncing…" : `Sync ${ASSOCIATION_LABEL[a]}`}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -176,13 +190,28 @@ export default function MembersPage() {
         <p className="mb-4 rounded-lg bg-blue-900/30 px-4 py-2 text-blue-300">{syncResult}</p>
       )}
 
-      <input
-        type="search"
-        placeholder="Search by name or email…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="mb-6 w-full max-w-md rounded-xl bg-gray-800 px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500"
-      />
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <input
+          type="search"
+          placeholder="Search by name or email…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full max-w-md rounded-xl bg-gray-800 px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <div className="flex gap-1 rounded-xl bg-gray-900 p-1">
+          {(["all", ...ASSOCIATION_IDS] as const).map((a) => (
+            <button
+              key={a}
+              onClick={() => setAssociation(a)}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                association === a ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white"
+              }`}
+            >
+              {a === "all" ? `All (${members.length})` : `${ASSOCIATION_LABEL[a]} (${count(a)})`}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {filtered.map((m) => (
@@ -197,6 +226,11 @@ export default function MembersPage() {
                     <a href={`/admin/members/${m.id}`} className="truncate hover:text-blue-400 hover:underline">
                       {m.firstName} {m.lastName}
                     </a>
+                    {m.associationId !== "stress" && (
+                      <span className="flex-shrink-0 rounded-full bg-teal-900/50 px-2 py-0.5 text-xs text-teal-300">
+                        {ASSOCIATION_LABEL[m.associationId]}
+                      </span>
+                    )}
                     {!m.active && (
                       <span className="flex-shrink-0 rounded-full bg-red-900/50 px-2 py-0.5 text-xs text-red-300">Inactive</span>
                     )}
@@ -223,14 +257,16 @@ export default function MembersPage() {
                 >
                   🎟️ Roles
                 </button>
-                <button
-                  onClick={() => enterStore(m)}
-                  disabled={busyId === m.id}
-                  title="Open the kiosk shop as this member"
-                  className="rounded-lg bg-gray-800 px-3 py-2 text-sm font-medium text-gray-200 transition-colors hover:bg-blue-600 disabled:opacity-40"
-                >
-                  🛒 Enter store
-                </button>
+                {m.associationId === "stress" && (
+                  <button
+                    onClick={() => enterStore(m)}
+                    disabled={busyId === m.id}
+                    title="Open the kiosk shop as this member"
+                    className="rounded-lg bg-gray-800 px-3 py-2 text-sm font-medium text-gray-200 transition-colors hover:bg-blue-600 disabled:opacity-40"
+                  >
+                    🛒 Enter store
+                  </button>
+                )}
                 <button
                   onClick={() => remove(m)}
                   disabled={busyId === m.id}
@@ -254,7 +290,7 @@ export default function MembersPage() {
             {/* Inline role editor */}
             {editingId === m.id && (
               <div className="mt-3 rounded-xl border border-gray-800 bg-gray-950/60 p-3">
-                {allRoles.length === 0 ? (
+                {allRoles.filter((role) => role.associationId === m.associationId).length === 0 ? (
                   <p className="text-sm text-gray-500">
                     No roles defined yet.{" "}
                     <a href="/admin/ppp/roles" className="text-amber-400 underline">
@@ -264,7 +300,7 @@ export default function MembersPage() {
                   </p>
                 ) : (
                   <div className="flex flex-wrap gap-2">
-                    {allRoles.map((role) => {
+                    {allRoles.filter((role) => role.associationId === m.associationId).map((role) => {
                       const active = m.roles.some((r) => r.id === role.id);
                       return (
                         <button

@@ -7,14 +7,34 @@ datasource db {
   provider = "postgresql"
 }
 
+// A study association using the system, each with its own Congressus. The id is
+// a fixed slug ("stress", "dimensie") so code and defaults can refer to it; the
+// rows are created by migrations. Everything that existed before Dimensie joined
+// belongs to Stress.
+model Association {
+  id        String   @id
+  name      String
+  createdAt DateTime @default(now())
+
+  members    Member[]
+  roles      MemberRole[]
+  users      User[]
+  activities PppActivity[]
+}
+
 model Member {
   id           String   @id @default(cuid())
+  // Which association's Congressus this member comes from (and is invoiced by).
+  // Someone in both associations has one Member row per association.
+  associationId String      @default("stress")
+  association   Association @relation(fields: [associationId], references: [id])
+  // Ids are per Congressus instance, so unique per association only.
   // null once the member is deleted (anonymised) — detached from Congressus, so a
   // later sync creates them afresh if they're (still) a member there.
-  congressusId Int?     @unique
+  congressusId Int?
   firstName    String
   lastName     String
-  email        String   @unique
+  email        String
   active       Boolean  @default(true)
   // Set when an admin deletes a member who has exported purchase history: the row
   // stays (anonymised) so past orders and revenue figures remain correct.
@@ -27,6 +47,9 @@ model Member {
   pppInvoices PppInvoice[]
   roles       MemberRole[]
   user        User?
+
+  @@unique([associationId, congressusId])
+  @@unique([associationId, email])
 }
 
 // A role/committee a member can belong to, carrying a drink discount applied at
@@ -34,7 +57,10 @@ model Member {
 // A member may hold several roles; the BEST (highest) discount wins.
 model MemberRole {
   id              String   @id @default(cuid())
-  name            String   @unique
+  // Roles belong to one association and only apply to its members.
+  associationId   String      @default("stress")
+  association     Association @relation(fields: [associationId], references: [id])
+  name            String
   // A role can discount drinks by a percentage and/or a fixed amount per product.
   // The two stack within a role; across a member's roles the BEST (largest) total
   // discount per product wins. PilsCie = 75 cents off each drink → discountCents 75.
@@ -48,6 +74,8 @@ model MemberRole {
   createdAt       DateTime @default(now())
 
   members Member[]
+
+  @@unique([associationId, name])
 }
 
 model Card {
@@ -146,6 +174,10 @@ model User {
   email        String   @unique
   passwordHash String
   role         UserRole @default(ADMIN)
+  // The association this account works for. null = the overall admin, who sees
+  // every association. (Scoping by it arrives with the per-association logins.)
+  associationId String?
+  association   Association? @relation(fields: [associationId], references: [id])
   createdAt    DateTime @default(now())
 
   memberId String? @unique
@@ -261,6 +293,9 @@ model PppProduct {
 
 model PppActivity {
   id        String         @id @default(cuid())
+  // The association hosting the borrel (pays the bar bill, owns the revenue).
+  associationId String      @default("stress")
+  association   Association @relation(fields: [associationId], references: [id])
   name      String
   status    ActivityStatus @default(OPEN)
   date      DateTime       @default(now())

@@ -32,6 +32,7 @@ Set these on the Railway **service** (not the database plugin).
 |----------|----------|-------------------|---------|
 | `DATABASE_URL` | ✅ | `${{Postgres.DATABASE_URL}}` | Postgres connection (use the internal URL). |
 | `CONGRESSUS_API_TOKEN` | ✅ | `Pxw3…` | Bearer token for Congressus API v30. |
+| `CONGRESSUS_API_TOKEN_DIMENSIE` | – | – | Bearer token for SV Dimensie's Congressus. Without it the Dimensie sync/export is unavailable. Never give staging a real token. |
 | `CONGRESSUS_PRODUCT_OFFER_ID` | – | `118389` | Fallback "SSS purchases Mendix" product offer id used when a product has no offer id. |
 | `RESEND_API_KEY` | ✅ | `re_…` | Resend API key for verification emails. |
 | `EMAIL_FROM` | ✅ | `Stress Snack System <snacks@51vo.nl>` | From address (Resend-verified domain). **Not** a `no-reply@` address. |

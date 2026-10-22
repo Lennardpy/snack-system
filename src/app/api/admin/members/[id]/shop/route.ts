@@ -12,6 +12,9 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   const member = await prisma.member.findUnique({ where: { id } });
   if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });
+  if (member.associationId !== "stress") {
+    return NextResponse.json({ error: "The snack kiosk is for Stress members only" }, { status: 403 });
+  }
 
   // Replace any existing session for this member.
   await prisma.shopSession.deleteMany({ where: { memberId: id } });

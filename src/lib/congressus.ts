@@ -1,23 +1,76 @@
-// Congressus API v30 client
-// Auth: Bearer token via CONGRESSUS_API_TOKEN env var
+// Congressus API v30 client — one Congressus per association (Stress, Dimensie).
+// Auth: Bearer token per association from an env var (never stored in the DB).
 
 // Overridable only to point tests at a mock; production uses the real API.
 const BASE = process.env.CONGRESSUS_API_URL ?? "https://api.congressus.nl/v30";
 
-// SSS product folder in Congressus (id 5952, name "SSS")
-const SSS_FOLDER_ID = 5952;
+import type { AssociationId } from "./associations";
 
-// Only sync members with these status IDs:
-// 1845 = The Primary Membership
-// 1844 = The Secondary membership
-const ALLOWED_STATUS_IDS = [1845, 1844];
+interface CongressusConfig {
+  tokenEnv: string;
+  // Only members with these status ids are synced (may drink / be invoiced).
+  memberStatusIds: number[];
+  invoiceWorkflowId: number;
+  useDirectDebit: boolean;
+  // SSS snacks folder — Stress only (Dimensie doesn't use the kiosk).
+  sssFolderId: number | null;
+  // Folder for PPP drinks; null until it's been created in that Congressus.
+  pppFolderId: number | null;
+  // Product used for lines without a mapped product offer (€0.01 × cents);
+  // null = every line must have an offer.
+  fallbackOfferId: number | null;
+}
 
-function headers() {
+const intEnv = (name: string): number | null => {
+  const v = parseInt(process.env[name] ?? "", 10);
+  return Number.isFinite(v) ? v : null;
+};
+
+const CONFIG: Record<AssociationId, CongressusConfig> = {
+  stress: {
+    tokenEnv: "CONGRESSUS_API_TOKEN",
+    // 1845 = The Primary Membership, 1844 = The Secondary membership
+    memberStatusIds: [1845, 1844],
+    invoiceWorkflowId: 605,
+    useDirectDebit: true,
+    sssFolderId: 5952, // "SSS"
+    // "PPP" (id 8804), created via the API parallel to SSS.
+    pppFolderId: intEnv("CONGRESSUS_PPP_FOLDER_ID") ?? 8804,
+    // "SSS purchases Mendix" — €0.01 per unit, quantity = total cents.
+    fallbackOfferId: intEnv("CONGRESSUS_PRODUCT_OFFER_ID") ?? 118389,
+  },
+  dimensie: {
+    tokenEnv: "CONGRESSUS_API_TOKEN_DIMENSIE",
+    // 1588 = Lid, 1671 = Extraordinary member (not Erelid / Donateur)
+    memberStatusIds: [1588, 1671],
+    invoiceWorkflowId: intEnv("CONGRESSUS_DIMENSIE_WORKFLOW_ID") ?? 309,
+    useDirectDebit: true,
+    sssFolderId: null,
+    pppFolderId: intEnv("CONGRESSUS_PPP_FOLDER_ID_DIMENSIE"),
+    fallbackOfferId: intEnv("CONGRESSUS_PRODUCT_OFFER_ID_DIMENSIE"),
+  },
+};
+
+export function congressusConfig(association: AssociationId): CongressusConfig {
+  return CONFIG[association];
+}
+
+// Whether this association's Congressus can be reached (its token is set).
+export function congressusConfigured(association: AssociationId): boolean {
+  return !!process.env[CONFIG[association].tokenEnv];
+}
+
+function headers(association: AssociationId) {
+  const token = process.env[CONFIG[association].tokenEnv];
+  if (!token) throw new Error(`No Congressus API token configured for ${association} (${CONFIG[association].tokenEnv})`);
   return {
-    Authorization: `Bearer ${process.env.CONGRESSUS_API_TOKEN}`,
+    Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
   };
 }
+
+// SSS lives in Stress's Congressus only.
+const SSS_FOLDER_ID = CONFIG.stress.sssFolderId!;
 
 // ── Members ───────────────────────────────────────────────────────────────────
 
@@ -37,21 +90,22 @@ export interface CongressusMember {
   locked: boolean;
 }
 
-// Fetch all Primary and Secondary members, walking Congressus pagination.
-export async function fetchAllMembers(): Promise<CongressusMember[]> {
+// Fetch all members with an allowed status from this association's Congressus,
+// walking pagination.
+export async function fetchAllMembers(association: AssociationId): Promise<CongressusMember[]> {
   const members: CongressusMember[] = [];
 
-  for (const statusId of ALLOWED_STATUS_IDS) {
+  for (const statusId of CONFIG[association].memberStatusIds) {
     let page = 1;
 
     while (true) {
       const res = await fetch(
         `${BASE}/members?page=${page}&page_size=100&status_id=${statusId}`,
-        { headers: headers() }
+        { headers: headers(association) }
       );
 
       if (!res.ok) {
-        throw new Error(`Congressus /members failed: ${res.status} ${await res.text()}`);
+        throw new Error(`Congressus (${association}) /members failed: ${res.status} ${await res.text()}`);
       }
 
       const body: {
@@ -95,7 +149,7 @@ export interface CongressusFolderProduct {
 export async function fetchSSSFolderProducts(): Promise<CongressusFolderProduct[]> {
   const res = await fetch(
     `${BASE}/products?folder_id=${SSS_FOLDER_ID}&page_size=100`,
-    { headers: headers() }
+    { headers: headers("stress") }
   );
   if (!res.ok) {
     throw new Error(`Congressus folder fetch failed: ${res.status} ${await res.text()}`);
@@ -117,7 +171,7 @@ export async function createCongressusProduct(
 ): Promise<{ offerId: number }> {
   const res = await fetch(`${BASE}/products`, {
     method: "POST",
-    headers: headers(),
+    headers: headers("stress"),
     body: JSON.stringify({
       folder_id: SSS_FOLDER_ID,
       name,
@@ -165,7 +219,7 @@ export async function updateCongressusProduct(
   // name/price changed to avoid dropping fields like folder/published. VAT is
   // deliberately omitted — the API 500s on any vat_category write (see
   // CONGRESSUS.md), and SSS products carry no VAT anyway.
-  const getRes = await fetch(`${BASE}/products/${congressusOfferId}`, { headers: headers() });
+  const getRes = await fetch(`${BASE}/products/${congressusOfferId}`, { headers: headers("stress") });
   if (!getRes.ok) {
     throw new Error(
       `Congressus get product ${congressusOfferId} failed: ${getRes.status} ${await getRes.text()}`
@@ -179,7 +233,7 @@ export async function updateCongressusProduct(
 
   const res = await fetch(`${BASE}/products/${congressusOfferId}`, {
     method: "PUT",
-    headers: headers(),
+    headers: headers("stress"),
     body: JSON.stringify({
       folder_id: current.folder?.id ?? SSS_FOLDER_ID,
       name,
@@ -197,10 +251,9 @@ export async function updateCongressusProduct(
 
 // ── PPP products (drinks) ─────────────────────────────────────────────────────
 //
-// PPP drinks live in a SEPARATE Congressus folder from SSS snacks: "PPP"
-// (id 8804, path webshop/ppp), created via the API parallel to SSS (5952).
-// Overridable with CONGRESSUS_PPP_FOLDER_ID.
-const PPP_FOLDER_ID = parseInt(process.env.CONGRESSUS_PPP_FOLDER_ID ?? "8804", 10);
+// PPP drinks live in a SEPARATE Congressus folder from SSS snacks: for Stress
+// "PPP" (id 8804), created via the API parallel to SSS (5952). Each association
+// has its own folder (CongressusConfig.pppFolderId).
 
 export type VatCategory = "ZERO" | "LOW" | "STANDARD";
 
@@ -213,15 +266,18 @@ export type VatCategory = "ZERO" | "LOW" | "STANDARD";
 // (PppProduct.vatCategory) and must be set per-product in the Congressus UI.
 //   LOW → VL (9%), STANDARD → VH (21%), ZERO → none.
 export async function createPppCongressusProduct(
+  association: AssociationId,
   name: string,
   priceEuros: number,
   _vatCategory: VatCategory = "LOW"
 ): Promise<{ offerId: number | null }> {
+  const folderId = CONFIG[association].pppFolderId;
+  if (folderId == null) throw new Error(`No PPP product folder configured in ${association}'s Congressus`);
   const res = await fetch(`${BASE}/products`, {
     method: "POST",
-    headers: headers(),
+    headers: headers(association),
     body: JSON.stringify({
-      folder_id: PPP_FOLDER_ID,
+      folder_id: folderId,
       name,
       price: priceEuros,
     }),
@@ -235,8 +291,8 @@ export async function createPppCongressusProduct(
 
   // Resolve the real offer ID from the PPP folder listing (same quirk as SSS).
   const folderRes = await fetch(
-    `${BASE}/products?folder_id=${PPP_FOLDER_ID}&page_size=100`,
-    { headers: headers() }
+    `${BASE}/products?folder_id=${folderId}&page_size=100`,
+    { headers: headers(association) }
   );
   if (!folderRes.ok) {
     throw new Error(
@@ -256,12 +312,6 @@ export async function createPppCongressusProduct(
 
 // ── Sale Invoices (export) ────────────────────────────────────────────────────
 
-// Congressus product used as a fallback when a product has no offer ID mapped.
-// "SSS purchases Mendix" — €0.01 per unit, quantity = total cents.
-const SSS_MENDIX_PRODUCT_OFFER_ID = parseInt(
-  process.env.CONGRESSUS_PRODUCT_OFFER_ID ?? "118389",
-  10
-);
 
 export interface InvoiceLineItem {
   productName: string;
@@ -274,10 +324,19 @@ export interface InvoiceLineItem {
 // For products with a known offer ID: one line per distinct product.
 // For products without an offer ID: accumulates into one fallback line.
 function buildCongressusItems(
+  association: AssociationId,
   lines: InvoiceLineItem[],
   reference: string
 ): { product_offer_id: number; quantity: number; price: number; description: string }[] {
   const items: { product_offer_id: number; quantity: number; price: number; description: string }[] = [];
+  const fallbackOfferId = CONFIG[association].fallbackOfferId;
+  // Throws before anything is sent, so the export releases the orders (nothing created).
+  const needFallback = () => {
+    if (fallbackOfferId == null) {
+      throw new CongressusHttpError(`A line has no ${association} Congressus product and there is no fallback product`, 400);
+    }
+    return fallbackOfferId;
+  };
 
   let fallbackCents = 0;
 
@@ -296,7 +355,7 @@ function buildCongressusItems(
 
   if (fallbackCents > 0) {
     items.push({
-      product_offer_id: SSS_MENDIX_PRODUCT_OFFER_ID,
+      product_offer_id: needFallback(),
       quantity: fallbackCents,
       price: 0.01,
       description: reference,
@@ -307,7 +366,7 @@ function buildCongressusItems(
   if (items.length === 0) {
     const totalCents = lines.reduce((s, l) => s + l.quantity * l.unitCents, 0);
     items.push({
-      product_offer_id: SSS_MENDIX_PRODUCT_OFFER_ID,
+      product_offer_id: needFallback(),
       quantity: totalCents,
       price: 0.01,
       description: reference,
@@ -334,21 +393,23 @@ export class CongressusHttpError extends Error {
 }
 
 export async function createSaleInvoice(
+  association: AssociationId,
   memberId: number,
   lines: InvoiceLineItem[],
   reference: string
 ): Promise<number> {
-  const items = buildCongressusItems(lines, reference);
+  const items = buildCongressusItems(association, lines, reference);
+  const cfg = CONFIG[association];
 
   const res = await fetch(`${BASE}/sale-invoices`, {
     method: "POST",
     signal: AbortSignal.timeout(30_000),
-    headers: headers(),
+    headers: headers(association),
     body: JSON.stringify({
       member_id: memberId,
       invoice_date: new Date().toISOString().split("T")[0],
-      invoice_workflow_id: 605,
-      use_direct_debit: true,
+      invoice_workflow_id: cfg.invoiceWorkflowId,
+      use_direct_debit: cfg.useDirectDebit,
       invoice_reference: reference,
       items,
     }),
@@ -356,7 +417,7 @@ export async function createSaleInvoice(
 
   if (!res.ok) {
     throw new CongressusHttpError(
-      `Congressus create invoice failed for member ${memberId}: ${res.status} ${await res.text()}`,
+      `Congressus (${association}) create invoice failed for member ${memberId}: ${res.status} ${await res.text()}`,
       res.status
     );
   }

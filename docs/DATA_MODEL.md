@@ -20,15 +20,25 @@ CardRegistration   (pending card links; standalone)
 
 ## Models
 
+### Association
+A study association using the system: `stress` and `dimensie` (SV Dimensie). The id
+is a fixed slug; rows are created by the migration `…_associations`. Everything that
+existed before Dimensie joined belongs to Stress. `Member`, `MemberRole` and
+`PppActivity` (the host) carry `associationId` (default `stress`); `User.associationId`
+is null for the overall admin.
+
 ### Member
-A person synced from Congressus. Only Primary and Secondary members are imported.
+A person synced from their association's Congressus (Stress: Primary and Secondary;
+Dimensie: Lid and Extraordinary member). Someone in both associations has one row
+per association.
 
 | Field | Type | Notes |
 |-------|------|-------|
 | `id` | String (cuid) | PK |
-| `congressusId` | Int? | **unique** — the Congressus member id; null once deleted (anonymised) |
+| `associationId` | String | which association (and Congressus) the member belongs to |
+| `congressusId` | Int? | the Congressus member id, **unique per association**; null once deleted (anonymised) |
 | `firstName`, `lastName` | String | |
-| `email` | String | **unique** — must match their Congressus login email |
+| `email` | String | **unique per association** — must match their Congressus login email |
 | `active` | Boolean | false if deleted/locked/archived/deceased in Congressus |
 | `deletedAt` | DateTime? | set when an admin deletes a member with exported history (row kept, anonymised, hidden from lists) |
 | `createdAt`, `updatedAt` | DateTime | |

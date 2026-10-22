@@ -14,6 +14,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "roleIds must be an array of ids" }, { status: 400 });
   }
 
+  // A member can only hold roles of their own association.
+  const target = await prisma.member.findUnique({ where: { id }, select: { associationId: true } });
+  if (!target) return NextResponse.json({ error: "Member not found" }, { status: 404 });
+  const foreign = await prisma.memberRole.count({
+    where: { id: { in: roleIds }, associationId: { not: target.associationId } },
+  });
+  if (foreign > 0) {
+    return NextResponse.json({ error: "A role belongs to another association" }, { status: 400 });
+  }
+
   try {
     const member = await prisma.member.update({
       where: { id },

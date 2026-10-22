@@ -53,9 +53,9 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Sync to Congressus — creates a matching product in the PPP folder (8804).
+  // Sync to Congressus — creates a matching product in Stress's PPP folder (8804).
   try {
-    const { offerId } = await createPppCongressusProduct(name, price / 100, vat);
+    const { offerId } = await createPppCongressusProduct("stress", name, price / 100, vat);
     if (offerId !== null) {
       const updated = await prisma.pppProduct.update({
         where: { id: product.id },

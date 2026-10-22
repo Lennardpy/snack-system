@@ -22,7 +22,10 @@ export async function POST(req: NextRequest) {
   const trimmed = (name ?? "").trim();
   if (!trimmed) return NextResponse.json({ error: "Name is required" }, { status: 400 });
 
-  const existing = await prisma.memberRole.findUnique({ where: { name: trimmed } });
+  // Roles are created for Stress until the per-association logins arrive.
+  const existing = await prisma.memberRole.findUnique({
+    where: { associationId_name: { associationId: "stress", name: trimmed } },
+  });
   if (existing) {
     return NextResponse.json({ error: "A role with that name already exists" }, { status: 409 });
   }

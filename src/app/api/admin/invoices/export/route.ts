@@ -50,6 +50,7 @@ interface Group {
 }
 
 const REFERENCE_PREFIX = "SSS & PPP";
+const ASSOCIATION = "stress" as const;
 
 function monthName(yearMonth: string): string {
   const [year, month] = yearMonth.split("-");
@@ -95,12 +96,15 @@ export async function POST() {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // ── Claim every pending SSS and PPP order for this run ───────────────────────
+  // ── Claim every pending SSS and PPP order of Stress members for this run ─────
+  // Each association's members are invoiced in its own Congressus; this export is
+  // Stress's. (Dimensie members' orders stay pending until their own export.)
   const runId = randomUUID();
   const claim = { status: "EXPORTING" as const, exportClaim: runId, exportClaimedAt: new Date() };
+  const pending = { status: "CONFIRMED" as const, member: { associationId: ASSOCIATION } };
   await prisma.$transaction([
-    prisma.saleInvoice.updateMany({ where: { status: "CONFIRMED" }, data: claim }),
-    prisma.pppInvoice.updateMany({ where: { status: "CONFIRMED" }, data: claim }),
+    prisma.saleInvoice.updateMany({ where: pending, data: claim }),
+    prisma.pppInvoice.updateMany({ where: pending, data: claim }),
   ]);
 
   const [sssInvoices, pppInvoices] = await Promise.all([
@@ -217,6 +221,7 @@ export async function POST() {
     }
     try {
       congressusInvoiceId = await createSaleInvoice(
+        ASSOCIATION,
         g.congressusMemberId,
         Array.from(g.lineMap.values()),
         reference

@@ -20,7 +20,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.name !== undefined) {
     const trimmed = String(body.name).trim();
     if (!trimmed) return NextResponse.json({ error: "Name cannot be empty" }, { status: 400 });
-    const clash = await prisma.memberRole.findUnique({ where: { name: trimmed } });
+    // Names are unique within the role's association.
+    const role = await prisma.memberRole.findUnique({ where: { id }, select: { associationId: true } });
+    if (!role) return NextResponse.json({ error: "Role not found" }, { status: 404 });
+    const clash = await prisma.memberRole.findUnique({
+      where: { associationId_name: { associationId: role.associationId, name: trimmed } },
+    });
     if (clash && clash.id !== id) {
       return NextResponse.json({ error: "A role with that name already exists" }, { status: 409 });
     }

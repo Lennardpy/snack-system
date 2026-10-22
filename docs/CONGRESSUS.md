@@ -4,10 +4,20 @@ SSS syncs three things with **Congressus API v30**: members (in), products (out)
 and monthly sale-invoices (out). Client code lives in `src/lib/congressus.ts`.
 
 - **Base URL:** `https://api.congressus.nl/v30`
-- **Auth:** `Authorization: Bearer ${CONGRESSUS_API_TOKEN}` (a generic API token)
-- **SSS product folder id:** `5952` · **PPP (drinks) folder id:** `8804`
-- **Imported member statuses:** `1845` (Primary), `1844` (Secondary)
-- **Invoice workflow id:** `605` (Contribution)
+- **One Congressus per association.** Stress and SV Dimensie each have their own
+  Congressus; `src/lib/congressus.ts` holds a config per association (`CONFIG`) and
+  every call names the association it talks to:
+
+| | Stress | Dimensie |
+|---|---|---|
+| Token env var | `CONGRESSUS_API_TOKEN` | `CONGRESSUS_API_TOKEN_DIMENSIE` |
+| Imported member statuses | `1845` Primary, `1844` Secondary | `1588` Lid, `1671` Extraordinary member |
+| Invoice workflow id | `605` (Contribution) | `309` (`CONGRESSUS_DIMENSIE_WORKFLOW_ID`) |
+| Direct debit | yes | yes |
+| SSS (snacks) folder | `5952` | – (no kiosk) |
+| PPP (drinks) folder | `8804` (`CONGRESSUS_PPP_FOLDER_ID`) | `CONGRESSUS_PPP_FOLDER_ID_DIMENSIE` (not created yet) |
+| Fallback product | `118389` "SSS purchases Mendix" | `CONGRESSUS_PRODUCT_OFFER_ID_DIMENSIE` (none yet) |
+| VAT on products | yes (VL 9% / VH 21%) | none — Dimensie doesn't do VAT |
 
 > The bar subsystem (PPP) reuses this same client. See [PPP.md](PPP.md). PPP
 > products live in folder **`8804`** (`webshop/ppp`). The export puts a member's
@@ -16,9 +26,13 @@ and monthly sale-invoices (out). Client code lives in `src/lib/congressus.ts`.
 
 ## Members (Congressus → SSS)
 
-`Members → Sync from Congressus` calls `fetchAllMembers()`, which pages through
-`GET /members?status_id=…` for the Primary and Secondary statuses and upserts
-each by `congressusId`. A member is marked `active` unless Congressus says they
+`Members → Sync Stress` / `Sync Dimensie` calls `fetchAllMembers(association)`,
+which pages through `GET /members?status_id=…` for that association's statuses and
+upserts each by (association, `congressusId`). Everything stays within the one
+association: the email clash check, and the clean-up of members no longer in that
+Congressus — syncing Stress never deletes or deactivates a Dimensie member. Someone
+in both associations has one member row per association (Congressus ids are per
+instance, so the same id can belong to different people). A member is marked `active` unless Congressus says they
 are deleted, locked, archived, or deceased. Members without an email are skipped
 (email is the unique key used for card linking).
 

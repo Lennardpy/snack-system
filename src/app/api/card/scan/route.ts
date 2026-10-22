@@ -36,6 +36,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Member inactive" }, { status: 403 });
   }
 
+  // The snack kiosk is Stress's (SSS orders are invoiced via Stress's Congressus).
+  if (card.member.associationId !== "stress") {
+    return NextResponse.json({ error: "The snack kiosk is for Stress members only" }, { status: 403 });
+  }
+
   // Expire any existing session for this member
   await prisma.shopSession.deleteMany({ where: { memberId: card.memberId } });
 
