@@ -125,6 +125,15 @@ export default function BartendersPage() {
     }
   }
 
+  // The overall admin sees every association's bartenders, grouped per association;
+  // a Stress or Dimensie login only gets its own (no headers needed).
+  const groups = me?.overall
+    ? ASSOCIATION_IDS.map((a) => ({
+        label: ASSOCIATION_LABEL[a] as string | null,
+        items: bartenders.filter((b) => b.association === ASSOCIATION_LABEL[a]),
+      })).filter((g) => g.items.length > 0)
+    : [{ label: null as string | null, items: bartenders }];
+
   return (
     <div className="p-8">
       <div className="mb-2">
@@ -172,8 +181,16 @@ export default function BartendersPage() {
       ) : bartenders.length === 0 ? (
         <p className="text-gray-500">No bartenders yet. Add one above.</p>
       ) : (
-        <ul className="max-w-2xl space-y-2">
-          {bartenders.map((b) => (
+        <div className="max-w-2xl space-y-6">
+          {groups.map((g) => (
+            <div key={g.label ?? "all"}>
+              {g.label && (
+                <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-400">
+                  {g.label} bartenders <span className="font-normal text-gray-600">({g.items.length})</span>
+                </h2>
+              )}
+              <ul className="space-y-2">
+          {g.items.map((b) => (
             <li key={b.id} className="rounded-xl border border-gray-800 bg-gray-900 px-4 py-3">
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0">
@@ -185,7 +202,6 @@ export default function BartendersPage() {
                       <span className="text-amber-400">Invite pending</span>
                     )}
                     <span className="text-gray-600"> · added {new Date(b.createdAt).toLocaleDateString()}</span>
-                    {me?.overall && b.association && <span className="text-gray-500"> · {b.association}</span>}
                   </p>
                 </div>
                 <div className="flex flex-shrink-0 items-center gap-2">
@@ -277,7 +293,10 @@ export default function BartendersPage() {
               )}
             </li>
           ))}
-        </ul>
+              </ul>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
