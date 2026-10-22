@@ -72,7 +72,7 @@ export default function ActivitySelectorPage() {
           <p className="text-sm text-gray-400">Pick an activity or start a new one</p>
         </div>
         <div className="flex items-center gap-3">
-          <a href="/admin" className="text-sm text-gray-500 hover:text-gray-300">
+          <a href="/ppp/admin" className="text-sm text-gray-500 hover:text-gray-300">
             Admin
           </a>
           <button

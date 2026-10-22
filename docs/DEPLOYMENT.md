@@ -69,18 +69,21 @@ The app is served from Railway under the custom domain **`https://51vo.nl`**:
    enough, because `NEXT_PUBLIC_BASE_URL` is baked into the client at build time.
 3. Keep `EMAIL_FROM` on a Resend-verified domain (already `…@51vo.nl`).
 
-### Bar POS vanity domain (`ppp.51vo.nl`)
-`ppp.51vo.nl` is a shortcut to the bar POS. The app already redirects
-`ppp.51vo.nl/*` → `https://snacks.51vo.nl/ppp` (in `src/middleware.ts`), so only
-the routing needs wiring up — once, in two places:
+### The PPP site (`ppp.51vo.nl`)
+`ppp.51vo.nl` is the bar system's own site (POS + PPP admin), served by the same
+service: `src/middleware.ts` routes by domain and redirects the other site's
+paths (`snacks.51vo.nl/ppp…` → `ppp.51vo.nl/ppp…`). The domain needs wiring up
+once, in two places:
 1. Railway → the **snack-system** service → **Settings → Networking → Custom
    Domain** → add **`ppp.51vo.nl`** (target port **8080**, same as `snacks.51vo.nl`).
 2. At the DNS provider (51vo.nl zone) add the **CNAME** record Railway shows for it
    (a per-domain `…up.railway.app` target). Wait for Railway to validate + issue
    the TLS cert.
 
-No env-var or `BASE_URL` changes are needed — the redirect sends users to the
-canonical `snacks.51vo.nl`, where cookies, the PWA manifest and the cert all live.
+Optional env vars `SSS_ORIGIN` / `PPP_ORIGIN` override the two sites' origins
+(defaults `https://snacks.51vo.nl` / `https://ppp.51vo.nl`; staging sets its own).
+Locally, `localhost:3000` is the SSS and `ppp.localhost:3000` the PPP. Each site
+has its own login (host-only session cookie).
 
 ## Email deliverability (verification emails)
 

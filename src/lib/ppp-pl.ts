@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { activityWhere, type Scope } from "./scope";
 
 // Dashboard range → start date. `since_export` starts at the last PPP export
 // (null = no export yet → everything); `all` = no start.
@@ -27,9 +28,9 @@ export async function resolvePppRange(range: string): Promise<{
 // Borrels in the range that have cost of goods (SBZ usage) uploaded. Only these
 // count towards the dashboard profit/loss — income from borrels without costs
 // would make the result look better than it is.
-export async function costedActivityIds(from: Date | null): Promise<string[]> {
+export async function costedActivityIds(from: Date | null, scope: Scope = null): Promise<string[]> {
   const rows = await prisma.pppActivity.findMany({
-    where: { usage: { some: {} }, ...(from ? { date: { gte: from } } : {}) },
+    where: { usage: { some: {} }, ...(from ? { date: { gte: from } } : {}), ...activityWhere(scope) },
     select: { id: true },
     orderBy: { date: "asc" },
   });

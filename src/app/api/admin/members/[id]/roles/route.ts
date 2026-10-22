@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requirePpp } from "@/lib/auth";
+import { inScope } from "@/lib/scope";
 
 // PATCH /api/admin/members/[id]/roles — set the member's full role list.
 // Body: { roleIds: string[] }  (replaces existing assignments)
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Roles are PPP discounts: managed in the PPP admin.
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const { roleIds } = await req.json();
@@ -16,7 +18,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   // A member can only hold roles of their own association.
   const target = await prisma.member.findUnique({ where: { id }, select: { associationId: true } });
-  if (!target) return NextResponse.json({ error: "Member not found" }, { status: 404 });
+  if (!target || !inScope(ctx.scope, target.associationId)) {
+    return NextResponse.json({ error: "Member not found" }, { status: 404 });
+  }
   const foreign = await prisma.memberRole.count({
     where: { id: { in: roleIds }, associationId: { not: target.associationId } },
   });

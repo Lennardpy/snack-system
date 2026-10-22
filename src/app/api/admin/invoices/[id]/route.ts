@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requireSss } from "@/lib/auth";
 
 // PATCH /api/admin/invoices/[id]
 // Edit invoice line quantities. Body: { lines: [{ id, quantity }] }.
 // A quantity <= 0 removes that line. The total is recalculated. Only invoices
 // that have NOT yet been exported to Congressus may be edited.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
+  const admin = await requireSss();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
@@ -60,7 +60,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 // DELETE /api/admin/invoices/[id] — remove an invoice and its lines.
 // Blocked for already-exported invoices.
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
+  const admin = await requireSss();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;

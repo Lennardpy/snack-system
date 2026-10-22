@@ -52,7 +52,9 @@ function SetPasswordForm() {
     });
     setSubmitting(false);
     if (res.ok) {
-      router.push("/ppp");
+      const { home } = await res.json();
+      // No home = this account signs in on the other site; its login link is in the email.
+      router.push(home ?? "/admin/login");
       router.refresh();
     } else {
       setError((await res.json()).error ?? "Could not set password.");

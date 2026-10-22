@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireBartender } from "@/lib/auth";
+import { activityWhere, posScope } from "@/lib/scope";
 
 // List activities for the bartender selector. OPEN first, and since auto-imported
 // Alexia borrels are all upcoming, OPEN ones are sorted SOONEST first (so today's
@@ -23,6 +24,7 @@ export async function GET() {
 
   const activities = await prisma.pppActivity.findMany({
     where: {
+      ...activityWhere(posScope(user)),
       OR: [
         // Today's borrels (any status).
         { date: { gte: startOfToday, lt: startOfTomorrow } },
@@ -54,6 +56,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
   }
 
-  const activity = await prisma.pppActivity.create({ data: { name: trimmed } });
+  // Hosted by the bartender's association (Stress for unscoped admins).
+  const activity = await prisma.pppActivity.create({
+    data: { name: trimmed, associationId: posScope(user) ?? "stress" },
+  });
   return NextResponse.json({ activity });
 }

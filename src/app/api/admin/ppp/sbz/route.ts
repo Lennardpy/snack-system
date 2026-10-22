@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requirePpp } from "@/lib/auth";
+import { isStressSide } from "@/lib/scope";
 import { dayStartUTC, loadSbzLists, sbzListAt } from "@/lib/sbz-db";
 import type { SbzProduct } from "@/lib/sbz";
 
@@ -11,8 +12,8 @@ import type { SbzProduct } from "@/lib/sbz";
 // never changes.
 
 export async function GET() {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const lists = await loadSbzLists();
   const current = sbzListAt(lists, new Date());
@@ -23,8 +24,11 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!isStressSide(ctx.scope)) {
+    return NextResponse.json({ error: "Not available for this association" }, { status: 403 });
+  }
 
   const body = await req.json().catch(() => null);
   const validFrom = dayStartUTC(String(body?.validFrom ?? ""));

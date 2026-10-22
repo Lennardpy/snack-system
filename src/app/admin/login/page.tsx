@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const from = searchParams.get("from") ?? "/admin";
+  const from = searchParams.get("from");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -27,7 +27,7 @@ function LoginForm() {
     setLoading(false);
 
     if (res.ok) {
-      router.push(from);
+      router.push(from ?? (await res.json()).home ?? "/admin");
       router.refresh();
     } else {
       const d = await res.json();

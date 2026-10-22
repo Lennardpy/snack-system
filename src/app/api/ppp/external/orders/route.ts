@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireBartender } from "@/lib/auth";
+import { activityInScope } from "@/lib/scope-db";
+import { posScope } from "@/lib/scope";
 import { VAT_RATE } from "@/lib/external";
 
 // External-card orders at the bar POS. They go onto the borrel's external tab for
@@ -16,6 +18,10 @@ export async function GET(req: NextRequest) {
 
   const activityId = req.nextUrl.searchParams.get("activityId");
   if (!activityId) return NextResponse.json({ error: "activityId is required" }, { status: 400 });
+  // Staff tied to an association only work at its borrels.
+  if (!(await activityInScope(activityId, posScope(user)))) {
+    return NextResponse.json({ error: "Activity not found" }, { status: 404 });
+  }
 
   const orders = await prisma.pppExternalOrder.findMany({
     where: { tab: { activityId } },
@@ -47,6 +53,10 @@ export async function POST(req: NextRequest) {
   const { cardId, activityId, lines } = await req.json().catch(() => ({}));
   if (typeof cardId !== "string" || typeof activityId !== "string" || !Array.isArray(lines) || lines.length === 0) {
     return NextResponse.json({ error: "cardId, activityId and a non-empty lines[] are required" }, { status: 400 });
+  }
+  // Staff tied to an association only work at its borrels.
+  if (!(await activityInScope(activityId, posScope(user)))) {
+    return NextResponse.json({ error: "Activity not found" }, { status: 404 });
   }
 
   const qtyByProduct = new Map<string, number>();

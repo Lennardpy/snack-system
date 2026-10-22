@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requirePpp } from "@/lib/auth";
+import { activityInScope } from "@/lib/scope-db";
 import { CRASH_MS, getWallstreet, isVolatility } from "@/lib/wallstreet";
 
 // Wall Street settings for an activity.
@@ -9,10 +10,13 @@ import { CRASH_MS, getWallstreet, isVolatility } from "@/lib/wallstreet";
 //   • active true (from off) starts a fresh market: tick 0 = normal prices.
 //   • crash true → every drink at the floor for CRASH_MS, effective immediately.
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  if (!(await activityInScope(id, ctx.scope))) {
+    return NextResponse.json({ error: "Activity not found" }, { status: 404 });
+  }
   const [activity, products] = await Promise.all([
     prisma.pppActivity.findUnique({
       where: { id },
@@ -36,10 +40,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  if (!(await activityInScope(id, ctx.scope))) {
+    return NextResponse.json({ error: "Activity not found" }, { status: 404 });
+  }
   const activity = await prisma.pppActivity.findUnique({
     where: { id },
     select: { status: true, wallstreetActive: true, wallstreetMinPct: true, wallstreetMaxPct: true, wallstreetProductIds: true },

@@ -1,19 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requirePpp } from "@/lib/auth";
 import { attributeRoleDiscount } from "@/lib/roles";
 import { sbzCostInclCents } from "@/lib/sbz";
 import { loadSbzLists, sbzCatalogAt } from "@/lib/sbz-db";
 import { costedActivityIds, resolvePppRange } from "@/lib/ppp-pl";
 import { externalSplitByActivity, sumSplits } from "@/lib/external-db";
+import { activityWhere, pppInvoiceWhere } from "@/lib/scope";
 
 // GET /api/admin/ppp/stats?range=7d|30d|90d|365d|all|since_export
 // PPP (bar) overview: financials, top borrels, top drinkers (by drinks), top drinks.
 // `since_export` = the still-unbilled orders (status CONFIRMED, i.e. everything
 // since the last Congressus export) so the admin can see what money is still to come.
 export async function GET(req: NextRequest) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const range = req.nextUrl.searchParams.get("range") ?? "90d";
   const sinceExport = range === "since_export";
@@ -23,12 +24,14 @@ export async function GET(req: NextRequest) {
   // Order-date filter for the general stats (since_export filters by status instead).
   const from = sinceExport ? null : resolved.from;
 
+  // Only the login's association: orders at its borrels or by its members.
   const invoices = await prisma.pppInvoice.findMany({
     where: sinceExport
-      ? { status: { in: ["CONFIRMED", "EXPORTING"] } } // unbilled = still to come
+      ? { status: { in: ["CONFIRMED", "EXPORTING"] }, ...pppInvoiceWhere(ctx.scope) } // unbilled = still to come
       : {
           status: { in: ["CONFIRMED", "EXPORTING", "EXPORTED"] },
           ...(from ? { confirmedAt: { gte: from } } : {}),
+          ...pppInvoiceWhere(ctx.scope),
         },
     include: {
       member: {
@@ -114,7 +117,7 @@ export async function GET(req: NextRequest) {
 
   // Profit/loss covers only borrels in the range with cost of goods uploaded, so
   // income and costs describe the same borrels. Member income = all their orders.
-  const plIds = await costedActivityIds(resolved.from);
+  const plIds = await costedActivityIds(resolved.from, ctx.scope);
   const [usage, plIncome, sbzLists, plExternal, rangeExternal] = await Promise.all([
     prisma.pppActivityUsage.findMany({
       where: { activityId: { in: plIds } },
@@ -128,7 +131,9 @@ export async function GET(req: NextRequest) {
     externalSplitByActivity({ activityId: { in: plIds } }),
     // AB profit: the markup on external-card tabs at borrels in the range (all of
     // them, costs uploaded or not) — kept out of the profit/loss.
-    externalSplitByActivity(resolved.from ? { activity: { date: { gte: resolved.from } } } : {}),
+    externalSplitByActivity({
+      activity: { ...activityWhere(ctx.scope), ...(resolved.from ? { date: { gte: resolved.from } } : {}) },
+    }),
   ]);
   // Each borrel's usage is priced with the SBZ list valid on its date.
   let cogsInclCents = 0;

@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requireSss } from "@/lib/auth";
 
 // POST /api/admin/members/[id]/shop
 // Admin-only: open the kiosk shop as this member (e.g. to place a manual order
 // or test). Creates a short-lived shop session and returns its token.
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
+  const admin = await requireSss();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;

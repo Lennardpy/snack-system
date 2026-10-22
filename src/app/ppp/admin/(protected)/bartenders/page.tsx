@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ASSOCIATION_IDS, ASSOCIATION_LABEL, type AssociationId } from "@/lib/associations";
+import { usePppMe } from "@/lib/usePppMe";
 
 interface LinkedMember {
   id: string;
@@ -11,6 +13,7 @@ interface LinkedMember {
 interface Bartender {
   id: string;
   email: string;
+  association: string | null;
   createdAt: string;
   passwordSet: boolean;
   member: LinkedMember | null;
@@ -27,6 +30,9 @@ export default function BartendersPage() {
   const [bartenders, setBartenders] = useState<Bartender[]>([]);
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState("");
+  // A bartender works for one association: the login's own, or picked by the overall admin.
+  const me = usePppMe();
+  const [association, setAssociation] = useState<AssociationId>("stress");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -69,7 +75,7 @@ export default function BartendersPage() {
     const res = await fetch("/api/admin/ppp/bartenders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: addr }),
+      body: JSON.stringify({ email: addr, association }),
     });
     const d = await res.json();
     setBusy(false);
@@ -137,6 +143,19 @@ export default function BartendersPage() {
           placeholder="bartender@example.com"
           className="w-72 rounded-lg bg-gray-800 px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500"
         />
+        {me?.overall && (
+          <select
+            value={association}
+            onChange={(e) => setAssociation(e.target.value as AssociationId)}
+            className="rounded-lg bg-gray-800 px-3 py-2.5 outline-none focus:ring-2 focus:ring-amber-500"
+          >
+            {ASSOCIATION_IDS.map((a) => (
+              <option key={a} value={a}>
+                {ASSOCIATION_LABEL[a]}
+              </option>
+            ))}
+          </select>
+        )}
         <button
           type="submit"
           disabled={busy || !email.trim()}
@@ -166,6 +185,7 @@ export default function BartendersPage() {
                       <span className="text-amber-400">Invite pending</span>
                     )}
                     <span className="text-gray-600"> · added {new Date(b.createdAt).toLocaleDateString()}</span>
+                    {me?.overall && b.association && <span className="text-gray-500"> · {b.association}</span>}
                   </p>
                 </div>
                 <div className="flex flex-shrink-0 items-center gap-2">

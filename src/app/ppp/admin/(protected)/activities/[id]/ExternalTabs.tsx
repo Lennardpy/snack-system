@@ -65,7 +65,7 @@ export default function ExternalTabs({ activityId, onChanged }: { activityId: st
         part counts in this borrel&apos;s profit/loss; the markup above it is <b>AB profit</b> (on the dashboard, not in
         the P/L). Manage the cards
         under{" "}
-        <a href="/admin/ppp/external-cards" className="text-amber-400 hover:underline">
+        <a href="/ppp/admin/external-cards" className="text-amber-400 hover:underline">
           External cards
         </a>
         .

@@ -2,19 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { fetchAllMembers, congressusConfigured } from "@/lib/congressus";
 import { isAssociationId, type AssociationId } from "@/lib/associations";
-import { requireAdmin } from "@/lib/auth";
+import { requireMemberAdmin } from "@/lib/auth";
+import { inScope } from "@/lib/scope";
 
 // Sync ONE association's members from its own Congressus. Body: { association }
 // ("stress" | "dimensie", default "stress"). Everything — matching, the email
 // clash check and the clean-up of members no longer in Congressus — stays within
 // that association, so syncing Stress never touches Dimensie members and vice versa.
 export async function POST(req: NextRequest) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requireMemberAdmin();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
   const association: unknown = body?.association ?? "stress";
-  if (!isAssociationId(association)) {
+  if (!isAssociationId(association) || !inScope(ctx.scope, association)) {
     return NextResponse.json({ error: "Unknown association" }, { status: 400 });
   }
   if (!congressusConfigured(association)) {

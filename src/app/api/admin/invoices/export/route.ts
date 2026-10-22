@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { createSaleInvoice, CongressusHttpError, InvoiceLineItem } from "@/lib/congressus";
-import { requireAdmin } from "@/lib/auth";
+import { requireStressExporter } from "@/lib/auth";
 
 // One combined export: ONE Congressus sale invoice per member per export, holding
 // all their pending SSS snack lines and PPP drink lines — whatever month the
@@ -93,7 +93,7 @@ async function settle(
 }
 
 export async function POST() {
-  const admin = await requireAdmin();
+  const admin = await requireStressExporter();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   // ── Claim every pending SSS and PPP order of Stress members for this run ─────

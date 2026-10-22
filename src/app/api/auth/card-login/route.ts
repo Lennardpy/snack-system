@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { normalizeUid } from "@/lib/card";
-import { createSession, setSessionCookie } from "@/lib/auth";
+import { createSession, setSessionCookie, canUseSite } from "@/lib/auth";
+import { siteForHost } from "@/lib/site";
 
 // Log a bartender in by scanning their card. Only works for a card whose member
 // is linked to a BARTENDER/ADMIN account (User.memberId). A card UID is not a
@@ -29,7 +30,8 @@ export async function POST(req: NextRequest) {
       { status: 404 }
     );
   }
-  if (user.role !== "BARTENDER" && user.role !== "ADMIN") {
+  // Card login is for the bar POS only.
+  if (siteForHost(req.headers.get("host")) !== "ppp" || !canUseSite(user, "ppp")) {
     return NextResponse.json({ error: "This account can't sign in here" }, { status: 403 });
   }
   if (!card.member.active) {
@@ -38,7 +40,7 @@ export async function POST(req: NextRequest) {
 
   // A short, sliding "card" session (see src/lib/auth.ts): alive while the POS is
   // used, gone 2 h after last use and at most 16 h — never carried to next borrel.
-  const session = await createSession(user.id, "card");
+  const session = await createSession(user.id, "card", "ppp");
 
   const res = NextResponse.json({ ok: true, role: user.role });
   setSessionCookie(res, session);

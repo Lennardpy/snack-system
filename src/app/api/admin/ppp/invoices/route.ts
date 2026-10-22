@@ -1,18 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requirePpp, requireStressExporter } from "@/lib/auth";
+import { pppInvoiceWhere } from "@/lib/scope";
 
 // List PPP invoices for the admin invoices section.
 // ?status=CONFIRMED (pending export) | EXPORTED | EXPORTING (needs check)
 export async function GET(req: NextRequest) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
   const raw = req.nextUrl.searchParams.get("status");
   const status = raw === "EXPORTED" || raw === "EXPORTING" ? raw : "CONFIRMED";
 
+  // "Needs check" orders of the combined Stress export are also shown in the SSS
+  // admin (only Stress members' orders are ever exported by it).
+  let scope = (await requirePpp())?.scope;
+  if (scope === undefined && status === "EXPORTING" && (await requireStressExporter())) scope = "stress";
+  if (scope === undefined) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const invoices = await prisma.pppInvoice.findMany({
-    where: { status },
+    where: { status, ...pppInvoiceWhere(scope) },
     include: {
       member: { select: { firstName: true, lastName: true, email: true } },
       activity: { select: { name: true } },
@@ -26,15 +30,15 @@ export async function GET(req: NextRequest) {
 
 // Bulk-delete PPP invoices (and their lines) by status — clears test data.
 export async function DELETE(req: NextRequest) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const status = req.nextUrl.searchParams.get("status");
   if (status !== "EXPORTED" && status !== "CONFIRMED") {
     return NextResponse.json({ error: "status must be EXPORTED or CONFIRMED" }, { status: 400 });
   }
 
-  const rows = await prisma.pppInvoice.findMany({ where: { status }, select: { id: true } });
+  const rows = await prisma.pppInvoice.findMany({ where: { status, ...pppInvoiceWhere(ctx.scope) }, select: { id: true } });
   const ids = rows.map((r) => r.id);
 
   if (ids.length > 0) {

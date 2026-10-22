@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ASSOCIATION_IDS, ASSOCIATION_LABEL, type AssociationId } from "@/lib/associations";
+import { usePppMe } from "@/lib/usePppMe";
 
 interface Role {
   id: string;
+  associationId: AssociationId;
   name: string;
   discountPercent: number;
   discountCents: number;
@@ -22,6 +25,9 @@ export default function RolesPage() {
   const [ownDrinkOnly, setOwnDrinkOnly] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // Roles belong to one association: the login's own, or picked by the overall admin.
+  const me = usePppMe();
+  const [association, setAssociation] = useState<AssociationId>("stress");
 
   async function load() {
     const res = await fetch("/api/admin/ppp/roles");
@@ -46,6 +52,7 @@ export default function RolesPage() {
         discountPercent: Number(discount || 0),
         discountCents: Math.round(Number(discountEuro || 0) * 100),
         ownDrinkOnly,
+        association,
       }),
     });
     setBusy(false);
@@ -107,6 +114,22 @@ export default function RolesPage() {
       </div>
 
       <form onSubmit={create} className="my-6 flex flex-wrap items-end gap-3">
+        {me?.overall && (
+          <div>
+            <label className="mb-1 block text-xs text-gray-400">Association</label>
+            <select
+              value={association}
+              onChange={(e) => setAssociation(e.target.value as AssociationId)}
+              className="rounded-lg bg-gray-800 px-3 py-2.5 outline-none focus:ring-2 focus:ring-amber-500"
+            >
+              {ASSOCIATION_IDS.map((a) => (
+                <option key={a} value={a}>
+                  {ASSOCIATION_LABEL[a]}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div>
           <label className="mb-1 block text-xs text-gray-400">Role name</label>
           <input
@@ -171,7 +194,14 @@ export default function RolesPage() {
               className="flex items-center justify-between gap-4 rounded-xl border border-gray-800 bg-gray-900 px-4 py-3"
             >
               <div className="min-w-0">
-                <p className="font-semibold">{r.name}</p>
+                <p className="font-semibold">
+                  {r.name}
+                  {me?.overall && (
+                    <span className="ml-2 rounded-full bg-gray-800 px-2 py-0.5 text-xs font-normal text-gray-400">
+                      {ASSOCIATION_LABEL[r.associationId]}
+                    </span>
+                  )}
+                </p>
                 <p className="text-xs text-gray-500">
                   {r._count.members} member{r._count.members === 1 ? "" : "s"}
                 </p>

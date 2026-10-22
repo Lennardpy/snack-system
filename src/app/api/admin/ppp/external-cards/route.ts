@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requirePpp } from "@/lib/auth";
+import { isStressSide } from "@/lib/scope";
 import { normalizeUid } from "@/lib/card";
 
 // External cards: bar cards not linked to a member (see ExternalCard in the schema).
 // GET lists them; POST { uid, name } adds one.
 export async function GET() {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!isStressSide(ctx.scope)) {
+    return NextResponse.json({ error: "Not available for this association" }, { status: 403 });
+  }
 
   const cards = await prisma.externalCard.findMany({
     orderBy: { createdAt: "asc" },
@@ -22,8 +26,11 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!isStressSide(ctx.scope)) {
+    return NextResponse.json({ error: "Not available for this association" }, { status: 403 });
+  }
 
   const body = await req.json().catch(() => ({}));
   const uid = typeof body.uid === "string" ? normalizeUid(body.uid) : "";

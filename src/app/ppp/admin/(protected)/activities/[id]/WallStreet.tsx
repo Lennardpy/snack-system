@@ -164,7 +164,7 @@ export default function WallStreet({ activityId, isOpen }: { activityId: string;
         Prices of the selected drinks move every 20 seconds with demand: what sells goes up, the rest goes down, plus
         random swings. They replace the normal price and borrel specials at the POS; role discounts and bartender free
         drinks still apply, and orders are charged the price the bartender saw. External cards keep normal prices.
-        Show <a href="/wallstreet" target="_blank" className="text-amber-400 hover:underline">snacks.51vo.nl/wallstreet</a>{" "}
+        Show <a href="/wallstreet" target="_blank" className="text-amber-400 hover:underline">ppp.51vo.nl/wallstreet</a>{" "}
         on a screen at the bar.
       </p>
 

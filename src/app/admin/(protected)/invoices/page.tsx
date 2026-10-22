@@ -1,7 +1,7 @@
 "use client";
 
 import { EXPORT_CONFIRM, exportResultMessage } from "@/lib/export-message";
-import NeedsCheck from "../NeedsCheck";
+import NeedsCheck from "@/components/NeedsCheck";
 import { useEffect, useState } from "react";
 
 interface Line {

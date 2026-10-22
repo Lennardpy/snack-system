@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requirePpp } from "@/lib/auth";
+import { activityWhere } from "@/lib/scope";
 import { sumLineDiscounts } from "@/lib/roles";
 import { sbzCostInclCents } from "@/lib/sbz";
 import { loadSbzLists, sbzCatalogAt } from "@/lib/sbz-db";
@@ -10,15 +11,17 @@ import { externalSplitByActivity } from "@/lib/external-db";
 // (from entered SBZ usage), and the discount given (specials-only + total) per
 // activity. OPEN ones first.
 export async function GET() {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const [activities, invoices, usage, sbzLists, external] = await Promise.all([
     prisma.pppActivity.findMany({
+      where: activityWhere(ctx.scope),
       orderBy: { date: "desc" },
       include: { sumup: { select: { revenueCents: true } } },
     }),
     prisma.pppInvoice.findMany({
+      where: { activity: activityWhere(ctx.scope) },
       select: {
         activityId: true,
         totalCents: true,
@@ -33,9 +36,12 @@ export async function GET() {
         },
       },
     }),
-    prisma.pppActivityUsage.findMany({ select: { activityId: true, sbzKey: true, quantity: true } }),
+    prisma.pppActivityUsage.findMany({
+      where: { activity: activityWhere(ctx.scope) },
+      select: { activityId: true, sbzKey: true, quantity: true },
+    }),
     loadSbzLists(),
-    externalSplitByActivity(),
+    externalSplitByActivity({ activity: activityWhere(ctx.scope) }),
   ]);
 
   type Agg = { orders: number; revenue: number; specials: number; total: number };

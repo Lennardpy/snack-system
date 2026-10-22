@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requireStressExporter } from "@/lib/auth";
 
 // Resolve orders left in EXPORTING ("needs a check") after an export whose outcome
 // was unknown. One Congressus invoice holds a member-month's SSS AND PPP orders, so
@@ -19,7 +19,7 @@ const strings = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 
 export async function POST(req: NextRequest) {
-  const admin = await requireAdmin();
+  const admin = await requireStressExporter();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));

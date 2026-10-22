@@ -11,7 +11,7 @@ Authorisation classes:
 - **Public** — no auth.
 - **Shop token** — requires a valid `ShopSession` token (passed in the body or `?token=`).
 - **Registration token** — requires a valid `CardRegistration` token.
-- **Admin** — requires a valid admin session cookie (`requireAdmin()`); returns `401` otherwise.
+- **Admin** — requires a valid admin session cookie for the right site (`requireSss()` on the SSS, `requirePpp()` on the PPP, `requireMemberAdmin()` for the shared member routes, `requireOverallAdmin()` for `/api/admin/accounts`); returns `401` otherwise. PPP data is scoped to the login's association — another association's record answers `404`.
 
 ---
 

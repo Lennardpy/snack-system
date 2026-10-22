@@ -6,20 +6,39 @@ trade-offs made for a shared, physical kiosk.
 
 ## Authentication & authorisation
 
+### Two sites, separate logins
+- One app serves two sites, told apart by the domain (`src/lib/site.ts`): the
+  **SSS** (snack system, `snacks.51vo.nl`) and the **PPP** (bar system,
+  `ppp.51vo.nl`). The session cookie is host-only, and every `Session` row stores
+  the `site` it was created on — `getSession()` rejects it on the other site, so a
+  copied cookie doesn't work across domains either.
+- Accounts (`User`) carry `sssAccess` / `pppAccess` (admins) and an
+  `associationId` (null = the **overall admin**, who sees everything and manages
+  accounts). Bartenders only use the PPP. Login (`POST /api/auth/login`) refuses an
+  account without access to the site it signs in on.
+
 ### Admin
-- Login (`POST /api/auth/login`) verifies a bcrypt password and sets an
-  **httpOnly**, **Secure** (in production), `SameSite=Lax` `session` cookie
-  (7-day `Session` row, `kind: "password"`). All logins go through
-  `createSession()` / `setSessionCookie()` in `src/lib/auth.ts`.
-- `requireAdmin()` (`src/lib/auth.ts`) loads the session, checks it isn't expired,
-  and checks `role === "ADMIN"`. **Every** `/api/admin/*` handler calls it.
-- The admin pages are gated by a **server-side layout** (`requireAdmin()` →
-  `redirect("/admin/login")`), so unauthenticated users never receive page HTML
-  or data — only a redirect.
-- Middleware (`src/middleware.ts`) additionally requires the cookie to be present
-  on `/admin/*` and `/api/admin/*`. This is a fast pre-check; the real validation
-  is `requireAdmin()` (a forged/expired cookie passes middleware but is rejected
-  by the handler).
+- Login verifies a bcrypt password and sets an **httpOnly**, **Secure** (in
+  production), `SameSite=Lax` `session` cookie (7-day `Session` row, `kind:
+  "password"`). All logins go through `createSession()` / `setSessionCookie()` in
+  `src/lib/auth.ts`.
+- Every `/api/admin/*` handler calls one of (`src/lib/auth.ts`):
+  - `requireSss()` — snack-system routes (products, SSS invoices, SSS dashboard);
+  - `requirePpp()` — bar routes; returns the login's **scope** (association);
+  - `requireMemberAdmin()` — shared member routes (SSS → Stress members, PPP → its scope);
+  - `requireStressExporter()` — the combined Stress export (SSS admin or a Stress-side PPP admin);
+  - `requireOverallAdmin()` — account management.
+- **Association scoping** (`src/lib/scope.ts`, `scope-db.ts`): PPP routes filter
+  every list by the scope and answer **404** for a record of another association
+  (so its existence isn't revealed). Stress-only parts (the drink list, external
+  cards, SBZ edits, SumUp figures) refuse a Dimensie login. POS routes scope by the
+  bartender's association (`posScope`).
+- The admin pages are gated by **server-side layouts** (`requireSss()` →
+  `/admin/login`, `requirePpp()` → `/ppp/login`), so unauthenticated users never
+  receive page HTML or data — only a redirect.
+- Middleware (`src/middleware.ts`) routes each domain to its own pages and requires
+  the cookie on protected prefixes. This is a fast pre-check; the real validation
+  is in the handlers (a forged/expired cookie passes middleware but is rejected).
 
 ### Bar POS (bartenders)
 - **Card login** (`POST /api/auth/card-login`) creates a short `kind: "card"`
@@ -130,7 +149,7 @@ token instead of a cuid.
 ## Audit checklist
 
 When adding a new endpoint:
-- [ ] Does it touch member/admin data? → call `requireAdmin()` (admin) or validate a token (shop/registration).
+- [ ] Does it touch member/admin data? → call the right `require…()` for its site (see above), scope it with `src/lib/scope.ts`, or validate a token (shop/registration).
 - [ ] Does it return more fields than the caller needs? → `select` only what's required.
 - [ ] Is it public and write-capable or enumeration-prone? → add rate limiting.
 - [ ] Does it render raw HTML with external data? → escape it.

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireBartender } from "@/lib/auth";
+import { activityInScope } from "@/lib/scope-db";
+import { posScope } from "@/lib/scope";
 
 // Members who have ordered at this activity, most orders first — so the POS can
 // show quick "charge again" buttons (no card scan needed for regulars).
@@ -9,6 +11,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  // Staff tied to an association only work at its borrels.
+  if (!(await activityInScope(id, posScope(user)))) {
+    return NextResponse.json({ error: "Activity not found" }, { status: 404 });
+  }
   const invoices = await prisma.pppInvoice.findMany({
     where: { activityId: id },
     select: {

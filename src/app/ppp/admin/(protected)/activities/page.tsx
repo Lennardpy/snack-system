@@ -293,7 +293,7 @@ export default function AdminActivitiesPage() {
                 </div>
                 <div className="flex flex-shrink-0 items-center gap-2">
                   <a
-                    href={`/admin/ppp/activities/${a.id}`}
+                    href={`/ppp/admin/activities/${a.id}`}
                     className="rounded-lg bg-amber-600/90 px-3 py-2 text-sm font-medium text-white hover:bg-amber-500"
                   >
                     📊 Details / P&amp;L

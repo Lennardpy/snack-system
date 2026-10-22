@@ -268,7 +268,7 @@ export default function ActivityDetailPage() {
 
   return (
     <div className="p-8">
-      <button onClick={() => router.push("/admin/ppp/activities")} className="mb-4 text-sm text-gray-500 hover:text-gray-300">
+      <button onClick={() => router.push("/ppp/admin/activities")} className="mb-4 text-sm text-gray-500 hover:text-gray-300">
         ← All activities
       </button>
 
@@ -414,7 +414,7 @@ export default function ActivityDetailPage() {
             <>
               {" "}from <b className="text-gray-300">{sbz.label}</b>
               {" — "}the price list valid on this borrel&apos;s date
-              (<a href="/admin/ppp/sbz" className="text-amber-400 hover:underline">SBZ prices</a>)
+              (<a href="/ppp/admin/sbz" className="text-amber-400 hover:underline">SBZ prices</a>)
             </>
           )}
           .

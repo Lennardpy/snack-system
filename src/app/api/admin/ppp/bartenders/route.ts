@@ -1,21 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
-import { sendBartenderInviteEmail } from "@/lib/email";
+import { requirePpp } from "@/lib/auth";
+import { sendAccountInviteEmail } from "@/lib/email";
+import { userWhere } from "@/lib/scope";
+import { isAssociationId, ASSOCIATION_LABEL, type AssociationId } from "@/lib/associations";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 
 // List bartender accounts with their invite status.
 export async function GET() {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const users = await prisma.user.findMany({
-    where: { role: "BARTENDER" },
+    where: { role: "BARTENDER", ...userWhere(ctx.scope) },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
       email: true,
+      associationId: true,
       createdAt: true,
       passwordSetup: { select: { usedAt: true } },
       member: {
@@ -28,6 +31,7 @@ export async function GET() {
   const bartenders = users.map((u) => ({
     id: u.id,
     email: u.email,
+    association: u.associationId ? ASSOCIATION_LABEL[u.associationId as AssociationId] : null,
     createdAt: u.createdAt,
     passwordSet: !u.passwordSetup || u.passwordSetup.usedAt != null,
     member: u.member
@@ -45,10 +49,12 @@ export async function GET() {
 
 // Create a bartender by email and send a (non-expiring) set-password link.
 export async function POST(req: NextRequest) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { email } = await req.json();
+  const { email, association } = await req.json();
+  // A bartender works for the login's association; the overall admin picks one.
+  const associationId = ctx.scope ?? (isAssociationId(association) ? association : "stress");
   const normalised = (email ?? "").trim().toLowerCase();
   if (!normalised || !normalised.includes("@")) {
     return NextResponse.json({ error: "A valid email is required" }, { status: 400 });
@@ -69,6 +75,8 @@ export async function POST(req: NextRequest) {
     data: {
       email: normalised,
       role: "BARTENDER",
+      associationId,
+      pppAccess: true,
       passwordHash: placeholder,
       passwordSetup: { create: {} },
     },
@@ -76,7 +84,7 @@ export async function POST(req: NextRequest) {
   });
 
   try {
-    await sendBartenderInviteEmail(user.email, user.passwordSetup!.token);
+    await sendAccountInviteEmail(user.email, user.passwordSetup!.token);
   } catch (err) {
     // Account exists; surface the email failure so the admin can resend.
     return NextResponse.json({

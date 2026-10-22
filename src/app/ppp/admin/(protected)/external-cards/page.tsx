@@ -150,7 +150,7 @@ export default function ExternalCardsPage() {
                   {c.tabs.map((t, i) => (
                     <span key={t.id}>
                       {i > 0 && ", "}
-                      <a href={`/admin/ppp/activities/${t.activity.id}`} className="text-amber-400 hover:underline">
+                      <a href={`/ppp/admin/activities/${t.activity.id}`} className="text-amber-400 hover:underline">
                         {t.activity.name} ({new Date(t.activity.date).toLocaleDateString()})
                       </a>
                     </span>

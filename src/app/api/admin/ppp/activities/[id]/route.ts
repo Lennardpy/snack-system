@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requirePpp } from "@/lib/auth";
+import { activityInScope } from "@/lib/scope-db";
 import { sumLineDiscounts, attributeRoleDiscount } from "@/lib/roles";
 import { sbzCostInclCents, sbzCostExclCents, type SbzProduct } from "@/lib/sbz";
 import { loadSbzLists, sbzCatalogAt, sbzListAt } from "@/lib/sbz-db";
@@ -14,10 +15,13 @@ import { externalSplitByActivity } from "@/lib/external-db";
 //   • discounts given: specials, per-role (Board/PilsCie/…), bartender comps
 //   • a per-drink breakdown (consumed via member charges, revenue, discount)
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  if (!(await activityInScope(id, ctx.scope))) {
+    return NextResponse.json({ error: "Activity not found" }, { status: 404 });
+  }
   const [activity, products, invoices, usage, sbzLists, external] = await Promise.all([
     prisma.pppActivity.findUnique({
       where: { id },
@@ -153,10 +157,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 // Save the manually-entered SBZ usage for this borrel.
 // Body: { usage: [{ sbzKey, quantity }] } — quantity 0/blank removes the entry.
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  if (!(await activityInScope(id, ctx.scope))) {
+    return NextResponse.json({ error: "Activity not found" }, { status: 404 });
+  }
   const activity = await prisma.pppActivity.findUnique({ where: { id }, select: { id: true, date: true } });
   if (!activity) return NextResponse.json({ error: "Activity not found" }, { status: 404 });
   const catalog = sbzCatalogAt(await loadSbzLists(), activity.date);
@@ -190,10 +197,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 // a free drink synced from Alexia). Its specials, usage and saved SumUp go with it
 // (cascade). Its Alexia name+day is remembered so the sync won't re-import it.
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  if (!(await activityInScope(id, ctx.scope))) {
+    return NextResponse.json({ error: "Activity not found" }, { status: 404 });
+  }
   const activity = await prisma.pppActivity.findUnique({
     where: { id },
     select: { name: true, date: true, startsAt: true, _count: { select: { invoices: true } } },

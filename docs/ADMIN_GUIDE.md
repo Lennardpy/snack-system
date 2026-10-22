@@ -1,8 +1,20 @@
 # Admin Guide (for the board)
 
-Everything board members need for day-to-day operation. Log in at **`/admin`**
-with the board credentials. The left sidebar has Dashboard, Members, Products,
-and Invoices, plus links back to the Kiosk and Log out.
+Everything board members need for day-to-day operation. There are two separate
+admin sites, each with its own login:
+
+- **SSS admin** — the snack system, at **`snacks.51vo.nl/admin`**: Dashboard,
+  Members (Stress), Products and Invoices, plus links to the Kiosk and Log out.
+- **PPP admin** — the bar system for Stress and Dimensie, at
+  **`ppp.51vo.nl/ppp/admin`**: Dashboard, Borrels, Invoices, Members, Member roles,
+  Bartenders, Drinks, External cards and SBZ prices (see [PPP.md](PPP.md)). A Stress
+  login sees Stress, a Dimensie login only Dimensie (no drinks list, external cards
+  or SSS; SBZ prices read-only).
+
+The **overall admin** sees everything on both sites and manages logins under
+**Accounts**: per login, tick SSS and/or PPP and pick the association (Stress,
+Dimensie, or All = overall admin). New logins get an emailed set-password link for
+their site; "Reset link" sends a new one. Dimensie logins can't get SSS access.
 
 ## Dashboard
 

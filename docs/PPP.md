@@ -19,12 +19,12 @@ session/auth model, the same Congressus client, and the same card-reader hook.
 | Path | Who | Purpose |
 |------|-----|---------|
 | `/ppp/login` | public | Bartender sign-in: email/password **or scan a linked card** |
-| `/ppp` | bartender/admin | Activity selector — auto-imports scheduled borrels from Alexia, open one or create your own; **Log out**. Shows **today's** borrels only, **plus** any still-OPEN borrel that started before today (so a borrel running past midnight stays accessible while open). Future/old borrels are hidden here — admins still see all on the admin Activities page. Also reachable at **`ppp.51vo.nl`** (redirects to `/ppp`). |
+| `/ppp` | bartender/admin | Activity selector — auto-imports scheduled borrels from Alexia, open one or create your own; **Log out**. Shows **today's** borrels only, **plus** any still-OPEN borrel that started before today (so a borrel running past midnight stays accessible while open). Future/old borrels are hidden here — admins still see all on the admin Activities page. Lives on the PPP site **`ppp.51vo.nl`** (`/` there opens `/ppp`); a Stress or Dimensie account only sees its own association's borrels. |
 | `/ppp/<activityId>` | bartender/admin | The POS screen (cart, scan, regulars, specials toggle, **Log out**) |
-| `/admin/ppp/*` | admin | Management: dashboard, drinks, activities, roles, bartenders, invoices |
+| `/ppp/admin/*` | admin | Management: dashboard, drinks, activities, roles, bartenders, invoices |
 
 Roles: `requireBartender()` allows `BARTENDER` **or** `ADMIN`. Admin-only PPP
-management uses `requireAdmin()`. Middleware gates `/ppp` and `/api/ppp`
+management uses `requirePpp()` (PPP site, scoped to the login's association). Middleware gates `/ppp` and `/api/ppp`
 (`/ppp/login` is public).
 
 ## The POS screen (`/ppp/<activityId>`)
@@ -214,7 +214,7 @@ Managed under **Admin → PPP → Bartenders**.
 
 What the association pays SBZ per drink lives in the database as **versioned price
 lists** (`SbzPriceList` + `SbzPrice`), managed on **Admin → PPP → SBZ prices**
-(`/admin/ppp/sbz`):
+(`/ppp/admin/sbz`):
 
 - Each list is **valid from a date** until the next list starts. A borrel's cost of
   goods always uses the list valid on the **borrel's date** — so a new price list
@@ -239,7 +239,7 @@ lists** (`SbzPriceList` + `SbzPrice`), managed on **Admin → PPP → SBZ prices
 - The usage form and the Alexia usage-PDF import on a borrel's page use the list
   valid on that borrel's date; the page names which list applies.
 
-## Admin pages (`/admin/ppp/*`)
+## Admin pages (`/ppp/admin/*`)
 
 | Page | What |
 |------|------|
@@ -247,7 +247,7 @@ lists** (`SbzPriceList` + `SbzPrice`), managed on **Admin → PPP → SBZ prices
 | **Drinks** | PPP catalog: categories, create/edit/publish/archive drinks with price, **special price**, VAT, and a 5-colour **tile colour** picker. |
 | **Activities** | List borrels (auto-synced from Alexia + manual), close/reopen, rename, **total revenue (PPP member orders + SumUp card)** with the split underneath, **cost of goods**, and a **green ▲ profit / red ▼ loss** badge when costs are uploaded (large, per event). SumUp comes from each borrel's saved snapshot; past borrels not saved yet are fetched once in the background (which saves them) + order counts + **discount given** (specials / total), order list (each order shows the **🍺 tapper** — the bartender who rang it up). **Closing** shows the discount totals. Each links to its detail page. |
 | **Delete activity** | On the Activities list, **Delete** removes an activity that has **no PPP orders** — e.g. an external activity or a free drink synced from Alexia. It's disabled (and the API returns `409`) once an activity has orders. Its specials, usage and saved SumUp go with it. Because Alexia events have no id (matched by name + day), the deleted event's key is stored in `PppDismissedEvent` so the **Alexia sync never re-imports it**. |
-| **Activity detail** (`/admin/ppp/activities/[id]`) | Manage the borrel's **drink specials**, and see its full **profit/loss** (see below): revenue, cost of goods, discounts, per-drink. Manage specials as before (also in advance for future borrels). |
+| **Activity detail** (`/ppp/admin/activities/[id]`) | Manage the borrel's **drink specials**, and see its full **profit/loss** (see below): revenue, cost of goods, discounts, per-drink. Manage specials as before (also in advance for future borrels). |
 | **SBZ prices** | The cost prices paid to SBZ, as versioned price lists — view, edit, upload the SBZ PDF; each list applies from its date onward. See [SBZ prices](#sbz-prices-cost-of-goods). |
 | **Member roles** | Create/edit roles with a `%` and/or `€` discount. Highest wins. |
 | **External cards** | Bar cards **not linked to a member** (for external parties): add by tapping the card into the UID field + a name, rename, delete (past tabs are kept). See [External cards](#external-cards). |
@@ -471,7 +471,7 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
 | GET/POST | `/api/auth/set-password` | Validate / consume a set-password token |
 | GET | `/api/wallstreet` | Wall Street board data: running market (or `?activityId=`), current prices, last hour of ticks (`?history=0` skips them); `{ active: false }` when off. Rate-limited 240/min/IP |
 
-**Admin** (`requireAdmin`): `/api/admin/ppp/products`, `…/categories`, `…/roles`,
+**Admin** (`requirePpp`, scoped): `/api/admin/ppp/products`, `…/categories`, `…/roles`,
 `…/bartenders` (+`/[id]`, `/[id]/resend`), `…/activities/[id]` (GET = detail + P/L,
 PUT = save SBZ usage; +`/discounts`, +`/sumup` = live card revenue, +`/import` =
 extract usage from an uploaded Alexia PDF), `…/sbz` (GET = all price lists +

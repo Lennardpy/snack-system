@@ -175,9 +175,14 @@ model User {
   passwordHash String
   role         UserRole @default(ADMIN)
   // The association this account works for. null = the overall admin, who sees
-  // every association. (Scoping by it arrives with the per-association logins.)
+  // every association (and manages accounts). PPP admin data is scoped by it.
   associationId String?
   association   Association? @relation(fields: [associationId], references: [id])
+  // Which admin site(s) an ADMIN account may sign in to: the snack system
+  // (snacks.51vo.nl) and/or the bar system (ppp.51vo.nl). Bartenders only use the
+  // PPP POS. Each site has its own login (separate session cookie per domain).
+  sssAccess    Boolean  @default(false)
+  pppAccess    Boolean  @default(false)
   createdAt    DateTime @default(now())
 
   memberId String? @unique
@@ -209,6 +214,8 @@ model Session {
   // "password" (7 days) or "card" (bar POS: sliding 2 h of inactivity, max 16 h —
   // see src/lib/auth.ts), so a card login never outlives the borrel.
   kind      String   @default("password")
+  // The site ("sss" | "ppp") the session was created on; it's only valid there.
+  site      String   @default("sss")
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

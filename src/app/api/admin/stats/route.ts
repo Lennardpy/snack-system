@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requireSss } from "@/lib/auth";
 
 // GET /api/admin/stats?range=7d|30d|90d|365d|all|since_export
 // Returns revenue, order/item counts, a daily revenue series, and top products
 // over the chosen timeframe (based on confirmed sales). `since_export` = the still-
 // unbilled orders (status CONFIRMED) so the admin sees what money is still to come.
 export async function GET(req: NextRequest) {
-  const admin = await requireAdmin();
+  const admin = await requireSss();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const range = req.nextUrl.searchParams.get("range") ?? "30d";

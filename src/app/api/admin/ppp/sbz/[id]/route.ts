@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requirePpp } from "@/lib/auth";
+import { isStressSide } from "@/lib/scope";
 
 // DELETE a price-list version (e.g. one saved with a wrong date). Borrels it
 // covered fall back to the previous list. The oldest list can't be deleted — it's
 // the base every earlier borrel is costed with.
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!isStressSide(ctx.scope)) {
+    return NextResponse.json({ error: "Not available for this association" }, { status: 403 });
+  }
 
   const { id } = await params;
   const oldest = await prisma.sbzPriceList.findFirst({ orderBy: { validFrom: "asc" }, select: { id: true } });

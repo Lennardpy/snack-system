@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requirePpp } from "@/lib/auth";
 import { clampPercent, clampCents } from "@/lib/roles";
+import { roleWhere } from "@/lib/scope";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  const role = await prisma.memberRole.findFirst({ where: { id, ...roleWhere(ctx.scope) }, select: { associationId: true } });
+  if (!role) return NextResponse.json({ error: "Role not found" }, { status: 404 });
   const body = await req.json();
   const data: {
     name?: string;
@@ -21,8 +24,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const trimmed = String(body.name).trim();
     if (!trimmed) return NextResponse.json({ error: "Name cannot be empty" }, { status: 400 });
     // Names are unique within the role's association.
-    const role = await prisma.memberRole.findUnique({ where: { id }, select: { associationId: true } });
-    if (!role) return NextResponse.json({ error: "Role not found" }, { status: 404 });
     const clash = await prisma.memberRole.findUnique({
       where: { associationId_name: { associationId: role.associationId, name: trimmed } },
     });
@@ -51,16 +52,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
   // Deleting a role simply unlinks it from members (the join rows cascade); the
   // members themselves are untouched.
-  try {
-    await prisma.memberRole.delete({ where: { id } });
-    return NextResponse.json({ ok: true });
-  } catch {
-    return NextResponse.json({ error: "Role not found" }, { status: 404 });
-  }
+  const { count } = await prisma.memberRole.deleteMany({ where: { id, ...roleWhere(ctx.scope) } });
+  if (count === 0) return NextResponse.json({ error: "Role not found" }, { status: 404 });
+  return NextResponse.json({ ok: true });
 }

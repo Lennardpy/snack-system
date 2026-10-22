@@ -11,7 +11,7 @@ const ENV_MODE = PPP_MODE === "ws" || PPP_MODE === "nfc" ? PPP_MODE : "hid";
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const from = searchParams.get("from") ?? "/ppp";
+  const from = searchParams.get("from");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -33,7 +33,8 @@ function LoginForm() {
     setLoading(false);
 
     if (res.ok) {
-      router.push(from);
+      // Admins land in the PPP admin, bartenders at the POS (unless sent from a page).
+      router.push(from ?? (await res.json()).home ?? "/ppp");
       router.refresh();
     } else {
       const d = await res.json();
@@ -53,7 +54,7 @@ function LoginForm() {
           body: JSON.stringify({ uid }),
         });
         if (res.ok) {
-          router.push(from);
+          router.push(from ?? "/ppp");
           router.refresh();
           return;
         }
@@ -78,7 +79,10 @@ function LoginForm() {
     <div className="w-full max-w-sm space-y-5">
       <div>
         <h1 className="text-2xl font-bold">PPP</h1>
-        <p className="text-gray-400 text-xs">Bar POS — sign in with email / password or scan your card</p>
+        <p className="text-gray-400 text-xs">
+          Bar system (Stress &amp; Dimensie) — bartenders sign in with email / password or their card; admins land in
+          the PPP admin
+        </p>
       </div>
 
       {searchParams.get("reason") === "idle" && !error && (

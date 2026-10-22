@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireBartender } from "@/lib/auth";
+import { activityInScope } from "@/lib/scope-db";
+import { posScope } from "@/lib/scope";
 import { priceOrder, type OrderItem } from "@/lib/roles";
 import { wallstreetChargePrices } from "@/lib/wallstreet";
 
@@ -12,6 +14,10 @@ export async function GET(req: NextRequest) {
   const activityId = req.nextUrl.searchParams.get("activityId");
   if (!activityId) {
     return NextResponse.json({ error: "activityId is required" }, { status: 400 });
+  }
+  // Staff tied to an association only work at its borrels.
+  if (!(await activityInScope(activityId, posScope(user)))) {
+    return NextResponse.json({ error: "Activity not found" }, { status: 404 });
   }
 
   const invoices = await prisma.pppInvoice.findMany({
@@ -52,6 +58,10 @@ export async function POST(req: NextRequest) {
       { error: "memberId, activityId and a non-empty lines[] are required" },
       { status: 400 }
     );
+  }
+  // Staff tied to an association only work at its borrels.
+  if (!(await activityInScope(activityId, posScope(user)))) {
+    return NextResponse.json({ error: "Activity not found" }, { status: 404 });
   }
 
   // Collapse duplicate productIds and validate quantities.

@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { siteOrigin, type Site } from "./site";
 
 // Instantiated lazily so a missing key only errors at call-time, not at build time
 let _resend: Resend | null = null;
@@ -59,20 +60,22 @@ export async function sendCardVerificationEmail(
   console.log("Resend sent:", data?.id);
 }
 
-// Invite email sent when an admin creates a bartender account. The link lets the
-// bartender set their own password and does NOT expire.
-export async function sendBartenderInviteEmail(to: string, token: string) {
-  const link = `${BASE_URL}/set-password?token=${token}`;
+// Invite email sent when an account is created (a bartender, or an admin login for
+// one of the sites). The link opens on the site the account signs in to, lets them
+// set their own password and does NOT expire.
+export async function sendAccountInviteEmail(to: string, token: string, site: Site = "ppp") {
+  const link = `${siteOrigin(site)}/set-password?token=${token}`;
+  const where = site === "ppp" ? "the PPP bar system" : "the SSS snack system";
 
   const { data, error } = await getResend().emails.send({
     from: FROM,
     to,
     ...(REPLY_TO ? { replyTo: REPLY_TO } : {}),
-    subject: "Set up your SSS bartender account",
+    subject: site === "ppp" ? "Set up your PPP account" : "Set up your SSS account",
     html: `
       <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
-        <h2>Welcome to the bar 🍺</h2>
-        <p>An admin created a bartender account for you on the SSS / PPP system.</p>
+        <h2>Welcome 👋</h2>
+        <p>An account was created for you on ${where}.</p>
         <p>Click the button below to choose your password. This link does not expire,
            so you can use it whenever you're ready.</p>
         <p style="margin: 32px 0;">
@@ -82,10 +85,10 @@ export async function sendBartenderInviteEmail(to: string, token: string) {
           </a>
         </p>
         <p style="color: #9ca3af; font-size: 14px;">
-          After setting a password you can sign in at the PPP bar POS.
+          After setting a password you can sign in at ${siteOrigin(site)}.
         </p>
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
-        <p style="color: #9ca3af; font-size: 12px;">SSS &mdash; Stress Snack System</p>
+        <p style="color: #9ca3af; font-size: 12px;">${site === "ppp" ? "PPP &mdash; bar system" : "SSS &mdash; Stress Snack System"}</p>
       </div>
     `,
   });

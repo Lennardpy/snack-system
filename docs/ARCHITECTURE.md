@@ -60,9 +60,17 @@ This GET-shows / POST-acts split exists because email clients **pre-fetch** link
 to scan for malware — a GET that performed the action would link the card before
 the member ever clicked. See [SECURITY.md](SECURITY.md).
 
-### Admin panel (`src/app/admin/(protected)/`)
-Auth-gated by a server-side layout (`requireAdmin()` → redirect). A shared
-sidebar shell (`AdminNav`) wraps four pages:
+### Two sites
+One app, two domains (`src/lib/site.ts`, `src/middleware.ts`): the **SSS** on
+`snacks.51vo.nl` (kiosk + SSS admin under `/admin`) and the **PPP** on
+`ppp.51vo.nl` (bar POS under `/ppp`, PPP admin under `/ppp/admin`, the public
+`/wallstreet` board). Paths of the other site redirect to its domain. Each site has
+its own login and sidebar (`src/components/SiteNav.tsx`); members and cards are
+shared data, each site shows its part (`MembersView`, `MemberDetailView`).
+
+### SSS admin panel (`src/app/admin/(protected)/`)
+Auth-gated by a server-side layout (`requireSss()` → redirect). The sidebar wraps
+four pages (plus Accounts for the overall admin):
 - **Dashboard** — KPIs, a daily revenue bar chart, and a most-popular-items ranking over a selectable timeframe.
 - **Members** — search, "Enter store" (open the kiosk as that member), delete.
 - **Products** — add products, inline price editing, image upload, publish/archive.
@@ -70,7 +78,8 @@ sidebar shell (`AdminNav`) wraps four pages:
 
 ### Library code (`src/lib/`)
 - `prisma.ts` — a singleton Prisma client using `@prisma/adapter-pg` (Prisma 7 has no embedded query engine).
-- `auth.ts` — `getSession()` reads & validates the `session` cookie; `requireAdmin()` additionally checks the `ADMIN` role.
+- `auth.ts` — `getSession()` reads & validates the `session` cookie (and its site); `requireSss()` / `requirePpp()` / `requireMemberAdmin()` / `requireStressExporter()` / `requireOverallAdmin()` / `requireBartender()` check role, site access and return the association scope.
+- `site.ts` — which site a domain is, and each site's origin. `scope.ts` / `scope-db.ts` — association filters for admin data.
 - `congressus.ts` — the Congressus API v30 client (members, products, invoices).
 - `email.ts` — Resend wrapper for the verification email.
 - `rate-limit.ts` — in-memory sliding-window limiter (per Railway instance).
@@ -128,7 +137,7 @@ See [CONGRESSUS.md](CONGRESSUS.md) for the integration's important quirks.
 
 ## Request authorisation at a glance
 
-- **Admin routes** (`/api/admin/*`) — every handler calls `requireAdmin()`; middleware additionally requires the cookie to be present.
+- **Admin routes** (`/api/admin/*`) — every handler calls the `require…()` of its site (SSS, PPP, shared members, Stress export, accounts) and scopes PPP data by association; middleware additionally requires the cookie to be present.
 - **Shop routes** (`/api/cart`, `/api/orders/confirm`) — require a valid `ShopSession` token.
 - **Card-verify** — requires a valid `CardRegistration` token.
 - **Public** (`/api/products`, `/api/card/scan`, `/api/card/register`, `/api/health`, product images) — no auth; the data routes among these are rate-limited and never return member data.

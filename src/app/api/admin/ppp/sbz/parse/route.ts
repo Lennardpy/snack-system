@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { requirePpp } from "@/lib/auth";
+import { isStressSide } from "@/lib/scope";
 import { loadSbzLists } from "@/lib/sbz-db";
 import { matchSbzRows, parseSbzPriceList } from "@/lib/sbz-pdf";
 
@@ -8,8 +9,11 @@ import { matchSbzRows, parseSbzPriceList } from "@/lib/sbz-pdf";
 // Nothing is saved — the admin reviews it on the SBZ page first. The file is parsed
 // in memory and not stored.
 export async function POST(req: NextRequest) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!isStressSide(ctx.scope)) {
+    return NextResponse.json({ error: "Not available for this association" }, { status: 403 });
+  }
 
   let file: File | null = null;
   try {

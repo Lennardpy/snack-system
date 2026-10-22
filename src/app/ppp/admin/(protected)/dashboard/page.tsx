@@ -198,7 +198,7 @@ export default function PppDashboardPage() {
                   key={d.id}
                   rank={i + 1}
                   name={d.name}
-                  href={`/admin/members/${d.id}`}
+                  href={`/ppp/admin/members/${d.id}`}
                   right={`${d.drinks} drink${d.drinks === 1 ? "" : "s"} · ${euro(d.revenueCents)}`}
                   pct={(d.drinks / maxDrinker) * 100}
                   color="bg-blue-500"

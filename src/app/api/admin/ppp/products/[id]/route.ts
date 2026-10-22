@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requirePpp } from "@/lib/auth";
+import { isStressSide } from "@/lib/scope";
 
 const VAT = ["ZERO", "LOW", "STANDARD"] as const;
 type Vat = (typeof VAT)[number];
@@ -13,8 +14,11 @@ type Vat = (typeof VAT)[number];
 // local DB is the source of truth for the POS; add the Congressus PATCH here once
 // unblocked, mirroring updateCongressusProduct().
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!isStressSide(ctx.scope)) {
+    return NextResponse.json({ error: "Not available for this association" }, { status: 403 });
+  }
 
   const { id } = await params;
   const body = await req.json();

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { siteForHost, siteOrigin } from "@/lib/site";
 
 // Routes that require an active session cookie. Fine-grained role checks
 // (admin-only vs bartender) live in the route handlers / layouts; this is a
@@ -8,19 +9,36 @@ const PROTECTED_PREFIXES = ["/admin", "/api/admin", "/ppp", "/api/ppp"];
 // Pages that are publicly accessible despite sitting under a protected prefix.
 const PUBLIC_ADMIN = ["/admin/login", "/ppp/login"];
 
-// The bar POS has its own vanity domain. A visit to ppp.51vo.nl lands directly on
-// the PPP on the canonical domain (where cookies, the PWA manifest, etc. live).
-const PPP_HOST = "ppp.51vo.nl";
-const CANONICAL_HOST = "snacks.51vo.nl";
+// Two sites, one app (src/lib/site.ts): the snack system on snacks.51vo.nl and the
+// bar system on ppp.51vo.nl. Paths of the other site redirect to its domain, so
+// old bookmarks (snacks.51vo.nl/ppp, /admin/ppp/…) keep working.
+const PPP_PATHS = ["/ppp", "/wallstreet"];
+// What the PPP domain serves besides its own pages (APIs check the site themselves).
+const PPP_SHARED = ["/api/", "/set-password", "/uploads/"];
+// Old PPP admin URLs on the snack domain → the PPP admin.
+const OLD_PPP_ADMIN = "/admin/ppp";
+
+const startsWithAny = (path: string, prefixes: string[]) =>
+  prefixes.some((p) => path === p || path.startsWith(p.endsWith("/") ? p : `${p}/`));
 
 export function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
+  const { pathname, search } = req.nextUrl;
+  const host = req.headers.get("host");
+  const site = siteForHost(host);
 
-  // ppp.51vo.nl/* → snacks.51vo.nl/ppp (canonical domain), preserving any subpath.
-  const host = (req.headers.get("host") ?? "").toLowerCase().split(":")[0];
-  if (host === PPP_HOST || host === `www.${PPP_HOST}`) {
-    const target = pathname === "/" ? "/ppp" : pathname.startsWith("/ppp") ? pathname : `/ppp${pathname}`;
-    return NextResponse.redirect(`https://${CANONICAL_HOST}${target}${req.nextUrl.search}`, 307);
+  if (site === "ppp") {
+    if (pathname === "/") return NextResponse.redirect(new URL("/ppp", req.url));
+    if (!startsWithAny(pathname, [...PPP_PATHS, ...PPP_SHARED])) {
+      return NextResponse.redirect(`${siteOrigin("sss", host)}${pathname}${search}`, 307);
+    }
+  } else {
+    if (pathname === OLD_PPP_ADMIN || pathname.startsWith(`${OLD_PPP_ADMIN}/`)) {
+      const rest = pathname.slice(OLD_PPP_ADMIN.length);
+      return NextResponse.redirect(`${siteOrigin("ppp", host)}/ppp/admin${rest}${search}`, 307);
+    }
+    if (startsWithAny(pathname, PPP_PATHS)) {
+      return NextResponse.redirect(`${siteOrigin("ppp", host)}${pathname}${search}`, 307);
+    }
   }
 
   const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
@@ -35,9 +53,8 @@ export function middleware(req: NextRequest) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    // Protected pages → redirect to the matching login screen
-    const loginPath = pathname.startsWith("/ppp") ? "/ppp/login" : "/admin/login";
-    const loginUrl = new URL(loginPath, req.url);
+    // Protected pages → redirect to this site's login screen
+    const loginUrl = new URL(site === "ppp" ? "/ppp/login" : "/admin/login", req.url);
     loginUrl.searchParams.set("from", pathname);
     return NextResponse.redirect(loginUrl);
   }

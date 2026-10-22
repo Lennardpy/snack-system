@@ -1,7 +1,8 @@
 "use client";
 
 import { EXPORT_CONFIRM, exportResultMessage } from "@/lib/export-message";
-import NeedsCheck from "../../NeedsCheck";
+import { usePppMe } from "@/lib/usePppMe";
+import NeedsCheck from "@/components/NeedsCheck";
 import { useEffect, useMemo, useState } from "react";
 
 interface Line {
@@ -49,6 +50,10 @@ export default function PppInvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [filter, setFilter] = useState<"CONFIRMED" | "EXPORTED">("CONFIRMED");
   const [exporting, setExporting] = useState(false);
+  // The export here is Stress's (one SSS + PPP invoice per Stress member);
+  // Dimensie's own export comes later, so a Dimensie login doesn't get the button.
+  const me = usePppMe();
+  const stressSide = me != null && (me.associationId === null || me.associationId === "stress");
   const [result, setResult] = useState<string | null>(null);
   const [checkKey, setCheckKey] = useState(0); // refreshes the "needs check" panel
   const [busy, setBusy] = useState(false);
@@ -153,13 +158,15 @@ export default function PppInvoicesPage() {
           <h1 className="text-3xl font-bold">PPP invoices</h1>
           <p className="text-gray-500">Borrel drink orders · {invoices.length} {filter.toLowerCase()}</p>
         </div>
-        <button
-          onClick={runExport}
-          disabled={exporting}
-          className="rounded-xl bg-green-600 px-5 py-2.5 font-semibold transition-colors hover:bg-green-500 disabled:opacity-40"
-        >
-          {exporting ? "Exporting…" : "Export SSS + PPP to Congressus"}
-        </button>
+        {stressSide && (
+          <button
+            onClick={runExport}
+            disabled={exporting}
+            className="rounded-xl bg-green-600 px-5 py-2.5 font-semibold transition-colors hover:bg-green-500 disabled:opacity-40"
+          >
+            {exporting ? "Exporting…" : "Export Stress (SSS + PPP) to Congressus"}
+          </button>
+        )}
       </div>
 
       {result && (
@@ -208,7 +215,7 @@ export default function PppInvoicesPage() {
                   <div key={inv.id} className="rounded-2xl border border-gray-800 bg-gray-900 p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
-                        <a href={`/admin/members/${inv.memberId}`} className="font-semibold hover:text-blue-400 hover:underline">
+                        <a href={`/ppp/admin/members/${inv.memberId}`} className="font-semibold hover:text-blue-400 hover:underline">
                           {inv.member.firstName} {inv.member.lastName}
                         </a>
                         <p className="truncate text-sm text-gray-400">{inv.member.email}</p>

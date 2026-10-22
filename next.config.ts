@@ -15,6 +15,8 @@ const SECURITY_HEADERS = [
 const NO_STORE = [{ key: "Cache-Control", value: "no-store" }];
 
 const nextConfig: NextConfig = {
+  // Local dev serves the PPP site on ppp.localhost (see src/lib/site.ts).
+  allowedDevOrigins: ["ppp.localhost"],
   images: {
     // Product images served via /api/images/products/[filename] (Railway volume),
     // plus static assets in /public (logo, etc.)
