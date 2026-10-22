@@ -185,7 +185,9 @@ Atomically claims all `CONFIRMED` SSS **and** PPP orders (`CONFIRMED → EXPORTI
 tagged with this run's id — a concurrent run gets none), groups them by member
 (whatever month) and creates **one** Congressus sale-invoice per member with both
 the snack and drink lines (`"SSS & PPP <period>"`, e.g. "oktober 2026" or
-"september – oktober 2026"), then marks them `EXPORTED`. A
+"september – oktober 2026"), then marks them `EXPORTED`. A member whose orders are
+all €0 (free drinks) gets no Congressus invoice — their orders are marked
+`EXPORTED` without an invoice id and counted in `nothingToPay`. A
 Congressus 4xx returns that group to `CONFIRMED`; an unknown outcome
 (timeout/5xx/network/DB failure after success) leaves it `EXPORTING` and counts it
 in `needsCheck`. No body.

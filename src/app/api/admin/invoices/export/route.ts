@@ -74,7 +74,7 @@ function periodName(months: Set<string>): string {
 async function settle(
   runId: string,
   ids: Record<System, string[]>,
-  outcome: { exported: number } | "release"
+  outcome: { exported: number | null } | "release"
 ) {
   const data =
     outcome === "release"
@@ -188,6 +188,7 @@ export async function POST() {
     pppOrders: 0, // PPP orders marked EXPORTED
     congressusInvoices: 0,
     failed: 0,
+    nothingToPay: 0, // members whose orders were all €0 (free drinks): no invoice made
     needsCheck: 0, // orders left EXPORTING because the outcome is unknown
     errors: [] as string[],
   };
@@ -197,6 +198,16 @@ export async function POST() {
     const label = `${g.memberName} (${periodName(g.months)})`;
     const orders = g.ids.sss.length + g.ids.ppp.length;
     let congressusInvoiceId: number | null = null;
+    // Only €0 lines (e.g. Board or bartender free drinks): nothing to bill. Congressus
+    // would drop the €0 lines and leave an empty €0.00 invoice, so don't create one.
+    const totalCents = [...g.lineMap.values()].reduce((s, l) => s + l.quantity * l.unitCents, 0);
+    if (totalCents === 0) {
+      await settle(runId, g.ids, { exported: null });
+      out.sssOrders += g.ids.sss.length;
+      out.pppOrders += g.ids.ppp.length;
+      out.nothingToPay++;
+      continue;
+    }
     if (g.congressusMemberId == null) {
       // Unreachable in practice: a member can only be deleted once nothing is unbilled.
       out.failed++;

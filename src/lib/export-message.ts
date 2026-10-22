@@ -10,6 +10,7 @@ export function exportResultMessage(data: {
   sssOrders?: number;
   pppOrders?: number;
   failed?: number;
+  nothingToPay?: number;
   needsCheck?: number;
   errors?: string[];
   error?: string;
@@ -18,6 +19,7 @@ export function exportResultMessage(data: {
   let msg =
     `Created ${data.congressusInvoices ?? 0} Congressus invoice(s) covering ` +
     `${data.sssOrders ?? 0} snack and ${data.pppOrders ?? 0} drink order(s).`;
+  if (data.nothingToPay) msg += ` ${data.nothingToPay} member(s) only had free (€0) orders — no invoice needed.`;
   if (data.failed) msg += ` ${data.failed} failed.`;
   if (data.errors?.length) msg += `\nErrors:\n${data.errors.join("\n")}`;
   if (data.needsCheck) msg += `\n⚠️ ${data.needsCheck} order(s) need a check in Congressus — see the warning above.`;
