@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { normalizeUid } from "@/lib/card";
 import { requireBartender } from "@/lib/auth";
+import { isStressSide, posScope } from "@/lib/scope";
 
 // Make an unrecognised card an EXTERNAL card from the bar POS (e.g. handed to an
 // external party). It is not linked to any member: its drinks go on the borrel's
@@ -10,6 +11,10 @@ import { requireBartender } from "@/lib/auth";
 export async function POST(req: NextRequest) {
   const user = await requireBartender();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // External cards are Stress's: not for staff working only for Dimensie.
+  if (!isStressSide(posScope(user))) {
+    return NextResponse.json({ error: "External cards are only used at Stress borrels" }, { status: 403 });
+  }
 
   const body = await req.json().catch(() => ({}));
   if (!body.uid || typeof body.uid !== "string") {

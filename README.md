@@ -9,7 +9,12 @@ share members, cards, auth, and the Congressus billing integration:
   member roles & discounts, per-borrel drink specials, a touch UI, and bartender
   accounts. See **[docs/PPP.md](docs/PPP.md)**.
 
-Purchases from each are batched into **separate** monthly invoices and exported to
+Two sites served by one app, each with its own login: the **SSS** at
+`snacks.51vo.nl` and the **PPP** at `ppp.51vo.nl`. The PPP is shared with **SV
+Dimensie**: joint Thursday borrels, Dimensie's own borrels and drink list, each
+association billing its own members in its own Congressus, and Stress's
+specification to Dimensie — see **[docs/DIMENSIE.md](docs/DIMENSIE.md)** (the guide
+for Dimensie) and [docs/PPP.md](docs/PPP.md). Purchases are exported to
 **Congressus** for SEPA billing. Rebuilt from the original Mendix app as a Next.js
 application running on Railway.
 

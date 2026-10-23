@@ -23,7 +23,9 @@ const hostOf = (origin: string) => {
   }
 };
 
-const isLocal = (host: string) => /(^|\.)localhost(:\d+)?$/.test(host) || /^127\.0\.0\.1(:\d+)?$/.test(host);
+// Local dev only: in production the sites are told apart by their configured origins.
+const isLocal = (host: string) =>
+  process.env.NODE_ENV !== "production" && (/(^|\.)localhost(:\d+)?$/.test(host) || /^127\.0\.0\.1(:\d+)?$/.test(host));
 
 export function siteForHost(rawHost: string | null | undefined): Site {
   const host = (rawHost ?? "").toLowerCase();

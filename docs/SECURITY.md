@@ -146,6 +146,59 @@ token instead of a cuid.
 - **Bulk invoice clearing** requires a double confirmation in the UI and is
   intended for test-data cleanup only.
 
+## Audit: two sites + Stress/Dimensie (branch `dimensie`, October 2026)
+
+Scope: everything the multi-association work added — site separation, logins,
+association scoping, the POS rules, the Dimensie export and the specifications.
+
+**How it was checked.** All 118 API handlers were listed with the access check they
+call: every `/api/admin/*` and `/api/ppp/*` handler calls a `require…()` guard (101);
+the 17 without one are the intended public / token endpoints (kiosk, card
+registration, login, health, product images, product list, Wall Street board). Every
+PPP handler that takes an id was checked for association scoping. Behaviour was
+verified with scripted access-matrix tests (~170 checks: each login type × site ×
+route, other-association ids → 404, joint-borrel read-only, exports, specifications)
+against a local server and the mock Congressus, and on staging.
+
+**Found and fixed**
+- *Open redirect after login* (pre-existing): `?from=` on both login pages was
+  followed unchecked → now only same-site paths (`src/lib/safe-path.ts`).
+- *CSV formula injection*: member/drink/borrel names starting with `= + - @` (names
+  come from Congressus, set by members) would run as formulas in Excel → prefixed
+  with `'` in the purchases CSV.
+- *External cards*: any PPP bartender could register an external card via the API
+  (the POS only hid the button for Dimensie) → Stress-side staff only.
+- *Host-based site detection*: the `ppp.localhost` derivation is now dev-only, so a
+  forged `Host` can't influence redirects in production.
+- Earlier in the branch: card login for someone in both associations, an inactive
+  Stress membership blocking payment as Dimensie member, cards lost when a membership
+  was deleted, SBZ editing UI shown to Dimensie (the API already refused it).
+
+**Verified as designed**
+- Sessions are per site (`Session.site`, host-only cookie); a cookie copied to the
+  other domain is rejected. Login refuses accounts without access to that site — and
+  only after the password matched (no account enumeration).
+- A Dimensie login gets 404 for any Stress record (members, roles, bartenders, orders,
+  borrels, drinks), can't see the SSS, SBZ edits, SumUp, Wall Street or external
+  cards, and views joint borrels read-only (its own members' orders).
+- Who pays where is resolved server-side from the card/member — the POS can't choose
+  another membership or association. Prices come from the host's drink list only.
+- Exports: each side only runs and resolves its own association's export; Stress's
+  never claims Dimensie members' orders and vice versa. Specifications are created
+  only from orders Dimensie exported; finalised orders are locked; Dimensie sees a
+  specification only once Stress marked it sent.
+- Secrets: no API keys in the repository or its history; per-association Congressus
+  tokens live in Railway variables only. Staging uses a mock Congressus and an
+  anonymised copy of the data.
+
+**Accepted / by design**
+- Card UIDs are visible to both associations' admins for people in both (cards
+  belong to the person); bartenders at a joint borrel see each other's members'
+  names in the shared order history.
+- People in both associations are matched by email; different emails → two people.
+- Set-password (invite) links don't expire (as for bartenders before); "Reset link"
+  invalidates the previous one. Consider an expiry for admin invites later.
+
 ## Audit checklist
 
 When adding a new endpoint:

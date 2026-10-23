@@ -2,6 +2,7 @@
 
 import { useState, Suspense, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { safeReturnPath } from "@/lib/safe-path";
 import { useCardReader } from "@/lib/useCardReader";
 
 const WS_URL = process.env.NEXT_PUBLIC_PPP_CARD_READER_WS_URL ?? "ws://localhost:3000";
@@ -11,7 +12,7 @@ const ENV_MODE = PPP_MODE === "ws" || PPP_MODE === "nfc" ? PPP_MODE : "hid";
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const from = searchParams.get("from");
+  const from = safeReturnPath(searchParams.get("from"));
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

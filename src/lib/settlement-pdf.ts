@@ -213,7 +213,13 @@ export async function renderSettlementPdf(s: {
 // opens in Dutch Excel.
 export function settlementCsv(number: string, snap: SettlementSnapshot): string {
   const money = (c: number) => (c / 100).toFixed(2).replace(".", ",");
-  const cell = (v: string) => (/[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+  // Text that Excel would run as a formula (=, +, -, @, tab, CR) is prefixed with
+  // an apostrophe — names come from Congressus, where members set them themselves.
+  const neutral = (v: string) => (/^[=+\-@\t\r]/.test(v) ? `'${v}` : v);
+  const cell = (raw: string) => {
+    const v = neutral(raw);
+    return /[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  };
   const rows = [
     ["reference", "date", "borrel", "member", "congressus_id", "drink", "quantity", "unit_incl_vat", "vat_category", "total_excl_vat", "vat", "total_incl_vat"],
   ];
