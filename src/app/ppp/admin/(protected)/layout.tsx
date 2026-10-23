@@ -48,6 +48,11 @@ export default async function PppAdminLayout({ children }: { children: React.Rea
               { href: "/ppp/admin/dashboard", label: "Dashboard", icon: "📊" },
               { href: "/ppp/admin/activities", label: "Borrels", icon: "📅" },
               { href: "/ppp/admin/invoices", label: "Invoices", icon: "🧾" },
+              {
+                href: "/ppp/admin/settlements",
+                label: scope === "dimensie" ? "From Stress" : "Dimensie invoices",
+                icon: "🤝",
+              },
               { href: "/ppp/admin/members", label: "Members", icon: "👥" },
               { href: "/ppp/admin/roles", label: "Member roles", icon: "🎟️" },
               { href: "/ppp/admin/bartenders", label: "Bartenders", icon: "🧑‍🍳" },

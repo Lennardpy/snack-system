@@ -39,7 +39,11 @@ export async function DELETE(req: NextRequest) {
   }
 
   // Only orders at borrels this association hosts (not Dimensie's at joint ones).
-  const rows = await prisma.pppInvoice.findMany({ where: { status, activity: activityWhere(ctx.scope) }, select: { id: true } });
+  // …and never orders on a finalised invoice from Stress to Dimensie.
+  const rows = await prisma.pppInvoice.findMany({
+    where: { status, activity: activityWhere(ctx.scope), settlementId: null },
+    select: { id: true },
+  });
   const ids = rows.map((r) => r.id);
 
   if (ids.length > 0) {

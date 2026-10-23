@@ -6,6 +6,12 @@ import { pppInvoiceWhere, inScope, type Scope } from "@/lib/scope";
 // Orders are changed by the association hosting the borrel: Dimensie sees its
 // members' orders at a joint borrel (Stress's) but can't edit them.
 const hostsBorrel = (scope: Scope, hostId: string) => inScope(scope, hostId);
+// On a finalised invoice from Stress to Dimensie: frozen (undo that invoice first).
+const settledResponse = () =>
+  NextResponse.json(
+    { error: "This order is on a finalised invoice from Stress to Dimensie — undo that invoice first to change it." },
+    { status: 409 }
+  );
 const readOnlyResponse = () =>
   NextResponse.json({ error: "This order is at a borrel Stress hosts — only Stress can change it." }, { status: 403 });
 
@@ -33,6 +39,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
   if (!invoice) return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
   if (!hostsBorrel(ctx.scope, invoice.activity.associationId)) return readOnlyResponse();
+  if (invoice.settlementId) return settledResponse();
   if (invoice.status === "EXPORTING") {
     return NextResponse.json(
       { error: "This order is being exported (or waiting for a check after an export) and can't be changed now." },
@@ -91,6 +98,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   });
   if (!invoice) return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
   if (!hostsBorrel(ctx.scope, invoice.activity.associationId)) return readOnlyResponse();
+  if (invoice.settlementId) return settledResponse();
 
   if (invoice.status === "EXPORTING") {
     return NextResponse.json(

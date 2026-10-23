@@ -465,6 +465,42 @@ model PppInvoice {
   createdById String?
   createdBy   User?        @relation("PppTapper", fields: [createdById], references: [id])
   lines      PppInvoiceLine[]
+  // Set when this order is on a finalised monthly invoice from Stress to Dimensie
+  // (a Dimensie member's drinks at a borrel Stress hosts). Locks the order.
+  settlementId String?
+  settlement   AssociationSettlement? @relation(fields: [settlementId], references: [id], onDelete: SetNull)
+}
+
+// Stress's monthly invoice to Dimensie for what Dimensie members drank at joint
+// borrels (Stress hosts and pays the bar; Dimensie collects from its members).
+// Charged at the drink price BEFORE Dimensie's role discounts (Dimensie covers
+// those), incl. VAT; Dimensie bartenders' free drinks are Stress's. Not booked in
+// Congressus — a PDF + CSV are sent. A draft is computed live; FINAL freezes the
+// figures (snapshot) and locks the orders; orders added later for that month go
+// onto the next month's invoice.
+model AssociationSettlement {
+  id             String           @id @default(cuid())
+  number         String           @unique // e.g. "STRESS-DIM-2026-10"
+  month          String // "2026-10" — the borrel month (Amsterdam time)
+  debtorId       String // the association that pays: "dimensie"
+  creditorId     String           @default("stress")
+  status         SettlementStatus @default(FINAL)
+  totalExclCents Int
+  totalVatCents  Int
+  totalInclCents Int
+  snapshot       Json // per drink, per member, per borrel, VAT per rate (see src/lib/settlement.ts)
+  createdById    String?
+  createdAt      DateTime         @default(now())
+  sentAt         DateTime?
+
+  orders PppInvoice[]
+
+  @@unique([debtorId, month])
+}
+
+enum SettlementStatus {
+  FINAL // figures frozen, orders locked; can be undone while not sent
+  SENT // sent to the debtor; can't be undone
 }
 
 model PppInvoiceLine {
