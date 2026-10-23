@@ -5,6 +5,7 @@ import { createSaleInvoice, congressusConfigured, CongressusHttpError, InvoiceLi
 import { requirePpp, requireStressExporter } from "@/lib/auth";
 import { pickAssociation, type AssociationId } from "@/lib/associations";
 import { pppOffersFor } from "@/lib/export-offers";
+import { createSettlement } from "@/lib/settlement";
 
 // Each association exports ITS members to ITS own Congressus. Body: { association }
 // ("stress" default | "dimensie").
@@ -104,13 +105,17 @@ async function settle(
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const association = pickAssociation(body?.association);
+  let userId: string;
   if (association === "stress") {
-    if (!(await requireStressExporter())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await requireStressExporter();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    userId = user.id;
   } else {
     const ppp = await requirePpp();
     if (!ppp || (ppp.scope !== null && ppp.scope !== association)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    userId = ppp.user.id;
   }
   if (!congressusConfigured(association)) {
     return NextResponse.json({ error: `No Congressus API key configured for ${association}.` }, { status: 400 });
@@ -296,8 +301,21 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Dimensie's export → Stress's specification of the joint-borrel drinks Dimensie
+  // has now billed its members (src/lib/settlement.ts). Never fails the export.
+  let specification: string | null = null;
+  if (association === "dimensie") {
+    try {
+      specification = (await createSettlement(userId))?.number ?? null;
+    } catch (err) {
+      console.error("[export] creating the specification for Stress failed:", err);
+      out.errors.push(`Specification for Stress not created (${(err as Error).message}) — create it on the Dimensie invoices page.`);
+    }
+  }
+
   return NextResponse.json({
     association,
+    specification,
     ok: out.failed === 0,
     exported: out.sssOrders + out.pppOrders,
     ...out,

@@ -41,6 +41,7 @@ export async function renderSettlementPdf(s: {
 }): Promise<Uint8Array> {
   const snap = s.snapshot;
   const b = snap.breakdown;
+  const label = snap.periodLabel ?? snap.monthLabel ?? "";
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -110,7 +111,7 @@ export async function renderSettlementPdf(s: {
     y -= 12;
   }
   y = Math.min(afterFrom, y) - 16;
-  text(`Drinks of Dimensie members at joint borrels — ${snap.monthLabel}`, M, 14, bold);
+  text(`Drinks of Dimensie members at joint borrels — ${label}`, M, 14, bold);
   y -= 29;
 
   // ── Per borrel: each member with the drinks they had there ──────────────────
@@ -200,7 +201,7 @@ export async function renderSettlementPdf(s: {
   const pages = doc.getPages();
   pages.forEach((p, i) => {
     const z = 8;
-    p.drawText(safe(`Stress · specification ${s.number} · ${snap.monthLabel}`), { x: M, y: M - 20, size: z, font, color: GREY });
+    p.drawText(safe(`Stress · specification ${s.number} · ${label}`), { x: M, y: M - 20, size: z, font, color: GREY });
     const n = `Page ${i + 1} of ${pages.length}`;
     p.drawText(n, { x: W - font.widthOfTextAtSize(n, z), y: M - 20, size: z, font, color: GREY });
   });

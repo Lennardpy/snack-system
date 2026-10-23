@@ -118,13 +118,13 @@ Two tabs: **Pending export** (confirmed, awaiting billing) and **Exported**
   to remove it; the total recalculates live. Use this when a member was charged
   for something by mistake or that wasn't actually in stock. **Save changes**.
 - **Delete invoice** (pending only) — remove a whole invoice.
-- **Dimensie invoices** (PPP admin; Dimensie sees **From Stress**) — once a month,
-  open the draft for last month, check it and **Finalise**: it freezes what Dimensie
-  members drank at joint borrels (drink prices before Dimensie's own discounts,
-  incl. VAT, without bartender drinks) and locks those orders. Download the **PDF**
-  and **CSV** for the treasurer, who books them and sends them to Dimensie; then
-  **Mark sent to Dimensie** — only from then on does Dimensie see it under "From
-  Stress". **Undo** is possible until then. Orders added later go on the next month's invoice.
+- **To Dimensie** (PPP admin; Dimensie sees **From Stress**) — each time Dimensie
+  exports its invoices, a specification is created of what Dimensie members drank at
+  joint borrels and Dimensie has now billed (drink prices before Dimensie's own
+  discounts, incl. VAT, without bartender drinks); those orders are locked. The
+  treasurer downloads the **PDF** / **CSV**, attaches it to their own invoice to
+  Dimensie, books and sends it, then clicks **Mark sent to Dimensie** — only then does
+  Dimensie see it. **Undo** is possible until then; **Create now** makes one by hand.
 - **Export Dimensie to Congressus** (PPP invoices page, Dimensie and overall
   logins) — bills Dimensie members' pending drinks (Dimensie and joint borrels) in
   Dimensie's Congressus: one invoice per member ("Borrels <month>"), no VAT, direct

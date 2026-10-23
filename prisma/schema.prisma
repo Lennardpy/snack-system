@@ -471,17 +471,18 @@ model PppInvoice {
   settlement   AssociationSettlement? @relation(fields: [settlementId], references: [id], onDelete: SetNull)
 }
 
-// Stress's monthly invoice to Dimensie for what Dimensie members drank at joint
-// borrels (Stress hosts and pays the bar; Dimensie collects from its members).
-// Charged at the drink price BEFORE Dimensie's role discounts (Dimensie covers
-// those), incl. VAT; Dimensie bartenders' free drinks are Stress's. Not booked in
-// Congressus — a PDF + CSV are sent. A draft is computed live; FINAL freezes the
-// figures (snapshot) and locks the orders; orders added later for that month go
-// onto the next month's invoice.
+// Stress's specification to Dimensie of what Dimensie members drank at joint
+// borrels (Stress hosts and pays the bar; Dimensie collects from its members),
+// created automatically by each Dimensie export: it covers the joint-borrel orders
+// Dimensie has billed (EXPORTED) that aren't on an earlier one. Charged at the
+// drink price BEFORE Dimensie's role discounts (Dimensie covers those), incl. VAT;
+// Dimensie bartenders' free drinks are Stress's. Not booked in Congressus — the
+// treasurer attaches the PDF/CSV to their own invoice. FINAL freezes the figures
+// (snapshot) and locks the orders.
 model AssociationSettlement {
   id             String           @id @default(cuid())
-  number         String           @unique // e.g. "STRESS-DIM-2026-10"
-  month          String // "2026-10" — the borrel month (Amsterdam time)
+  number         String           @unique // e.g. "STRESS-DIM-2026-001"
+  period         String // e.g. "October 2026" / "September – October 2026" (borrel dates)
   debtorId       String // the association that pays: "dimensie"
   creditorId     String           @default("stress")
   status         SettlementStatus @default(FINAL)
@@ -494,8 +495,6 @@ model AssociationSettlement {
   sentAt         DateTime?
 
   orders PppInvoice[]
-
-  @@unique([debtorId, month])
 }
 
 enum SettlementStatus {

@@ -162,30 +162,30 @@ Requirements & behaviour:
   order edits, SBZ usage, specials, Wall Street, external cards). External cards
   only work at Stress borrels.
 
-### Monthly invoice Stress → Dimensie (`AssociationSettlement`)
+### Specification Stress → Dimensie (`AssociationSettlement`)
 
-**PPP admin → Dimensie invoices** (Dimensie: **From Stress**). Covers every order of
-a **Dimensie member at a borrel Stress hosts** (the joint drink) that isn't on an
-earlier invoice, with the borrel in or before the month (Amsterdam time) — orders
-added after a month was invoiced roll onto the next one. Logic in
+**PPP admin → To Dimensie** (Dimensie: **From Stress**). Created **automatically by
+each Dimensie export**: it covers every order of a **Dimensie member at a borrel
+Stress hosts** (the joint drink) that Dimensie has now billed (EXPORTED) and that
+isn't on an earlier specification — so Stress specifies exactly what Dimensie billed
+its members; orders Dimensie hasn't exported yet wait for a later one. Numbered
+`STRESS-DIM-<year>-001…`; the period is taken from the borrel dates. Logic in
 `src/lib/settlement.ts`, PDF/CSV in `src/lib/settlement-pdf.ts`.
 
 - **Price** = the line's `baseCents`: the drink price before role discounts (Wall
   Street / borrel special / drink special / list) — Dimensie covers its members'
   discounts. **Bartender free drinks are excluded** (Stress covers them). Incl. VAT
   at the line's `vatRate`; excl. + VAT per rate are backed out.
-- **Draft** (Stress side) is computed live for a chosen month; **Finalise** freezes
-  the figures (`snapshot`) as `STRESS-DIM-YYYY-MM` and locks its orders
+- Creating it freezes the figures (`snapshot`) and locks its orders
   (`PppInvoice.settlementId`: no edits/deletes, the borrel can't stop being joint).
-  **Undo** unlocks them while not sent; **Mark sent** makes it permanent.
-- **PDF** (invoice + per-member + per-borrel specification) and **CSV** (per member
-  per drink, `;`-separated). The system sends nothing: Stress's treasurer downloads,
-  books and sends them, then marks the invoice sent — **Dimensie only sees an invoice
-  once it's marked sent**. Not booked in Congressus. The PDF is a **specification** to attach to the treasurer's own invoice:
-  per borrel, each member with the drinks they had there and their subtotal, the
-  borrel subtotal, and at the end the total with VAT per category (always VL 9% and
-  VH 21%); the CSV has one row per purchase. Header lines:
-  `SETTLEMENT_FROM`, `SETTLEMENT_TO` (lines separated by `|`).
+  **Undo** unlocks them while not sent (they go on the next one; **Create now** makes
+  one by hand); **Mark sent** makes it permanent.
+- The PDF is a **specification** to attach to the treasurer's own invoice: per
+  borrel, each member with the drinks they had there and their subtotal, the borrel
+  subtotal, and at the end the total with VAT per category (always VL 9% and VH 21%);
+  the CSV has one row per purchase. The system sends nothing: the treasurer books and
+  sends it, then marks it sent — **Dimensie only sees it once marked sent**. Header
+  lines: `SETTLEMENT_FROM`, `SETTLEMENT_TO` (lines separated by `|`).
 
 ## Pricing & discounts
 

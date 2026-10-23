@@ -4,15 +4,16 @@ import { useCallback, useEffect, useState } from "react";
 import type { SettlementSnapshot } from "@/lib/settlement";
 import { vatLabel, vatSummary } from "@/lib/vat";
 
-// Stress's monthly invoices to Dimensie (src/lib/settlement.ts). The Stress side
-// sees the live draft of a month and finalises it (freezing the figures and
-// locking the orders); the treasurer downloads the PDF + CSV, books it and sends
-// it to Dimensie, then marks it sent. Dimensie sees invoices once marked sent.
+// Stress's specifications to Dimensie (src/lib/settlement.ts), created
+// automatically by each Dimensie export (Dimensie billed its members → Stress
+// specifies those joint-borrel drinks to Dimensie). The treasurer downloads the
+// PDF + CSV, attaches them to their own invoice, books and sends it, then marks it
+// sent. Dimensie sees specifications once marked sent.
 
 interface SettlementRow {
   id: string;
   number: string;
-  month: string;
+  period: string;
   status: "FINAL" | "SENT";
   totalInclCents: number;
   createdAt: string;
@@ -21,59 +22,45 @@ interface SettlementRow {
 }
 
 const euro = (c: number) => `€${(c / 100).toFixed(2)}`;
-const monthLabel = (m: string) => {
-  const [y, mo] = m.split("-").map(Number);
-  return new Date(Date.UTC(y, mo - 1, 15)).toLocaleString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
-};
 
 export default function SettlementsPage() {
-  const [month, setMonth] = useState<string | null>(null);
   const [canManage, setCanManage] = useState(false);
   const [rows, setRows] = useState<SettlementRow[]>([]);
-  const [draft, setDraft] = useState<SettlementSnapshot | null>(null);
+  const [pending, setPending] = useState<{ snapshot: SettlementSnapshot; notExported: number } | null>(null);
   const [open, setOpen] = useState<{ id: string; snapshot: SettlementSnapshot } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const load = useCallback(async (m?: string) => {
-    const res = await fetch(`/api/admin/ppp/settlements${m ? `?month=${m}` : ""}`);
+  const load = useCallback(async () => {
+    const res = await fetch("/api/admin/ppp/settlements");
     if (!res.ok) return;
     const d = await res.json();
-    setMonth(d.month);
     setCanManage(d.canManage);
     setRows(d.settlements);
-    setDraft(d.draft);
+    setPending(d.pending);
   }, []);
   useEffect(() => {
     load();
   }, [load]);
 
-  async function finalize() {
-    if (!month || !draft) return;
-    if (
-      !confirm(
-        `Finalise ${draft.monthLabel}: ${euro(draft.breakdown.totalInclCents)} incl. VAT for ${draft.orders} order(s)?\n\n` +
-          "The figures are frozen and these orders can no longer be changed. Orders added later go on next month's invoice."
-      )
-    )
-      return;
+  // Normally done by Dimensie's export; by hand e.g. after undoing a specification.
+  async function createNow() {
+    if (!pending) return;
+    const snap = pending.snapshot;
+    if (!confirm(`Create a specification now: ${euro(snap.breakdown.totalInclCents)} incl. VAT for ${snap.orders} order(s)?`)) return;
     setBusy(true);
     setError("");
-    const res = await fetch("/api/admin/ppp/settlements", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ month }),
-    });
+    const res = await fetch("/api/admin/ppp/settlements", { method: "POST" });
     setBusy(false);
-    if (!res.ok) return setError((await res.json().catch(() => ({}))).error ?? "Could not finalise");
-    load(month);
+    if (!res.ok) return setError((await res.json().catch(() => ({}))).error ?? "Could not create");
+    load();
   }
 
   async function act(r: SettlementRow, method: "PATCH" | "DELETE") {
     const question =
       method === "PATCH"
         ? `Mark ${r.number} as sent to Dimensie (booked and sent by the treasurer)? Dimensie can see it from then on, and it can't be undone.`
-        : `Undo ${r.number}? Its orders go back into the draft and can be changed again.`;
+        : `Undo ${r.number}? Its orders are unlocked; they go on the next specification (made at Dimensie's next export, or with "Create now").`;
     if (!confirm(question)) return;
     setBusy(true);
     setError("");
@@ -85,7 +72,7 @@ export default function SettlementsPage() {
     setBusy(false);
     if (!res.ok) return setError((await res.json().catch(() => ({}))).error ?? "Could not save");
     if (open?.id === r.id) setOpen(null);
-    load(month ?? undefined);
+    load();
   }
 
   async function view(r: SettlementRow) {
@@ -94,57 +81,47 @@ export default function SettlementsPage() {
     if (res.ok) setOpen({ id: r.id, snapshot: (await res.json()).settlement.snapshot });
   }
 
-  const thisMonthDone = rows.some((r) => r.month === month);
-
   return (
     <div className="p-8">
-      <h1 className="text-3xl font-bold">{canManage ? "Invoices to Dimensie" : "Invoices from Stress"}</h1>
+      <h1 className="text-3xl font-bold">{canManage ? "Specifications to Dimensie" : "Specifications from Stress"}</h1>
       <p className="mb-6 max-w-3xl text-gray-500">
-        What Dimensie members drank at joint borrels (Stress hosts and pays the bar), invoiced to Dimensie once a month —
-        at the drink price before Dimensie&apos;s own member discounts, incl. VAT. Bartenders&apos; free drinks are
-        Stress&apos;s. {canManage
-          ? "The system doesn't make or send the invoice: the treasurer makes the invoice for Dimensie and attaches the specification (PDF: every purchase, per drink, per member, VAT per category) and/or the CSV, books it and sends it — then marks it sent here. Only then does Dimensie see it."
-          : "Invoices appear here once Stress's treasurer has sent them."}
+        What Dimensie members drank at joint borrels (Stress hosts and pays the bar), at the drink price before
+        Dimensie&apos;s own member discounts, incl. VAT; bartenders&apos; free drinks are Stress&apos;s. A specification is
+        created automatically each time Dimensie exports its invoices, covering the drinks Dimensie then billed its members.{" "}
+        {canManage
+          ? "The treasurer attaches the PDF (and/or CSV) to their own invoice to Dimensie, books and sends it, then marks it sent here — only then does Dimensie see it."
+          : "They appear here once Stress's treasurer has sent them."}
       </p>
       {error && <p className="mb-4 rounded-lg bg-red-900/30 px-4 py-2 text-sm text-red-300">{error}</p>}
 
-      {canManage && month && (
+      {canManage && pending && (
         <section className="mb-8 max-w-5xl rounded-2xl border border-gray-800 bg-gray-900 p-6">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <h2 className="text-lg font-semibold">Draft</h2>
-              <input
-                type="month"
-                value={month}
-                onChange={(e) => e.target.value && load(e.target.value)}
-                className="rounded-lg bg-gray-800 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-amber-500"
-              />
+            <div>
+              <h2 className="text-lg font-semibold">Waiting for the next specification</h2>
+              <p className="text-sm text-gray-500">
+                {pending.snapshot.orders} billed order(s) not on a specification yet
+                {pending.notExported > 0 && <> · {pending.notExported} order(s) not exported by Dimensie yet</>}
+              </p>
             </div>
             <button
-              onClick={finalize}
-              disabled={busy || !draft || draft.orders === 0 || thisMonthDone}
-              title={thisMonthDone ? "This month already has an invoice" : undefined}
-              className="rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-semibold hover:bg-amber-500 disabled:opacity-40"
+              onClick={createNow}
+              disabled={busy || pending.snapshot.orders === 0}
+              title="Normally done automatically by Dimensie's export"
+              className="rounded-xl bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 disabled:opacity-40"
             >
-              {busy ? "Working…" : `Finalise ${monthLabel(month)}`}
+              {busy ? "Working…" : "Create now"}
             </button>
           </div>
-          {draft && draft.orders > 0 ? (
-            <Overview snap={draft} />
+          {pending.snapshot.orders > 0 ? (
+            <Overview snap={pending.snapshot} />
           ) : (
-            <p className="text-sm text-gray-500">
-              Nothing to invoice for {monthLabel(month)} (or earlier) — no unbilled orders of Dimensie members at Stress borrels.
-            </p>
-          )}
-          {thisMonthDone && draft && draft.orders > 0 && (
-            <p className="mt-3 text-sm text-amber-300">
-              {monthLabel(month)} is already invoiced; these orders were added afterwards — they go on the next month&apos;s invoice.
-            </p>
+            <p className="text-sm text-gray-500">Nothing — everything Dimensie billed is on a specification.</p>
           )}
         </section>
       )}
 
-      <h2 className="mb-3 text-lg font-semibold">{canManage ? "Finalised" : "Invoices"}</h2>
+      <h2 className="mb-3 text-lg font-semibold">Specifications</h2>
       {rows.length === 0 ? (
         <p className="text-gray-500">None yet.</p>
       ) : (
@@ -154,13 +131,13 @@ export default function SettlementsPage() {
               <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                 <button onClick={() => view(r)} className="min-w-0 text-left">
                   <p className="font-semibold">
-                    {r.number} · {monthLabel(r.month)}
+                    {r.number} · {r.period}
                     <span
                       className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${
                         r.status === "SENT" ? "bg-green-500/15 text-green-400" : "bg-amber-500/15 text-amber-300"
                       }`}
                     >
-                      {r.status === "SENT" ? `Sent ${new Date(r.sentAt!).toLocaleDateString()}` : "Finalised"}
+                      {r.status === "SENT" ? `Sent ${new Date(r.sentAt!).toLocaleDateString()}` : "To send"}
                     </span>
                   </p>
                   <p className="text-xs text-gray-500">

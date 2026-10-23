@@ -2,12 +2,13 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { externalBreakdown, VAT_RATE, type ExternalBreakdown } from "./external";
 
-// Stress's monthly invoice to Dimensie (see AssociationSettlement in the schema).
+// Stress's specification to Dimensie (see AssociationSettlement in the schema),
+// created by each Dimensie export (or by hand on the Stress side).
 //
 // What's on it: every order of a DIMENSIE member at a borrel STRESS hosts (the
-// joint Thursday drink) that isn't on an earlier invoice yet, with the borrel in
-// or before the month — so orders added after a month was invoiced roll onto the
-// next one. Per line:
+// joint Thursday drink) that Dimensie has billed (EXPORTED to its Congressus) and
+// that isn't on an earlier specification — so Stress specifies exactly what
+// Dimensie billed its members; orders still pending wait for a later export. Per line:
 //   • price = the drink's price BEFORE role discounts (Wall Street price, borrel
 //     special, drink special or list price — the line's baseCents snapshot):
 //     Dimensie covers its own members' discounts;
@@ -38,8 +39,8 @@ export interface SettlementPurchase {
   totalInclCents: number;
 }
 export interface SettlementSnapshot {
-  month: string;
-  monthLabel: string;
+  periodLabel: string; // e.g. "October 2026" / "September – October 2026"
+  monthLabel?: string; // the same, on specifications made before they were per export
   orders: number;
   breakdown: ExternalBreakdown; // per drink + VAT per rate + totals
   members: { name: string; congressusId: number | null; lines: SettlementMemberLine[]; totalInclCents: number }[];
@@ -51,42 +52,28 @@ export interface SettlementSnapshot {
   chargedToMembersCents: number;
 }
 
-// "2026-10" → its first moment in Amsterdam time, as a UTC Date.
-function amsterdamMonthStart(year: number, month: number): Date {
-  const utcMidnight = new Date(Date.UTC(year, month - 1, 1, 0, 0));
-  const hour = Number(
-    new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Amsterdam", hour: "2-digit", hourCycle: "h23" }).format(utcMidnight)
-  );
-  return new Date(utcMidnight.getTime() - hour * 3600_000);
+// "October 2026", or "September – October 2026" for borrels spanning months.
+export function periodLabel(dates: Date[]): string {
+  if (dates.length === 0) return "";
+  const fmt = (d: Date, withYear = true) =>
+    d.toLocaleString("en-GB", { month: "long", ...(withYear ? { year: "numeric" } : {}), timeZone: "Europe/Amsterdam" });
+  const sorted = [...dates].sort((a, b) => a.getTime() - b.getTime());
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  if (fmt(first) === fmt(last)) return fmt(first);
+  const sameYear = first.toLocaleString("en-GB", { year: "numeric", timeZone: "Europe/Amsterdam" }) ===
+    last.toLocaleString("en-GB", { year: "numeric", timeZone: "Europe/Amsterdam" });
+  return `${fmt(first, !sameYear)} – ${fmt(last)}`;
 }
 
-export function isMonth(v: unknown): v is string {
-  return typeof v === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(v);
-}
-
-export function monthEnd(month: string): Date {
-  const [y, m] = month.split("-").map(Number);
-  return m === 12 ? amsterdamMonthStart(y + 1, 1) : amsterdamMonthStart(y, m + 1);
-}
-
-export function monthLabel(month: string): string {
-  const [y, m] = month.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, 15)).toLocaleString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
-}
-
-export function previousMonth(now = new Date()): string {
-  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Amsterdam", year: "numeric", month: "2-digit" }).formatToParts(now);
-  const y = Number(parts.find((p) => p.type === "year")!.value);
-  const m = Number(parts.find((p) => p.type === "month")!.value);
-  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
-}
-
-// The orders a month's invoice would cover (not on an invoice yet).
-export function candidateWhere(month: string): Prisma.PppInvoiceWhereInput {
+// Dimensie members' orders at Stress borrels not on a specification yet. With
+// `exportedOnly`: just those Dimensie has billed — what a specification covers.
+export function pendingWhere(exportedOnly: boolean): Prisma.PppInvoiceWhereInput {
   return {
     settlementId: null,
     member: { associationId: SETTLEMENT_DEBTOR },
-    activity: { associationId: SETTLEMENT_CREDITOR, date: { lt: monthEnd(month) } },
+    activity: { associationId: SETTLEMENT_CREDITOR },
+    ...(exportedOnly ? { status: "EXPORTED" as const } : {}),
   };
 }
 
@@ -117,7 +104,7 @@ type Line = Order["lines"][number];
 const basePrice = (l: Line) => l.baseCents ?? l.specialCents ?? l.product.specialPrice ?? l.listCents ?? l.product.price;
 const vatOf = (l: Line) => l.vatRate ?? VAT_RATE[l.product.vatCategory];
 
-export function buildSnapshot(month: string, orders: Order[]): SettlementSnapshot {
+export function buildSnapshot(orders: Order[]): SettlementSnapshot {
   const billable = orders.flatMap((o) => o.lines.filter((l) => !l.bartenderFree).map((l) => ({ o, l })));
   const breakdown = externalBreakdown(
     billable.map(({ l }) => ({
@@ -165,8 +152,7 @@ export function buildSnapshot(month: string, orders: Order[]): SettlementSnapsho
   }
 
   return {
-    month,
-    monthLabel: monthLabel(month),
+    periodLabel: periodLabel(orders.map((o) => o.activity.date)),
     orders: orders.length,
     breakdown,
     members: [...members.values()]
@@ -178,37 +164,37 @@ export function buildSnapshot(month: string, orders: Order[]): SettlementSnapsho
   };
 }
 
-// The live (draft) invoice for a month.
-export async function draftSettlement(month: string) {
-  const orders = await prisma.pppInvoice.findMany({
-    where: candidateWhere(month),
-    select: orderSelect,
-    orderBy: { confirmedAt: "asc" },
-  });
-  return { orderIds: orders.map((o) => o.id), snapshot: buildSnapshot(month, orders) };
+// What's waiting for the next specification: the billed orders it will cover,
+// and how many orders are still pending in Dimensie's export.
+export async function pendingSettlement() {
+  const [orders, notExported] = await Promise.all([
+    prisma.pppInvoice.findMany({ where: pendingWhere(true), select: orderSelect, orderBy: { confirmedAt: "asc" } }),
+    prisma.pppInvoice.count({ where: { ...pendingWhere(false), status: { not: "EXPORTED" } } }),
+  ]);
+  return { snapshot: buildSnapshot(orders), notExported };
 }
 
-export const settlementNumber = (month: string) => `STRESS-DIM-${month}`;
-
-// Finalise a month: freeze the figures and lock the orders, atomically. The
-// candidate orders are re-read inside the transaction, so an order confirmed in
-// the meantime is either on it (and locked) or left for next month.
-export async function finalizeSettlement(month: string, userId: string) {
+// Create the next specification from every billed, not-yet-specified order —
+// called after each Dimensie export (and by the "create now" button). Freezes the
+// figures and locks the orders, atomically; null when there's nothing to specify.
+export async function createSettlement(userId: string | null) {
   return prisma.$transaction(async (tx) => {
-    const orders = await tx.pppInvoice.findMany({
-      where: candidateWhere(month),
-      select: orderSelect,
-      orderBy: { confirmedAt: "asc" },
+    const orders = await tx.pppInvoice.findMany({ where: pendingWhere(true), select: orderSelect, orderBy: { confirmedAt: "asc" } });
+    if (orders.length === 0) return null;
+    const snapshot = buildSnapshot(orders);
+    // STRESS-DIM-<year>-<001…>, numbered per calendar year of creation.
+    const year = new Date().getFullYear();
+    const prefix = `STRESS-DIM-${year}-`;
+    const last = await tx.associationSettlement.findFirst({
+      where: { number: { startsWith: prefix } },
+      orderBy: { number: "desc" },
+      select: { number: true },
     });
-    if (orders.length === 0) throw new SettlementError("Nothing to invoice for this month.", 409);
-    if (await tx.associationSettlement.findUnique({ where: { debtorId_month: { debtorId: SETTLEMENT_DEBTOR, month } } })) {
-      throw new SettlementError("This month already has an invoice.", 409);
-    }
-    const snapshot = buildSnapshot(month, orders);
+    const next = (last ? parseInt(last.number.slice(prefix.length), 10) : 0) + 1;
     const settlement = await tx.associationSettlement.create({
       data: {
-        number: settlementNumber(month),
-        month,
+        number: `${prefix}${String(next).padStart(3, "0")}`,
+        period: snapshot.periodLabel,
         debtorId: SETTLEMENT_DEBTOR,
         creditorId: SETTLEMENT_CREDITOR,
         totalExclCents: snapshot.breakdown.totalExclCents,
@@ -222,7 +208,7 @@ export async function finalizeSettlement(month: string, userId: string) {
       where: { id: { in: orders.map((o) => o.id) }, settlementId: null },
       data: { settlementId: settlement.id },
     });
-    if (count !== orders.length) throw new SettlementError("Orders changed while finalising — try again.", 409);
+    if (count !== orders.length) throw new SettlementError("Orders changed while creating the specification — try again.", 409);
     return settlement;
   });
 }
