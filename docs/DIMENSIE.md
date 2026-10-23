@@ -109,5 +109,3 @@ At joint borrels Stress pays the bar, and Dimensie collects from its own members
 - **Where the data lives:** in a database at Railway (EU West, the Netherlands). The code is on GitHub (`Lennardpy/snack-system`) and contains no keys or personal data.
 - **Security review:** Details are in [SECURITY.md](SECURITY.md).
 
-
-Questions: contact Stress's treasurer, `treasurer@stress.utwente.nl`.
