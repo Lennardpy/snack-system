@@ -3,7 +3,7 @@
 This is a guide for the Dimensie board and treasurer. It describes how Dimensie uses PPP, the bar system Stress built for its borrels.
 Dimensie members pay at the bar with their card, the same way Stress members do. Dimensie bills its own members through its own Congressus. Stress invoices Dimensie for what Dimensie members drink at the borrels the two associations hold together.
 
-> Status: built on the `dimensie` branch and tested on a separate test environment with a fake Congressus and anonymised data. Going live is agreed with Stress (see [Before going live](#before-going-live)).
+> Status: built on the `dimensie` branch and tested on a separate test environment with a fake Congressus and anonymised data. 
 
 ---
 
@@ -59,7 +59,7 @@ Sign in at `ppp.51vo.nl` with your Dimensie admin login. The admin shows the Dim
 | **SBZ prices** | The SBZ price list, maintained by Stress and **view only** for you. It is used to cost your borrels |
 
 **What you won't see:**
-- the snack kiosk (that's Stress's);
+- the snack kiosk 
 - Stress's members, borrels, orders, roles or bartenders;
 - Stress's figures;
 - external cards, SumUp and Wall Street, which are only used at Stress borrels.
@@ -96,13 +96,6 @@ At joint borrels Stress pays the bar, and Dimensie collects from its own members
 - **How you receive it:** Stress's treasurer makes the actual invoice, attaches the specification, and books and sends it to `treasurer@svdimensie.nl`. The system itself sends nothing.
 - **Where you can see it:** once the specification is sent, it also appears under **From Stress**, where you can download the PDF and CSV.
 
-## A typical month for Dimensie's treasurer
-
-1. **Sync Dimensie** (Members), so new members can pay.
-2. **Export Dimensie to Congressus** (Invoices). Your members get their invoice, and the specification for Stress is created at the same time.
-3. Check **"needs a check"** if it appears after the export.
-4. Collect from your members in Congressus as usual (direct debit).
-5. Receive Stress's invoice with the specification, also available under **From Stress**, and pay it.
 
 ## Privacy and security
 
@@ -114,19 +107,7 @@ At joint borrels Stress pays the bar, and Dimensie collects from its own members
   - reading and creating products in the "PPP" folder;
   - creating sale invoices.
 - **Where the data lives:** in a database at Railway (EU West, the Netherlands). The code is on GitHub (`Lennardpy/snack-system`) and contains no keys or personal data.
-- **Security review:** a review of this work found four issues, all fixed. Details are in [SECURITY.md](SECURITY.md).
+- **Security review:** Details are in [SECURITY.md](SECURITY.md).
 
-## Before going live
-
-**From Dimensie:**
-- a Congressus API key with: members (read), products (read and write), sale invoices (write);
-- the names and emails for Dimensie's admin login(s) and bartenders;
-- confirmation that Dimensie's events in Alexia use the organiser name **"Dimensie"**.
-
-**From Stress:**
-- releasing the branch;
-- creating Dimensie's logins;
-- running the first **Sync Dimensie** together with you;
-- checking that the "PPP" products don't appear in Dimensie's webshop.
 
 Questions: contact Stress's treasurer, `treasurer@stress.utwente.nl`.
