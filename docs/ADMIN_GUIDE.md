@@ -136,7 +136,8 @@ Drink prices that move with demand, for a borrel game.
 For external parties at a borrel: give them an **external card** — a bar card not
 linked to any member.
 
-- **PPP → External cards:** tap the card into the UID field, name it, optionally set a
+- **PPP → External cards:** click **🪪 Scan card** and tap the card on the bar's
+  reader (or type/paste the UID), name it, optionally set a
   **limit per borrel** (e.g. €100 at internal prices), **Add card**. **Set / Change
   limit** on an existing card. At the bar the bartender sees what's left; once the
   limit is reached the card turns red and no more drinks can be added.

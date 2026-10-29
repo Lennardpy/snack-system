@@ -303,8 +303,9 @@ e.g. handed to an external party at a borrel. Its UID can never also be a member
 `Card` (both directions are checked: admin add, POS register, POS link, kiosk
 register/verify).
 
-- **Create:** Admin → **External cards** (tap the card into the UID field, give it a
-  name), or at the bar: scan an unknown card → **"Not a member — use as external
+- **Create:** Admin → **External cards** (**🪪 Scan card** listens to the bar's card
+  reader — same reader settings as the POS: WebSocket/Arago, keyboard-wedge or the
+  phone's NFC — and fills in the UID; or type/paste it; then give it a name), or at the bar: scan an unknown card → **"Not a member — use as external
   card"** (optional name; default "External card N").
 - **Spending limit (optional):** `ExternalCard.limitCents`, set per card on Admin →
   External cards ("Set limit", or when adding it). It caps what the card's tab at one

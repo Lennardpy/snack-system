@@ -1,6 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useCardReader } from "@/lib/useCardReader";
+
+// The bar's card reader (same settings as the PPP POS): on the bar PC a WebSocket
+// reader (Arago), on an iPad a keyboard-wedge reader, on Android the phone's NFC.
+const WS_URL = process.env.NEXT_PUBLIC_PPP_CARD_READER_WS_URL ?? "ws://localhost:3000";
+const PPP_MODE = process.env.NEXT_PUBLIC_PPP_CARD_READER_MODE;
+const ENV_MODE = PPP_MODE === "ws" || PPP_MODE === "nfc" ? PPP_MODE : "hid";
 
 // External cards: bar cards not linked to a member, e.g. handed to an external
 // party at a borrel. Their drinks land on that borrel's external tab (see the
@@ -23,6 +30,13 @@ export default function ExternalCardsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const nameRef = useRef<HTMLInputElement>(null);
+  // "Scan card": listen to the card reader until a card is tapped.
+  const [scanning, setScanning] = useState(false);
+  const onScanned = useCallback((scanned: string) => {
+    setUid(scanned);
+    setScanning(false);
+    setTimeout(() => nameRef.current?.focus(), 0);
+  }, []);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/admin/ppp/external-cards");
@@ -102,7 +116,7 @@ export default function ExternalCardsPage() {
 
       <form onSubmit={add} className="mb-8 flex max-w-3xl flex-wrap items-end gap-3 rounded-2xl border border-gray-800 bg-gray-900 p-5">
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-gray-400">Card UID — tap the card on the reader</span>
+          <span className="text-xs text-gray-400">Card UID</span>
           <input
             value={uid}
             onChange={(e) => setUid(e.target.value)}
@@ -138,6 +152,23 @@ export default function ExternalCardsPage() {
             className="w-36 rounded-lg bg-gray-800 px-3 py-2 outline-none focus:ring-2 focus:ring-amber-500"
           />
         </label>
+        <div className="flex w-full flex-wrap items-center gap-3">
+          {scanning ? (
+            <CardScanner onScan={onScanned} onCancel={() => setScanning(false)} />
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                (document.activeElement as HTMLElement | null)?.blur(); // keyboard readers type into the page, not a field
+                setScanning(true);
+              }}
+              className="rounded-xl bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700"
+            >
+              🪪 Scan card
+            </button>
+          )}
+          <span className="text-xs text-gray-500">or type / paste the UID</span>
+        </div>
         <button
           type="submit"
           disabled={busy || !uid.trim() || !name.trim()}
@@ -196,6 +227,40 @@ export default function ExternalCardsPage() {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+// Listens to the bar's card reader while mounted (only while "Scan card" is active,
+// so the reader isn't held open otherwise) and hands back the first tapped UID.
+function CardScanner({ onScan, onCancel }: { onScan: (uid: string) => void; onCancel: () => void }) {
+  const { mode, wsStatus, nfcStatus, startNfc } = useCardReader({ onScan, wsUrl: WS_URL, envMode: ENV_MODE });
+  const status =
+    mode === "ws"
+      ? wsStatus === "connected"
+        ? "Tap the card on the reader…"
+        : wsStatus === "connecting"
+        ? "Connecting to the card reader…"
+        : "Card reader not reachable — is the reader app running on this PC?"
+      : mode === "nfc"
+      ? nfcStatus === "scanning"
+        ? "Hold the card against the phone…"
+        : nfcStatus === "unsupported"
+        ? "NFC isn't available on this device"
+        : "Tap “Enable NFC” first"
+      : "Tap the card on the reader…";
+  const problem = (mode === "ws" && wsStatus === "disconnected") || nfcStatus === "unsupported" || nfcStatus === "error";
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-600/60 bg-amber-950/30 px-4 py-2">
+      <span className={`text-sm font-medium ${problem ? "text-red-300" : "text-amber-200"}`}>🪪 {status}</span>
+      {mode === "nfc" && nfcStatus !== "scanning" && nfcStatus !== "unsupported" && (
+        <button type="button" onClick={startNfc} className="rounded-lg bg-amber-600 px-3 py-1 text-sm font-semibold text-white hover:bg-amber-500">
+          Enable NFC
+        </button>
+      )}
+      <button type="button" onClick={onCancel} className="text-sm text-gray-400 hover:text-white">
+        Cancel
+      </button>
     </div>
   );
 }
