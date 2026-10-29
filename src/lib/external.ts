@@ -97,3 +97,12 @@ export function externalBreakdown(lines: ExternalLineIn[], level: ExternalPriceL
     drinks: out.reduce((s, l) => s + l.quantity, 0),
   };
 }
+
+// An external card's spending limit from admin input (euros, e.g. 100 or "100,50")
+// → cents; null for no limit (empty); undefined when invalid.
+export function parseLimit(v: unknown): number | null | undefined {
+  if (v === null || v === "" || v === undefined) return null;
+  const n = typeof v === "number" ? v : Number(String(v).replace(",", "."));
+  if (!Number.isFinite(n) || n <= 0 || n > 100_000) return undefined;
+  return Math.round(n * 100);
+}

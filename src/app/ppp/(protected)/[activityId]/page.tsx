@@ -66,7 +66,8 @@ type MemberState =
   // A scanned card with no linked member — the bartender links it by searching.
   | { kind: "unlinked"; uid: string }
   // An external card (no member): the order goes on the borrel's external tab.
-  | { kind: "external"; cardId: string; name: string }
+  // limitCents: its spending limit per borrel (null = none); usedCents: spent here so far.
+  | { kind: "external"; cardId: string; name: string; limitCents: number | null; usedCents: number }
   | { kind: "error"; message: string };
 
 const WS_URL =
@@ -335,7 +336,7 @@ export default function PosPage() {
       const res = await fetch("/api/ppp/card/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uid }),
+        body: JSON.stringify({ uid, activityId }),
       });
       if (sessionGone(res)) {
         setMember({ kind: "idle" });
@@ -343,7 +344,7 @@ export default function PosPage() {
       }
       const d = await res.json();
       if (res.ok && d.external) {
-        setMember({ kind: "external", cardId: d.cardId, name: d.name });
+        setMember({ kind: "external", cardId: d.cardId, name: d.name, limitCents: d.limitCents ?? null, usedCents: d.usedCents ?? 0 });
         setMobileView("cart");
       } else if (res.ok && d.unlinked) {
         // Unrecognised card — let the bartender link it to a member by name.
@@ -422,7 +423,7 @@ export default function PosPage() {
     if (sessionGone(res)) return;
     const d = await res.json();
     if (res.ok) {
-      setMember({ kind: "external", cardId: d.cardId, name: d.name });
+      setMember({ kind: "external", cardId: d.cardId, name: d.name, limitCents: null, usedCents: 0 });
       setLinkQuery("");
       setLinkResults([]);
       flashToast(`${d.name} is now an external card`);
@@ -511,6 +512,10 @@ export default function PosPage() {
     0
   );
   const totalCents = [...priced.values()].reduce((s, p) => s + p.totalCents, 0);
+  // An external card's limit at this borrel: what's left, and whether this cart fits.
+  const externalLeft =
+    member.kind === "external" && member.limitCents != null ? Math.max(0, member.limitCents - member.usedCents) : null;
+  const overLimit = externalLeft != null && totalCents > externalLeft;
   const hasDiscount = totalCents < grossCents;
   const itemCount = cartLines.reduce((s, l) => s + l.qty, 0);
 
@@ -539,9 +544,11 @@ export default function PosPage() {
     if (res.ok) {
       lastOrderAt.current = Date.now();
       setIdleMsLeft(IDLE_LIMIT_MS);
+      const done = await res.json().catch(() => ({}));
       flashToast(
         member.kind === "external"
-          ? `Added ${euro(totalCents)} to ${member.name}'s tab`
+          ? `Added ${euro(totalCents)} to ${member.name}'s tab` +
+              (done.limitCents != null ? ` · ${euro(Math.max(0, done.limitCents - done.usedCents))} left` : "")
           : `Charged ${member.firstName} ${euro(totalCents)}`
       );
       setCart({});
@@ -554,6 +561,10 @@ export default function PosPage() {
       flashToast("Not charged — please confirm again");
     } else {
       const d = await res.json();
+      // Over an external card's limit: show the latest figures on the card panel.
+      if (member.kind === "external" && typeof d.usedCents === "number") {
+        setMember({ ...member, limitCents: d.limitCents ?? null, usedCents: d.usedCents });
+      }
       flashToast(d.error ?? "Could not confirm order");
     }
   }
@@ -908,6 +919,40 @@ export default function PosPage() {
                     <p className="mt-2 text-xs text-gray-500">
                       Internal prices shown, no specials — the board sets the invoice price afterwards.
                     </p>
+                    {member.limitCents != null && (
+                      <div
+                        className={`mt-3 rounded-xl border p-3 ${
+                          externalLeft === 0 || overLimit
+                            ? "border-red-600 bg-red-950/50"
+                            : "border-gray-800 bg-gray-950/50"
+                        }`}
+                      >
+                        {externalLeft === 0 ? (
+                          <p className="text-base font-bold text-red-300">⛔ Limit reached — no more drinks on this card</p>
+                        ) : overLimit ? (
+                          <p className="text-base font-bold text-red-300">
+                            ⛔ Over the limit by {euro(totalCents - externalLeft!)} — only {euro(externalLeft!)} left
+                          </p>
+                        ) : (
+                          <p className="text-sm font-semibold text-gray-200">{euro(externalLeft!)} left on this card</p>
+                        )}
+                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-800">
+                          <div
+                            className={`h-full rounded-full ${
+                              externalLeft === 0 || overLimit
+                                ? "bg-red-500"
+                                : member.usedCents / member.limitCents >= 0.8
+                                ? "bg-amber-500"
+                                : "bg-green-500"
+                            }`}
+                            style={{ width: `${Math.min(100, (member.usedCents / member.limitCents) * 100)}%` }}
+                          />
+                        </div>
+                        <p className="mt-1 text-xs text-gray-500">
+                          {euro(member.usedCents)} of {euro(member.limitCents)} used at this borrel
+                        </p>
+                      </div>
+                    )}
                   </div>
                 ) : member.kind === "scanning" ? (
                   <p className="text-sm text-amber-400">Reading card…</p>
@@ -1018,7 +1063,13 @@ export default function PosPage() {
                 </div>
                 <button
                   onClick={confirmOrder}
-                  disabled={(member.kind !== "found" && member.kind !== "external") || cartLines.length === 0 || confirming || !isOpen}
+                  disabled={
+                    (member.kind !== "found" && member.kind !== "external") ||
+                    cartLines.length === 0 ||
+                    confirming ||
+                    !isOpen ||
+                    overLimit
+                  }
                   className="w-full rounded-2xl bg-amber-600 py-5 text-xl font-bold transition-colors hover:bg-amber-500 active:scale-[0.99] disabled:opacity-40"
                 >
                   {confirming
@@ -1026,7 +1077,11 @@ export default function PosPage() {
                     : member.kind === "found"
                     ? `Confirm — ${member.firstName}`
                     : member.kind === "external"
-                    ? `Add to tab — ${member.name}`
+                    ? overLimit
+                      ? externalLeft === 0
+                        ? "Limit reached"
+                        : "Over the card's limit"
+                      : `Add to tab — ${member.name}`
                     : "Scan a card to confirm"}
                 </button>
               </div>

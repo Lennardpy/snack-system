@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { normalizeUid } from "@/lib/card";
 import { requireBartender } from "@/lib/auth";
+import { externalTabUsedCents } from "@/lib/external-db";
 
 // Bartender-operated scan at the bar POS. Resolves a tapped card UID to a member
 // so the bartender can confirm who they are charging.
@@ -24,7 +25,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
 
-  const { uid } = await req.json();
+  // activityId (optional): for an external card, report its spending at this borrel.
+  const { uid, activityId } = await req.json();
 
   if (!uid || typeof uid !== "string") {
     return NextResponse.json({ error: "Missing uid" }, { status: 400 });
@@ -48,7 +50,13 @@ export async function POST(req: NextRequest) {
     // external tab, invoiced separately.
     const external = await prisma.externalCard.findUnique({ where: { uid: normalizeUid(uid) } });
     if (external) {
-      return NextResponse.json({ external: true, cardId: external.id, name: external.name });
+      return NextResponse.json({
+        external: true,
+        cardId: external.id,
+        name: external.name,
+        limitCents: external.limitCents,
+        usedCents: typeof activityId === "string" ? await externalTabUsedCents(external.id, activityId) : 0,
+      });
     }
     // Not an error at the bar: the bartender can link this card to a member on
     // the spot. Return the normalised UID so the POS can offer to link it.

@@ -12,6 +12,7 @@ interface Tab {
   priceLevel: ExternalPriceLevel;
   cardName: string;
   cardUid: string | null;
+  cardLimitCents: number | null; // the card's spending limit per borrel (internal prices)
   activity: { id: string; name: string; date: string };
   breakdown: ExternalBreakdown;
   internalInclCents: number;
@@ -108,6 +109,12 @@ function TabCard({
           🏷️ {tab.cardName}
           <span className="ml-2 text-xs font-normal text-gray-500">
             {b.drinks} drink{b.drinks === 1 ? "" : "s"} · {tab.orders.length} order{tab.orders.length === 1 ? "" : "s"}
+            {tab.cardLimitCents != null && (
+              <span className={tab.internalInclCents >= tab.cardLimitCents ? "text-red-400" : ""}>
+                {" "}· {euro(tab.internalInclCents)} of {euro(tab.cardLimitCents)} limit used
+                {tab.internalInclCents >= tab.cardLimitCents ? " (limit reached)" : ""}
+              </span>
+            )}
           </span>
         </p>
         <div className="text-right">

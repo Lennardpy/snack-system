@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireBartender } from "@/lib/auth";
 import { VAT_RATE } from "@/lib/external";
+import { externalTabUsedCents } from "@/lib/external-db";
 
 // External-card orders at the bar POS. They go onto the borrel's external tab for
 // that card (one tab per card per borrel), NOT to a member or Congressus. Each
@@ -72,23 +73,49 @@ export async function POST(req: NextRequest) {
   if (activity.status !== "OPEN") return NextResponse.json({ error: "Activity is closed" }, { status: 409 });
 
   const productById = new Map(products.map((p) => [p.id, p]));
-  const lineData = [];
+  const lineData: { productId: string; quantity: number; unitCents: number; vatRate: number }[] = [];
   for (const [productId, quantity] of qtyByProduct) {
     const p = productById.get(productId);
     if (!p) return NextResponse.json({ error: `Unknown or archived product: ${productId}` }, { status: 400 });
     lineData.push({ productId, quantity, unitCents: p.specialPrice ?? p.price, vatRate: VAT_RATE[p.vatCategory] });
   }
 
-  const tab = await prisma.pppExternalTab.upsert({
-    where: { activityId_cardId: { activityId, cardId } },
-    update: {},
-    create: { activityId, cardId, cardName: card.name },
-  });
-  const order = await prisma.pppExternalOrder.create({
-    data: { tabId: tab.id, createdById: user.id, lines: { create: lineData } },
-    select: { id: true, createdAt: true },
+  const totalCents = lineData.reduce((s, l) => s + l.unitCents * l.quantity, 0);
+  const limitCents = card.limitCents;
+
+  // The card's spending limit at this borrel: the tab row is locked while checking,
+  // so two orders confirmed at the same moment can't both slip under the limit.
+  const result = await prisma.$transaction(async (tx) => {
+    const tab = await tx.pppExternalTab.upsert({
+      where: { activityId_cardId: { activityId, cardId } },
+      update: {},
+      create: { activityId, cardId, cardName: card.name },
+    });
+    await tx.$queryRaw`SELECT id FROM "PppExternalTab" WHERE id = ${tab.id} FOR UPDATE`;
+    const usedCents = await externalTabUsedCents(cardId, activityId, tx);
+    if (limitCents != null && usedCents + totalCents > limitCents) {
+      return { over: true as const, usedCents };
+    }
+    const order = await tx.pppExternalOrder.create({
+      data: { tabId: tab.id, createdById: user.id, lines: { create: lineData } },
+      select: { id: true, createdAt: true },
+    });
+    return { over: false as const, order, usedCents: usedCents + totalCents };
   });
 
-  const totalCents = lineData.reduce((s, l) => s + l.unitCents * l.quantity, 0);
-  return NextResponse.json({ order: { ...order, totalCents } });
+  if (result.over) {
+    const left = Math.max(0, limitCents! - result.usedCents);
+    return NextResponse.json(
+      {
+        error:
+          left === 0
+            ? `${card.name} has reached its limit of €${(limitCents! / 100).toFixed(2)} — no more drinks on this card.`
+            : `Over ${card.name}'s limit: only €${(left / 100).toFixed(2)} left of €${(limitCents! / 100).toFixed(2)}.`,
+        limitCents,
+        usedCents: result.usedCents,
+      },
+      { status: 409 }
+    );
+  }
+  return NextResponse.json({ order: { ...result.order, totalCents }, limitCents, usedCents: result.usedCents });
 }

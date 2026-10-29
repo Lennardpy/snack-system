@@ -10,6 +10,7 @@ interface ExternalCard {
   id: string;
   uid: string;
   name: string;
+  limitCents: number | null; // spending limit per borrel (internal prices); null = none
   createdAt: string;
   tabs: { id: string; title: string | null; activity: { id: string; name: string; date: string } }[];
 }
@@ -18,6 +19,7 @@ export default function ExternalCardsPage() {
   const [cards, setCards] = useState<ExternalCard[] | null>(null);
   const [uid, setUid] = useState("");
   const [name, setName] = useState("");
+  const [limit, setLimit] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const nameRef = useRef<HTMLInputElement>(null);
@@ -38,13 +40,29 @@ export default function ExternalCardsPage() {
     const res = await fetch("/api/admin/ppp/external-cards", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ uid, name }),
+      body: JSON.stringify({ uid, name, limit }),
     });
     setBusy(false);
     if (!res.ok) return setError((await res.json().catch(() => ({}))).error ?? "Could not add card");
     setUid("");
     setName("");
+    setLimit("");
     load();
+  }
+
+  async function editLimit(c: ExternalCard) {
+    const v = prompt(
+      `Spending limit per borrel for "${c.name}", in euros at internal prices (empty = no limit):`,
+      c.limitCents != null ? (c.limitCents / 100).toFixed(2) : ""
+    );
+    if (v === null) return;
+    const res = await fetch(`/api/admin/ppp/external-cards/${c.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ limit: v.trim() }),
+    });
+    if (res.ok) load();
+    else alert((await res.json().catch(() => ({}))).error ?? "Could not set the limit");
   }
 
   async function rename(c: ExternalCard) {
@@ -78,7 +96,8 @@ export default function ExternalCardsPage() {
         Cards that aren&apos;t linked to a member — for external parties at a borrel. Drinks tapped on one go on that
         borrel&apos;s external tab: on the borrel&apos;s <b>Details / P&amp;L</b> page you set a title and a price level
         (Internal, Internal + 10%, Tussen 1.5×, External 2×) and download the PDF. Bartenders can also make an unknown
-        card external straight from the POS.
+        card external straight from the POS. A <b>limit</b> caps what a card can spend per borrel (at internal
+        prices): the POS shows bartenders what&apos;s left and refuses orders over it.
       </p>
 
       <form onSubmit={add} className="mb-8 flex max-w-3xl flex-wrap items-end gap-3 rounded-2xl border border-gray-800 bg-gray-900 p-5">
@@ -109,6 +128,16 @@ export default function ExternalCardsPage() {
             className="min-w-[12rem] rounded-lg bg-gray-800 px-3 py-2 outline-none focus:ring-2 focus:ring-amber-500"
           />
         </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-gray-400">Limit per borrel (€, optional)</span>
+          <input
+            value={limit}
+            onChange={(e) => setLimit(e.target.value)}
+            inputMode="decimal"
+            placeholder="e.g. 100"
+            className="w-36 rounded-lg bg-gray-800 px-3 py-2 outline-none focus:ring-2 focus:ring-amber-500"
+          />
+        </label>
         <button
           type="submit"
           disabled={busy || !uid.trim() || !name.trim()}
@@ -131,8 +160,14 @@ export default function ExternalCardsPage() {
                 <div>
                   <p className="font-semibold">🏷️ {c.name}</p>
                   <p className="font-mono text-xs text-gray-500">{c.uid}</p>
+                  <p className="text-xs text-gray-400">
+                    {c.limitCents != null ? `Limit €${(c.limitCents / 100).toFixed(2)} per borrel` : "No limit"}
+                  </p>
                 </div>
                 <div className="flex gap-2">
+                  <button onClick={() => editLimit(c)} className="rounded-lg bg-gray-800 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700">
+                    {c.limitCents != null ? "Change limit" : "Set limit"}
+                  </button>
                   <button onClick={() => rename(c)} className="rounded-lg bg-gray-800 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700">
                     Rename
                   </button>

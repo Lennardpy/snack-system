@@ -446,6 +446,10 @@ model ExternalCard {
   id        String   @id @default(cuid())
   uid       String   @unique
   name      String // e.g. "External card 1"
+  // Spending limit per borrel, in cents at internal prices (what the bar charges;
+  // the invoice's price level comes on top). null = no limit. Orders that would
+  // take the card's tab at a borrel over it are refused at the POS.
+  limitCents Int?
   createdAt DateTime @default(now())
 
   tabs PppExternalTab[]

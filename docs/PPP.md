@@ -306,6 +306,14 @@ register/verify).
 - **Create:** Admin → **External cards** (tap the card into the UID field, give it a
   name), or at the bar: scan an unknown card → **"Not a member — use as external
   card"** (optional name; default "External card N").
+- **Spending limit (optional):** `ExternalCard.limitCents`, set per card on Admin →
+  External cards ("Set limit", or when adding it). It caps what the card's tab at one
+  borrel may total, **at internal prices** (the invoice price level comes on top).
+  The POS shows "€X left on this card" with a bar (amber from 80%), turns red with
+  **"⛔ Limit reached"** / **"Over the limit by €X"** and blocks confirming; the order
+  route enforces it server-side (the tab row is locked while checking, so
+  simultaneous orders can't both slip under it). The borrel page shows "€X of €Y
+  limit used". Cards registered at the bar start without a limit.
 - **At the bar:** scanning it shows **🏷️ <name> — goes on the borrel's tab**. The cart
   is priced at the **internal selling price** — the drink's special price if set,
   else its price; **no borrel specials, role discounts or bartender free drinks**.
