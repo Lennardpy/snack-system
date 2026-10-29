@@ -6,7 +6,7 @@ and monthly sale-invoices (out). Client code lives in `src/lib/congressus.ts`.
 - **Base URL:** `https://api.congressus.nl/v30`
 - **Auth:** `Authorization: Bearer ${CONGRESSUS_API_TOKEN}` (a generic API token)
 - **SSS product folder id:** `5952` · **PPP (drinks) folder id:** `8804`
-- **Imported member statuses:** `1845` (Primary), `1844` (Secondary)
+- **Imported member statuses:** `1845` (Primary), `1844` (Secondary), `4119` (Honorary)
 - **Invoice workflow id:** `605` (Contribution)
 
 > The bar subsystem (PPP) reuses this same client. See [PPP.md](PPP.md). PPP
@@ -17,7 +17,7 @@ and monthly sale-invoices (out). Client code lives in `src/lib/congressus.ts`.
 ## Members (Congressus → SSS)
 
 `Members → Sync from Congressus` calls `fetchAllMembers()`, which pages through
-`GET /members?status_id=…` for the Primary and Secondary statuses and upserts
+`GET /members?status_id=…` for the Primary, Secondary and Honorary statuses and upserts
 each by `congressusId`. A member is marked `active` unless Congressus says they
 are deleted, locked, archived, or deceased. Members without an email are skipped
 (email is the unique key used for card linking).

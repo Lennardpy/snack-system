@@ -22,10 +22,10 @@ All figures count **confirmed and exported** purchases in the chosen period.
 ## Members
 
 - **Search** by name or email.
-- **Sync from Congressus** — imports/updates all Primary & Secondary members. Run
+- **Sync from Congressus** — imports/updates all Primary, Secondary & Honorary members. Run
   this whenever membership changes (new members, status changes). Inactive
   members are flagged and cannot link cards. Members **no longer in Congressus**
-  (removed there, or no longer a Primary/Secondary member) are cleaned up: those
+  (removed there, or no longer a Primary/Secondary/Honorary member) are cleaned up: those
   with no purchases are **removed**; those with purchase history are
   **deactivated** — they can't buy anymore, but their history and open invoice are
   kept. The result lists anyone who still has an **unexported balance**, so you can

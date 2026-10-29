@@ -10,7 +10,8 @@ const SSS_FOLDER_ID = 5952;
 // Only sync members with these status IDs:
 // 1845 = The Primary Membership
 // 1844 = The Secondary membership
-const ALLOWED_STATUS_IDS = [1845, 1844];
+// 4119 = Honorary
+const ALLOWED_STATUS_IDS = [1845, 1844, 4119];
 
 function headers() {
   return {
@@ -37,7 +38,7 @@ export interface CongressusMember {
   locked: boolean;
 }
 
-// Fetch all Primary and Secondary members, walking Congressus pagination.
+// Fetch all Primary, Secondary and Honorary members, walking Congressus pagination.
 export async function fetchAllMembers(): Promise<CongressusMember[]> {
   const members: CongressusMember[] = [];
 

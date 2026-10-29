@@ -21,7 +21,7 @@ CardRegistration   (pending card links; standalone)
 ## Models
 
 ### Member
-A person synced from Congressus. Only Primary and Secondary members are imported.
+A person synced from Congressus. Only Primary, Secondary and Honorary members are imported.
 
 | Field | Type | Notes |
 |-------|------|-------|
