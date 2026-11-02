@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { listReloadEvent, readListCache, writeListCache } from "@/lib/list-cache";
 
 interface Activity {
   id: string;
@@ -37,6 +38,8 @@ interface Order {
   createdBy: Tapper | null;
   lines: OrderLine[];
 }
+
+const LIST_PATH = "/ppp/admin/activities";
 
 const euro = (c: number) => `€${(c / 100).toFixed(2)}`;
 
@@ -108,9 +111,58 @@ export default function AdminActivitiesPage() {
     if (a.sumupCents != null) return a.sumupCents;
     return sumupFetched[a.id] ?? (new Date(a.date).getTime() > Date.now() ? null : "loading");
   }
+  // Back from a borrel's details (or the browser's back button): show the list as
+  // it was, at the same scroll position, and refresh its figures quietly. Opened
+  // from the menu: a full load (with the Alexia import) from the top.
   useEffect(() => {
-    load();
+    // sessionStorage only exists in the browser, so the cache is read after mount.
+    const cached = readListCache<Activity[]>(LIST_PATH);
+    if (!cached?.data) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      load();
+      return;
+    }
+    setActivities(cached.data);
+    setLoading(false);
+    const y = cached.scrollY ?? 0;
+    requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, y)));
+    fetch("/api/admin/ppp/activities")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return;
+        setActivities(d.activities);
+        fetchMissingSumup(d.activities);
+      })
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!loading) writeListCache(LIST_PATH, { data: activities });
+  }, [activities, loading]);
+
+  useEffect(() => {
+    let frame = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => writeListCache(LIST_PATH, { scrollY: window.scrollY }));
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", onScroll);
+    };
   }, []);
+
+  // "Borrels" in the menu while already here: reload from the top.
+  useEffect(() => {
+    const reload = () => {
+      window.scrollTo(0, 0);
+      setLoading(true);
+      load();
+    };
+    window.addEventListener(listReloadEvent(LIST_PATH), reload);
+    return () => window.removeEventListener(listReloadEvent(LIST_PATH), reload);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function create(e: React.FormEvent) {
     e.preventDefault();

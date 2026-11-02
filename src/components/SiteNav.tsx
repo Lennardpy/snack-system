@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { clearListCache, listReloadEvent } from "@/lib/list-cache";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -80,6 +81,12 @@ export default function SiteNav({
                 <Link
                   key={link.href}
                   href={link.href}
+                  // From the menu a list page loads fresh (src/lib/list-cache.ts) — also
+                  // when it's the page you're on.
+                  onClick={() => {
+                    clearListCache(link.href);
+                    if (pathname === link.href) window.dispatchEvent(new Event(listReloadEvent(link.href)));
+                  }}
                   className={active ? `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${activeClass}` : linkClass}
                 >
                   <span className="text-lg">{link.icon}</span>
