@@ -168,6 +168,15 @@ async function load() {
   s.members.slice(10, 13).forEach((sm, i) => {
     d.members.push(member(sm.id, "Clash", String(i + 1), `clash${i + 1}@staging.local`, lid));
   });
+  // Bank details + student number (custom field) — only on GET /members/{id}, like
+  // the real list may leave them out. Fake IBANs; every 10th member has none.
+  d.members.forEach((m, i) => {
+    m._detail = {
+      bank_account:
+        i % 10 === 9 ? null : { iban: `NL${String(10 + (i % 89)).padStart(2, "0")}TEST${String(1000000000 + i)}`, bic: "TESTNL2A" },
+      custom_field_data: { studentnummer: `s${2400000 + i}` },
+    };
+  });
   // No VAT categories at Dimensie.
   ["Snickers", "Mars", "Coca Cola"].forEach((n, i) => d.products.push(product(980000 + i, n, 0.6, 1921, null)));
 
@@ -261,12 +270,82 @@ async function createInvoice(t, b, res) {
   return inv;
 }
 
+// ── OAuth (member portal login) ───────────────────────────────────────────────
+// authorize shows a form "log in as <email>" (no passwords — it's a mock), then
+// redirects back with a code; token swaps it (client credentials from
+// MOCK_OAUTH_CLIENT="id:secret", default mock-client:mock-secret); userinfo returns
+// { user_id, email, name } like Congressus.
+const [OAUTH_ID, OAUTH_SECRET] = (process.env.MOCK_OAUTH_CLIENT ?? "mock-client:mock-secret").split(":");
+const oauthCodes = new Map(); // code → { tenant, memberId, redirectUri }
+const oauthTokens = new Map(); // access token → { tenant, memberId }
+const rand = () => require("crypto").randomBytes(16).toString("hex");
+
+function oauthRoute(tenantName, step, req, url, raw, res) {
+  const t = tenants[tenantName];
+  if (!t) return send(res, 404, { message: "Unknown tenant" });
+  if (step === "authorize") {
+    const q = req.method === "POST" ? new URLSearchParams(raw) : url.searchParams;
+    const redirectUri = q.get("redirect_uri") ?? "";
+    if (q.get("client_id") !== OAUTH_ID || !/^https?:\/\//.test(redirectUri)) return send(res, 400, { message: "invalid_client" });
+    const email = q.get("email");
+    if (req.method === "POST" && email) {
+      const m = t.members.find((x) => x.email.toLowerCase() === email.toLowerCase());
+      if (!m) return send(res, 200, `<p>No ${esc(tenantName)} member with that email.</p>`, "text/html; charset=utf-8");
+      const code = rand();
+      oauthCodes.set(code, { tenant: tenantName, memberId: m.id, redirectUri });
+      const back = new URL(redirectUri);
+      back.searchParams.set("code", code);
+      back.searchParams.set("state", q.get("state") ?? "");
+      res.writeHead(302, { Location: back.toString() });
+      return res.end();
+    }
+    const hidden = ["client_id", "redirect_uri", "state", "scope", "response_type"]
+      .map((k) => `<input type="hidden" name="${k}" value="${esc(q.get(k))}">`)
+      .join("");
+    return send(
+      res,
+      200,
+      `<!doctype html><title>Mock Congressus login</title><body style="font-family:sans-serif;max-width:420px;margin:60px auto">` +
+        `<h2>Mock Congressus — ${esc(tenantName)}</h2><form method="post">${hidden}` +
+        `<label>Log in as (member email)<br><input name="email" style="width:100%;padding:8px" autofocus></label>` +
+        `<p><button style="padding:8px 16px">Log in</button></p></form></body>`,
+      "text/html; charset=utf-8"
+    );
+  }
+  if (step === "token" && req.method === "POST") {
+    const f = new URLSearchParams(raw);
+    const basic = Buffer.from((req.headers.authorization ?? "").replace(/^Basic\s+/i, ""), "base64").toString();
+    const [id, secret] = basic.includes(":") ? basic.split(":") : [f.get("client_id"), f.get("client_secret")];
+    if (id !== OAUTH_ID || secret !== OAUTH_SECRET) return send(res, 401, { error: "invalid_client" });
+    const c = oauthCodes.get(f.get("code"));
+    oauthCodes.delete(f.get("code"));
+    if (!c || c.tenant !== tenantName) return send(res, 400, { error: "invalid_grant" });
+    const access = rand();
+    oauthTokens.set(access, { tenant: c.tenant, memberId: c.memberId });
+    return send(res, 200, { access_token: access, token_type: "Bearer", scope: "openid email profile", expires_at: new Date(Date.now() + 3600e3).toISOString() });
+  }
+  if (step === "userinfo") {
+    const tok = oauthTokens.get((req.headers.authorization ?? "").replace(/^Bearer\s+/i, ""));
+    if (!tok || tok.tenant !== tenantName) return send(res, 401, { error: "invalid_token" });
+    const m = t.members.find((x) => x.id === tok.memberId);
+    return send(res, 200, { user_id: m.id, sub: String(m.id), username: m.username, name: `${m.first_name} ${m.last_name}`, email: m.email });
+  }
+  return send(res, 405, { message: "Method not allowed" });
+}
+
 async function api(t, method, path, q, b, res) {
   let m;
   if (method === "GET" && path === "/member-statuses") return send(res, 200, page(t.statuses, q));
   if (method === "GET" && path === "/members") {
     const sid = q.get("status_id");
-    return send(res, 200, page(sid ? t.members.filter((x) => String(x.status.id) === sid) : t.members, q));
+    const rows = (sid ? t.members.filter((x) => String(x.status.id) === sid) : t.members).map(({ _detail, ...m }) => m);
+    return send(res, 200, page(rows, q));
+  }
+  if (method === "GET" && (m = path.match(/^\/members\/(\d+)$/))) {
+    const found = t.members.find((x) => x.id === Number(m[1]));
+    if (!found) return send(res, 404, { message: "Not found" });
+    const { _detail, ...rest } = found;
+    return send(res, 200, { ...rest, bank_account: null, custom_field_data: {}, ..._detail });
   }
   if (method === "GET" && path === "/sale-invoices/workflows") {
     return send(res, 200, page(t.workflows.map((id) => ({ id, name: `Workflow ${id}`, deleted: false })), q));
@@ -407,6 +486,10 @@ http
           }
           return send(res, 404, { message: "Not found" });
         }
+        // "Log in with Congressus" (member portal): OAuth per tenant under
+        // /oauth-<tenant>/oauth/… — use <mock origin>/oauth-<tenant> as the domain.
+        const oauth = url.pathname.match(/^\/oauth-(\w+)\/oauth\/(authorize|token|userinfo)$/);
+        if (oauth) return oauthRoute(oauth[1], oauth[2], req, url, raw, res);
         const token = (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
         const tenant = tenants[TOKENS.get(token)];
         if (!tenant) return send(res, 401, { message: "Invalid API token" });

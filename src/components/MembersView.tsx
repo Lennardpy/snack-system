@@ -104,6 +104,8 @@ export default function MembersView({ site }: { site: "sss" | "ppp" }) {
     if (data.cardsMoved) {
       parts.push(`${data.cardsMoved} card(s) moved to the member's other membership (same person, other association).`);
     }
+    if (data.bankWarning) parts.push(`⚠️ ${data.bankWarning}`);
+    else if (data.withoutIban) parts.push(`${data.withoutIban} member(s) have no IBAN in Congressus.`);
     if (data.openInvoices?.length) {
       parts.push(
         `Still to invoice: ${data.openInvoices

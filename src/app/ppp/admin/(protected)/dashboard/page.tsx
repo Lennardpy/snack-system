@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import AssociationOverview from "@/components/AssociationOverview";
+import { usePppMe } from "@/lib/usePppMe";
 
 interface Borrel { id: string; name: string; revenueCents: number; drinks: number; orders: number }
 interface Drinker { id: string; name: string; drinks: number; revenueCents: number }
@@ -41,6 +43,9 @@ export default function PppDashboardPage() {
   const [range, setRange] = useState("90d");
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  // Dimensie doesn't use SumUp or external cards: those parts are Stress's.
+  const me = usePppMe();
+  const stressSide = me != null && me.associationId !== "dimensie";
   // SumUp card income for the range — loaded separately (external call).
   const [sumup, setSumup] = useState<
     { state: "loading" | "unavailable" } | { state: "ok"; revenueCents: number; live: number; missing: number }
@@ -68,7 +73,7 @@ export default function PppDashboardPage() {
   const plCount = stats?.pl.activityCount ?? 0;
   const pppIncomeCents = stats?.pl.pppIncomeCents ?? 0;
   const externalIncomeCents = stats?.pl.externalIncomeCents ?? 0;
-  const cardIncomeCents = sumup.state === "ok" ? sumup.revenueCents : 0;
+  const cardIncomeCents = stressSide && sumup.state === "ok" ? sumup.revenueCents : 0;
   const cogsCents = stats?.pl.cogsInclCents ?? 0;
   const netPlCents = pppIncomeCents + externalIncomeCents + cardIncomeCents - cogsCents;
 
@@ -79,6 +84,8 @@ export default function PppDashboardPage() {
 
   return (
     <div className="p-8">
+      <AssociationOverview />
+
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">PPP dashboard</h1>
@@ -127,11 +134,13 @@ export default function PppDashboardPage() {
             value={stats ? euro(pppIncomeCents + externalIncomeCents) : "—"}
             sub={externalIncomeCents > 0 ? `incl. ${euro(externalIncomeCents)} external cards (internal prices)` : undefined}
           />
-          <Kpi
-            label="Income — SumUp (card)"
-            value={sumup.state === "ok" ? euro(sumup.revenueCents) : sumup.state === "loading" ? "…" : "n/a"}
-            sub={sumup.state === "ok" && sumup.live > 0 ? `${sumup.live} live (today) · rest saved` : undefined}
-          />
+          {stressSide && (
+            <Kpi
+              label="Income — SumUp (card)"
+              value={sumup.state === "ok" ? euro(sumup.revenueCents) : sumup.state === "loading" ? "…" : "n/a"}
+              sub={sumup.state === "ok" && sumup.live > 0 ? `${sumup.live} live (today) · rest saved` : undefined}
+            />
+          )}
           <Kpi label="Cost of goods" value={stats ? `− ${euro(cogsCents)}` : "—"} />
           <Kpi
             label="Net profit / loss"
@@ -142,14 +151,16 @@ export default function PppDashboardPage() {
       </section>
 
       {/* AB profit — the markup on external cards, deliberately outside the P/L */}
-      <section className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Kpi
-          label="AB Profit (via PPP)"
-          value={stats ? euro(stats.abProfitCents ?? 0) : "—"}
-          accent={(stats?.abProfitCents ?? 0) > 0 ? "green" : undefined}
-          sub="External-card markup above internal prices · not in the P/L"
-        />
-      </section>
+      {stressSide && (
+        <section className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+          <Kpi
+            label="AB Profit (via PPP)"
+            value={stats ? euro(stats.abProfitCents ?? 0) : "—"}
+            accent={(stats?.abProfitCents ?? 0) > 0 ? "green" : undefined}
+            sub="External-card markup above internal prices · not in the P/L"
+          />
+        </section>
+      )}
 
       {/* Financials KPIs */}
       <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-7">

@@ -22,6 +22,15 @@ their site; "Reset link" sends a new one. Dimensie logins can't get SSS access.
 
 ## Dashboard
 
+**PPP admin:** at the top, a block per association you manage (the overall admin
+sees both): active members and how many have a card, what's **still to bill**
+(and orders that need a check), the last export, the specifications between Stress
+and Dimensie (Stress: still to send; Dimensie: latest received), upcoming borrels,
+and — for Dimensie — members without an IBAN. Below it the bar statistics; SumUp
+and external-card figures are Stress-only.
+
+**SSS admin:**
+
 A sales overview with a timeframe selector (**7 days / 30 days / 90 days / 1 year
 / All time**):
 - **KPIs:** Revenue, Active users, Orders, Items sold, Average order. *Active
@@ -125,11 +134,16 @@ Two tabs: **Pending export** (confirmed, awaiting billing) and **Exported**
   treasurer downloads the **PDF** / **CSV**, attaches it to their own invoice to
   Dimensie, books and sends it, then clicks **Mark sent to Dimensie** — only then does
   Dimensie see it. **Undo** is possible until then; **Create now** makes one by hand.
-- **Export Dimensie to Congressus** (PPP invoices page, Dimensie and overall
-  logins) — bills Dimensie members' pending drinks (Dimensie and joint borrels) in
-  Dimensie's Congressus: one invoice per member ("Borrels <month>"), no VAT, direct
-  debit. Drinks get a product in Dimensie's Congressus the first time they're
-  exported.
+- **Invoice PDF per member** — on a member's page (**Invoices**), each invoice can be
+  downloaded as a PDF with the association's logo: per borrel (and kiosk day for
+  Stress) what they had and paid. Use it when a member asks what their invoice is
+  for. Dimensie: one per export; Stress: one per Congressus invoice (a specification).
+- **Export Dimensie (Excel)** (PPP invoices page, Dimensie and overall logins) —
+  bills Dimensie members' pending drinks (Dimensie and joint borrels) into an Excel
+  sheet that downloads right away: one row per member with First Name, Last Name,
+  Email, IBAN, BIC, Event ("Drink costs <month>"), Event price (their total, no VAT)
+  and Student number. Dimensie collects from it itself. Earlier sheets can be
+  downloaded again under **Dimensie exports**; members without an IBAN are flagged.
 - **Export SSS + PPP to Congressus** (same button on the SSS and PPP invoices
   pages; on the PPP page "Export Stress") — bills ALL pending snack and drink orders together: **one Congressus
   invoice per member** with all their snacks and drinks — also when the orders are
@@ -195,6 +209,14 @@ linked to any member.
 2. Check the **Dashboard** for the month.
 3. **Invoices → Export SSS + PPP to Congressus** to bill the month's snacks and drinks.
 4. Verify the new invoices in Congressus.
+
+## Member portal (ppp.51vo.nl/user)
+
+Members of both associations log in with **their own Congressus account** ("Log in
+with Stress" / "Log in with Dimensie") and see what they still owe, their spending
+per month, every purchase, and their invoices as PDF. Someone in both associations
+sees both. Each association has to register the portal as an OAuth client in its
+Congressus once (see DEPLOYMENT.md).
 
 ## Member-facing flows (what members experience)
 

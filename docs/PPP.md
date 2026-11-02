@@ -162,6 +162,14 @@ Requirements & behaviour:
   order edits, SBZ usage, specials, Wall Street, external cards). External cards
   only work at Stress borrels.
 
+### Billing Dimensie members (`PppExportBatch`)
+
+Dimensie collects from its members itself: **Export Dimensie (Excel)** marks their
+pending orders exported in a batch and downloads a sheet with one row per member
+(name, email, IBAN, BIC, "Drink costs <month>", total, student number). Bank details
+and student numbers come from Dimensie's Congressus with the member sync; IBAN/BIC
+are stored encrypted. See [CONGRESSUS.md](CONGRESSUS.md).
+
 ### Specification Stress → Dimensie (`AssociationSettlement`)
 
 **PPP admin → To Dimensie** (Dimensie: **From Stress**). Created **automatically by

@@ -1,6 +1,6 @@
 "use client";
 
-import { EXPORT_CONFIRM, DIMENSIE_EXPORT_CONFIRM, exportResultMessage } from "@/lib/export-message";
+import { EXPORT_CONFIRM, DIMENSIE_EXPORT_CONFIRM, exportResultMessage, sheetExportMessage } from "@/lib/export-message";
 import { usePppMe } from "@/lib/usePppMe";
 import NeedsCheck from "@/components/NeedsCheck";
 import { useEffect, useMemo, useState } from "react";
@@ -50,8 +50,8 @@ export default function PppInvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [filter, setFilter] = useState<"CONFIRMED" | "EXPORTED">("CONFIRMED");
   const [exporting, setExporting] = useState(false);
-  // Each association exports its own members to its own Congressus: Stress (one
-  // SSS + PPP invoice per Stress member) and Dimensie (drinks only, no VAT).
+  // Each association bills its own members: Stress via Congressus (one SSS + PPP
+  // invoice per Stress member), Dimensie from an Excel sheet (drinks only, no VAT).
   const me = usePppMe();
   const stressSide = me != null && (me.associationId === null || me.associationId === "stress");
   const dimensieSide = me != null && (me.associationId === null || me.associationId === "dimensie");
@@ -77,7 +77,13 @@ export default function PppInvoicesPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ association }),
     });
-    setResult(exportResultMessage(await res.json().catch(() => ({ error: `HTTP ${res.status}` }))));
+    const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    if (association === "dimensie") {
+      setResult(sheetExportMessage(data));
+      if (data.sheet) window.location.href = `/api/admin/ppp/exports/${data.sheet.id}/xlsx`;
+    } else {
+      setResult(exportResultMessage(data));
+    }
     setExporting(false);
     setCheckKey((k) => k + 1);
     load();
@@ -179,7 +185,7 @@ export default function PppInvoicesPage() {
               disabled={exporting}
               className="rounded-xl bg-teal-600 px-5 py-2.5 font-semibold transition-colors hover:bg-teal-500 disabled:opacity-40"
             >
-              {exporting ? "Exporting…" : "Export Dimensie to Congressus"}
+              {exporting ? "Exporting…" : "Export Dimensie (Excel)"}
             </button>
           )}
         </div>
@@ -192,6 +198,7 @@ export default function PppInvoicesPage() {
       )}
 
       <NeedsCheck refreshKey={checkKey} onResolved={load} />
+      {dimensieSide && <SheetExports refreshKey={checkKey} />}
 
       <div className="mb-6 flex items-center gap-2">
         {(["CONFIRMED", "EXPORTED"] as const).map((s) => (
@@ -347,5 +354,45 @@ export default function PppInvoicesPage() {
         </div>
       )}
     </div>
+  );
+}
+
+interface SheetExport {
+  id: string;
+  number: string;
+  period: string;
+  members: number;
+  totalCents: number;
+  createdAt: string;
+  withoutIban: number;
+}
+
+// Dimensie's earlier exports, to download their sheet again.
+function SheetExports({ refreshKey }: { refreshKey: number }) {
+  const [rows, setRows] = useState<SheetExport[] | null>(null);
+  useEffect(() => {
+    fetch("/api/admin/ppp/exports")
+      .then((r) => (r.ok ? r.json() : { exports: [] }))
+      .then((d) => setRows(d.exports));
+  }, [refreshKey]);
+  if (!rows || rows.length === 0) return null;
+  return (
+    <details className="mb-6 rounded-xl border border-gray-800 bg-gray-900 px-4 py-3">
+      <summary className="cursor-pointer font-semibold">Dimensie exports ({rows.length})</summary>
+      <ul className="mt-3 space-y-2">
+        {rows.map((r) => (
+          <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 text-sm">
+            <span>
+              <b>{r.number}</b> · {r.period} · {r.members} member(s) · {euro(r.totalCents)}
+              <span className="text-gray-500"> · {new Date(r.createdAt).toLocaleDateString("en-GB")}</span>
+              {r.withoutIban > 0 && <span className="ml-2 text-amber-400">⚠ {r.withoutIban} without IBAN</span>}
+            </span>
+            <a href={`/api/admin/ppp/exports/${r.id}/xlsx`} className="rounded-lg bg-gray-800 px-3 py-1.5 text-gray-200 hover:bg-gray-700">
+              ⬇ Excel
+            </a>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }

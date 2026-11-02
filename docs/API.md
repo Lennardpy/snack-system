@@ -195,9 +195,62 @@ in `needsCheck`. No body.
 { "ok": true, "exported": 18, "sssOrders": 6, "pppOrders": 12, "congressusInvoices": 5, "failed": 0, "needsCheck": 0, "errors": [] }
 ```
 
+With `{ "association": "dimensie" }` (Dimensie/overall PPP admin) no Congressus call
+is made: Dimensie members' `CONFIRMED` drink orders become `EXPORTED` in a new
+`PppExportBatch`, and the specification for Stress is created.
+```json
+{ "association": "dimensie", "ok": true, "sheet": { "id": "…", "number": "DIM-EXP-2026-001", "members": 3, "totalCents": 1173 }, "specification": "STRESS-DIM-2026-003", "exported": 4, "errors": [] }
+```
+
+### `GET /api/admin/ppp/exports`
+The login's sheet exports (Dimensie), newest first, each with `withoutIban` (members
+on it without bank details). PPP admin, scoped.
+
+### `GET /api/admin/ppp/exports/[id]/xlsx`
+The Excel sheet of one export (contains IBANs; `Cache-Control: no-store`; each
+download is logged). That association's PPP admin or the overall admin; 404 otherwise.
+
+### `GET /api/admin/members/[id]/invoices`
+The member's invoices (Dimensie: one per export; Stress: one per Congressus invoice),
+`{ invoices: [{ key, association, reference, period, date, totalCents }] }`. Member
+admin of that association.
+
+### `GET /api/admin/members/[id]/invoices/[key]`
+That invoice as a PDF with the association's logo, per borrel / kiosk day — to send
+or show the member. 404 for another association's member or another member's invoice.
+
+### `GET /api/admin/ppp/overview`
+The dashboard's per-association block: members (active, with a card, without IBAN),
+upcoming borrels, unbilled amount and needs-check count, last export, specifications.
+
 ### `POST /api/admin/invoices/reconcile`
 Resolve orders stuck in `EXPORTING` after checking Congressus.
 Body `{ sssIds: [...], pppIds: [...], action: "exported"|"pending", congressusInvoiceId? }` —
 a combined invoice's SSS and PPP orders are resolved together.
 Only claims older than 10 minutes; `409` otherwise. The invoice lists accept
 `?status=EXPORTING` to list them.
+
+## Member portal (`ppp.51vo.nl/user`)
+
+Separate member session (`MemberSession`, cookie `member_session`, 8 h) from logging
+in with the association's Congressus (OAuth 2.0). Read-only, the person's own data:
+all memberships with the same email.
+
+### `GET /api/user/oauth/start?association=stress|dimensie`
+Redirects to `<domain>/oauth/authorize` (scope `openid email profile`) with a random
+`state` in a 10-minute httpOnly cookie. PPP host only.
+
+### `GET /api/user/oauth/callback?code&state`  · rate-limited 20/min/IP
+Checks the state, swaps the code at `<domain>/oauth/token` (client credentials via
+Basic auth), reads `<domain>/oauth/userinfo` (`user_id`, `email`) and signs in the
+member with that Congressus id (else that email) in that association. Errors go to
+`/user?error=expired|failed|not-a-member|unavailable|busy`.
+
+### `GET /api/user/me`
+Signed out: `{ signedIn: false, providers }`. Signed in: member, memberships,
+`unbilledCents`, spending per month, purchases (≤ 200) and invoices.
+
+### `GET /api/user/invoices/[key]`
+One of the person's own invoices as a PDF (404 otherwise).
+
+### `POST /api/user/logout`

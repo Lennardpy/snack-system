@@ -19,6 +19,9 @@ interface CongressusConfig {
   // Product used for lines without a mapped product offer (€0.01 × cents);
   // null = every line must have an offer.
   fallbackOfferId: number | null;
+  // Bills its members from an Excel sheet (with their IBAN/BIC from Congressus)
+  // instead of Congressus sale invoices — Dimensie.
+  billsFromSheet: boolean;
 }
 
 const intEnv = (name: string): number | null => {
@@ -38,6 +41,7 @@ const CONFIG: Record<AssociationId, CongressusConfig> = {
     pppFolderId: intEnv("CONGRESSUS_PPP_FOLDER_ID") ?? 8804,
     // "SSS purchases Mendix" — €0.01 per unit, quantity = total cents.
     fallbackOfferId: intEnv("CONGRESSUS_PRODUCT_OFFER_ID") ?? 118389,
+    billsFromSheet: false,
   },
   dimensie: {
     tokenEnv: "CONGRESSUS_API_TOKEN_DIMENSIE",
@@ -48,6 +52,7 @@ const CONFIG: Record<AssociationId, CongressusConfig> = {
     sssFolderId: null,
     pppFolderId: intEnv("CONGRESSUS_PPP_FOLDER_ID_DIMENSIE"),
     fallbackOfferId: intEnv("CONGRESSUS_PRODUCT_OFFER_ID_DIMENSIE"),
+    billsFromSheet: true,
   },
 };
 
@@ -88,6 +93,86 @@ export interface CongressusMember {
   };
   deleted: boolean;
   locked: boolean;
+  // Only on the full member object (GET /members/{id}; the list may leave them out).
+  bank_account?: { iban?: string | null; bic?: string | null } | null;
+  custom_field_data?: unknown;
+}
+
+// Bank details + student number, for the associations that bill from a sheet
+// instead of Congressus invoices (Dimensie).
+export interface MemberBankDetails {
+  iban: string | null;
+  bic: string | null;
+  studentNumber: string | null;
+}
+
+// The student number is a custom field in Congressus, not a standard one. Its key
+// or label comes from CONGRESSUS_<ASSOC>_STUDENT_NUMBER_FIELD (e.g. "studentnummer");
+// without it, any custom field whose key/label mentions "student" is used.
+// Handles both shapes Congressus uses: { key: value | { value } } and
+// [{ name/label/slug/key, value }].
+export function studentNumberOf(data: unknown, fieldName?: string): string | null {
+  const wanted = fieldName?.trim().toLowerCase();
+  const matches = (k: unknown) =>
+    typeof k === "string" && (wanted ? k.trim().toLowerCase() === wanted : /student/i.test(k));
+  const valueOf = (v: unknown): string | null => {
+    if (v && typeof v === "object" && "value" in v) v = (v as { value: unknown }).value;
+    if (typeof v === "number") return String(v);
+    return typeof v === "string" && v.trim() ? v.trim() : null;
+  };
+  if (Array.isArray(data)) {
+    for (const f of data) {
+      if (!f || typeof f !== "object") continue;
+      const o = f as Record<string, unknown>;
+      if ([o.name, o.label, o.slug, o.key, o.field_name].some(matches)) {
+        const v = valueOf(o);
+        if (v) return v;
+      }
+    }
+  } else if (data && typeof data === "object") {
+    for (const [k, v] of Object.entries(data)) {
+      const val = matches(k) ? valueOf(v) : null;
+      if (val) return val;
+    }
+  }
+  return null;
+}
+
+function bankDetailsOf(association: AssociationId, m: CongressusMember): MemberBankDetails {
+  const clean = (v: string | null | undefined) => (v ? v.replace(/\s+/g, "").toUpperCase() : null) || null;
+  return {
+    iban: clean(m.bank_account?.iban),
+    bic: clean(m.bank_account?.bic),
+    studentNumber: studentNumberOf(
+      m.custom_field_data,
+      process.env[`CONGRESSUS_${association.toUpperCase()}_STUDENT_NUMBER_FIELD`]
+    ),
+  };
+}
+
+// Bank details of these members, by Congressus id. Uses the list objects when they
+// carry bank_account; otherwise fetches each member (GET /members/{id}), a few at
+// a time. Throws if a fetch fails, so a sync never wipes stored details by mistake.
+export async function fetchBankDetails(
+  association: AssociationId,
+  members: CongressusMember[]
+): Promise<Map<number, MemberBankDetails>> {
+  const out = new Map<number, MemberBankDetails>();
+  const todo: number[] = [];
+  for (const m of members) {
+    if (m.bank_account !== undefined) out.set(m.id, bankDetailsOf(association, m));
+    else todo.push(m.id);
+  }
+  for (let i = 0; i < todo.length; i += 5) {
+    await Promise.all(
+      todo.slice(i, i + 5).map(async (id) => {
+        const res = await fetch(`${BASE}/members/${id}`, { headers: headers(association) });
+        if (!res.ok) throw new Error(`Congressus (${association}) /members/${id} failed: ${res.status}`);
+        out.set(id, bankDetailsOf(association, (await res.json()) as CongressusMember));
+      })
+    );
+  }
+  return out;
 }
 
 // Fetch all members with an allowed status from this association's Congressus,

@@ -12,11 +12,11 @@ and monthly sale-invoices (out). Client code lives in `src/lib/congressus.ts`.
 |---|---|---|
 | Token env var | `CONGRESSUS_API_TOKEN` | `CONGRESSUS_API_TOKEN_DIMENSIE` |
 | Imported member statuses | `1845` Primary, `1844` Secondary, `4119` Honorary | `1588` Lid, `1671` Extraordinary member |
-| Invoice workflow id | `605` (Contribution) | `309` (`CONGRESSUS_DIMENSIE_WORKFLOW_ID`) |
-| Direct debit | yes | yes |
+| Billing | Congressus sale invoices (workflow `605`, direct debit) | **Excel sheet** — Dimensie collects itself; no Congressus invoices |
+| Bank details + student number | not imported | imported (IBAN/BIC encrypted) |
 | SSS (snacks) folder | `5952` | – (no kiosk) |
-| PPP (drinks) folder | `8804` (`CONGRESSUS_PPP_FOLDER_ID`) | `CONGRESSUS_PPP_FOLDER_ID_DIMENSIE` (not created yet) |
-| Fallback product | `118389` "SSS purchases Mendix" | `CONGRESSUS_PRODUCT_OFFER_ID_DIMENSIE` (none yet) |
+| PPP (drinks) folder | `8804` (`CONGRESSUS_PPP_FOLDER_ID`) | – (folder 9445 "PPP" exists from earlier, unused) |
+| Fallback product | `118389` "SSS purchases Mendix" | – |
 | VAT on products | yes (VL 9% / VH 21%) | none — Dimensie doesn't do VAT |
 
 > The bar subsystem (PPP) reuses this same client. See [PPP.md](PPP.md). PPP
@@ -35,6 +35,16 @@ in both associations has one member row per association (Congressus ids are per
 instance, so the same id can belong to different people). A member is marked `active` unless Congressus says they
 are deleted, locked, archived, or deceased. Members without an email are skipped
 (email is the unique key used for card linking).
+
+**Dimensie also imports bank details and the student number** (it bills from a
+sheet, `billsFromSheet` in `CONFIG`): `bank_account.iban` / `.bic` from the member
+object — fetched per member with `GET /members/{id}` when the list leaves them out —
+stored **AES-256-GCM encrypted** (`Member.ibanEnc` / `bicEnc`, key `MEMBER_DATA_KEY`,
+`src/lib/secret-box.ts`). The student number is a Congressus **custom field**: the
+field named in `CONGRESSUS_DIMENSIE_STUDENT_NUMBER_FIELD`, or else the first custom
+field whose key/label contains "student". Without `MEMBER_DATA_KEY` the sync still
+runs but leaves bank details as they were and says so; if fetching them fails,
+nothing is changed.
 
 ## Products (SSS → Congressus)
 
@@ -118,22 +128,23 @@ The bar subsystem syncs the same way, into its own folder.
   lines without one use the Mendix fallback. Source rows (both tables) are marked
   `EXPORTED` with the same Congressus invoice id.
 
-## Dimensie's export (PPP → Dimensie's Congressus)
+## Dimensie's export (PPP → Excel sheet)
 
-`POST /api/admin/invoices/export` with `{ "association": "dimensie" }` (PPP admin,
-Dimensie or overall login) exports the pending drink orders of **Dimensie members**
-— at Dimensie borrels and joint borrels — to Dimensie's Congressus: one invoice per
-member per export, reference **"Borrels <period>"**, workflow `309`, direct debit,
-**no VAT**. Same claim / needs-check / €0 rules as the Stress export; the reconcile
-route lets each side resolve only its own members' orders.
+Dimensie collects from its members itself, so its export creates **no Congressus
+invoices**. `POST /api/admin/invoices/export` with `{ "association": "dimensie" }`
+(PPP admin, Dimensie or overall login) marks the pending drink orders of **Dimensie
+members** — at Dimensie borrels and joint borrels — `EXPORTED` and ties them to a
+`PppExportBatch` (`DIM-EXP-<year>-001…`), in one transaction. The sheet
+(`GET /api/admin/ppp/exports/<id>/xlsx`, `src/lib/export-sheet.ts`) has one row per
+member with something to pay:
 
-Invoice lines need a product in *Dimensie's* Congressus. `src/lib/export-offers.ts`
-looks it up in `PppProductOffer` (drink × association) and creates missing ones —
-Dimensie's own drinks and Stress drinks drunk at joint borrels — in a top-level
-**"PPP"** folder, which is created on the first export
-(`POST /product-folders`) and saved on `Association.congressusPppFolderId`
-(`CONGRESSUS_PPP_FOLDER_ID_DIMENSIE` overrides). If Congressus refuses, nothing is
-exported and every claimed order is released.
+| First Name | Last Name | Email | IBAN | BIC | Event | Event price | Student number |
+|---|---|---|---|---|---|---|---|
+| | | | decrypted on download | | `Drink costs <period>` | member's total (€, no VAT) | |
+
+It's built on each download from the batch's orders, so IBANs are never stored
+outside the encrypted member fields. Then the specification for Stress is created
+as before.
 
 ## Quick reference of quirks
 

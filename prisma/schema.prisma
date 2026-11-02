@@ -26,6 +26,7 @@ model Association {
   pppCategories PppProductCategory[]
   pppProducts   PppProduct[]
   pppOffers     PppProductOffer[]
+  exportBatches PppExportBatch[]
 }
 
 model Member {
@@ -42,6 +43,12 @@ model Member {
   lastName     String
   email        String
   active       Boolean  @default(true)
+  // Dimensie only (their export sheet, not Congressus invoices): bank details from
+  // Congressus, AES-256-GCM encrypted with MEMBER_DATA_KEY (src/lib/secret-box.ts),
+  // and the student number.
+  ibanEnc       String?
+  bicEnc        String?
+  studentNumber String?
   // Set when an admin deletes a member who has exported purchase history: the row
   // stays (anonymised) so past orders and revenue figures remain correct.
   deletedAt    DateTime?
@@ -53,6 +60,7 @@ model Member {
   pppInvoices PppInvoice[]
   roles       MemberRole[]
   user        User?
+  portalSessions MemberSession[]
 
   @@unique([associationId, congressusId])
   @@unique([associationId, email])
@@ -469,6 +477,9 @@ model PppInvoice {
   // (a Dimensie member's drinks at a borrel Stress hosts). Locks the order.
   settlementId String?
   settlement   AssociationSettlement? @relation(fields: [settlementId], references: [id], onDelete: SetNull)
+  // Dimensie: the export (Excel sheet) the order was billed in.
+  exportBatchId String?
+  exportBatch   PppExportBatch? @relation(fields: [exportBatchId], references: [id], onDelete: SetNull)
 }
 
 // Stress's specification to Dimensie of what Dimensie members drank at joint
@@ -628,4 +639,35 @@ model PppExternalLine {
   order     PppExternalOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId String
   product   PppProduct       @relation(fields: [productId], references: [id])
+}
+
+// One Dimensie export: Dimensie collects from its members itself, from an Excel
+// sheet (one row per member: name, email, IBAN, BIC, total, student number). The
+// sheet is built on download from the orders in the batch, so bank details are
+// never copied out of the encrypted member fields.
+model PppExportBatch {
+  id            String      @id @default(cuid())
+  number        String      @unique // "DIM-EXP-<year>-NNN"
+  associationId String
+  association   Association @relation(fields: [associationId], references: [id])
+  period        String // e.g. "October 2026"
+  members       Int
+  totalCents    Int
+  createdAt     DateTime    @default(now())
+  createdById   String?
+  orders        PppInvoice[]
+}
+
+// A member signed in to the member portal (ppp.51vo.nl/user) with Congressus OAuth
+// of one of their associations. Separate from staff sessions (Session): own cookie
+// ("member_session"), read-only access to the person's own purchases and invoices.
+model MemberSession {
+  id          String   @id @default(cuid())
+  token       String   @unique
+  memberId    String
+  member      Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  // The association whose Congressus they signed in with.
+  associationId String
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
 }

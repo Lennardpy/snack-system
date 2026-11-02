@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
-import { createSaleInvoice, congressusConfigured, CongressusHttpError, InvoiceLineItem } from "@/lib/congressus";
+import { createSaleInvoice, congressusConfig, congressusConfigured, CongressusHttpError, InvoiceLineItem } from "@/lib/congressus";
+import { createSheetExport, SheetExportError } from "@/lib/export-sheet";
 import { requirePpp, requireStressExporter } from "@/lib/auth";
 import { pickAssociation, type AssociationId } from "@/lib/associations";
 import { pppOffersFor } from "@/lib/export-offers";
@@ -11,9 +12,10 @@ import { createSettlement } from "@/lib/settlement";
 // ("stress" default | "dimensie").
 //   • Stress   — snacks + drinks of Stress members, reference "SSS & PPP <period>",
 //                with VAT (from the products). SSS admin or Stress-side PPP admin.
-//   • Dimensie — drinks of Dimensie members (Dimensie borrels and joint ones),
-//                reference "Borrels <period>", no VAT; drinks get a product in
-//                Dimensie's Congressus on their first export. Dimensie/overall PPP admin.
+//   • Dimensie — drinks of Dimensie members (Dimensie borrels and joint ones). Dimensie
+//                collects from its members itself, so no Congressus invoices: the
+//                orders go into an export batch whose Excel sheet is downloaded
+//                (src/lib/export-sheet.ts). Dimensie/overall PPP admin.
 //
 // One combined export: ONE Congressus sale invoice per member per export, holding
 // all their pending SSS snack lines and PPP drink lines — whatever month the
@@ -117,6 +119,7 @@ export async function POST(req: NextRequest) {
     }
     userId = ppp.user.id;
   }
+  if (congressusConfig(association).billsFromSheet) return sheetExport(association, userId);
   if (!congressusConfigured(association)) {
     return NextResponse.json({ error: `No Congressus API key configured for ${association}.` }, { status: 400 });
   }
@@ -301,23 +304,41 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Dimensie's export → Stress's specification of the joint-borrel drinks Dimensie
-  // has now billed its members (src/lib/settlement.ts). Never fails the export.
+  return NextResponse.json({
+    association,
+    ok: out.failed === 0,
+    exported: out.sssOrders + out.pppOrders,
+    ...out,
+  });
+}
+
+// Dimensie: bill the pending orders into an export batch (its sheet is downloaded
+// from /api/admin/ppp/exports/<id>/xlsx), then Stress's specification of the
+// joint-borrel drinks now billed.
+async function sheetExport(association: AssociationId, userId: string) {
+  let batch;
+  try {
+    batch = await createSheetExport(association, userId);
+  } catch (err) {
+    if (err instanceof SheetExportError) return NextResponse.json({ error: err.message }, { status: err.status });
+    throw err;
+  }
+  const errors: string[] = [];
   let specification: string | null = null;
-  if (association === "dimensie") {
+  if (batch) {
     try {
       specification = (await createSettlement(userId))?.number ?? null;
     } catch (err) {
       console.error("[export] creating the specification for Stress failed:", err);
-      out.errors.push(`Specification for Stress not created (${(err as Error).message}) — create it on the Dimensie invoices page.`);
+      errors.push(`Specification for Stress not created (${(err as Error).message}) — create it on the specifications page.`);
     }
   }
-
   return NextResponse.json({
     association,
+    ok: true,
+    sheet: batch && { id: batch.id, number: batch.number, members: batch.members, totalCents: batch.totalCents },
     specification,
-    ok: out.failed === 0,
-    exported: out.sssOrders + out.pppOrders,
-    ...out,
+    exported: batch ? await prisma.pppInvoice.count({ where: { exportBatchId: batch.id } }) : 0,
+    errors,
   });
 }

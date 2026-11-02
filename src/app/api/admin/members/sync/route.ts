@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { fetchAllMembers, congressusConfigured } from "@/lib/congressus";
+import { fetchAllMembers, fetchBankDetails, congressusConfig, congressusConfigured, type MemberBankDetails } from "@/lib/congressus";
+import { seal, secretBoxConfigured } from "@/lib/secret-box";
 import { isAssociationId, type AssociationId } from "@/lib/associations";
 import { rehomeCards, moveCardsToStress } from "@/lib/memberships";
 import { requireMemberAdmin } from "@/lib/auth";
@@ -31,6 +32,29 @@ export async function POST(req: NextRequest) {
     console.error(`Member sync (${association}): Congressus fetch failed`, err);
     return NextResponse.json({ error: "Could not fetch members from Congressus — nothing was changed." }, { status: 502 });
   }
+
+  // Associations that bill from a sheet (Dimensie) also need each member's IBAN,
+  // BIC and student number. Bank details are stored encrypted — without
+  // MEMBER_DATA_KEY they're left as they are (and the sync says so).
+  let bank: Map<number, MemberBankDetails> | null = null;
+  let bankWarning: string | null = null;
+  if (congressusConfig(association).billsFromSheet) {
+    try {
+      bank = await fetchBankDetails(association, members);
+    } catch (err) {
+      console.error(`Member sync (${association}): fetching bank details failed`, err);
+      return NextResponse.json({ error: "Could not fetch members' bank details from Congressus — nothing was changed." }, { status: 502 });
+    }
+    if (!secretBoxConfigured()) bankWarning = "Bank details not stored: MEMBER_DATA_KEY is not set on the server.";
+  }
+  const bankData = (id: number) => {
+    const b = bank?.get(id);
+    if (!b) return {};
+    return {
+      studentNumber: b.studentNumber,
+      ...(bankWarning ? {} : { ibanEnc: b.iban ? seal(b.iban) : null, bicEnc: b.bic ? seal(b.bic) : null }),
+    };
+  };
 
   // ── Remove members that are no longer in Congressus ─────────────────────────
   // (removed there, or no longer an allowed member status). Otherwise they could
@@ -65,6 +89,7 @@ export async function POST(req: NextRequest) {
             lastName: m.last_name,
             email: m.email,
             active,
+            ...bankData(m.id),
           },
         });
         // No longer active (locked / archived…): their cards go to their other,
@@ -87,6 +112,7 @@ export async function POST(req: NextRequest) {
             lastName: m.last_name,
             email: m.email,
             active,
+            ...bankData(m.id),
           },
         });
         // A Dimensie member who now joins Stress: their card moves to the new Stress
@@ -100,7 +126,19 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, association, created, updated, skipped, total: members.length, ...prune, cardsMoved });
+  const withoutIban = bank ? [...bank.values()].filter((b) => !b.iban).length : null;
+  return NextResponse.json({
+    ok: true,
+    association,
+    created,
+    updated,
+    skipped,
+    total: members.length,
+    ...prune,
+    cardsMoved,
+    withoutIban,
+    bankWarning,
+  });
 }
 
 // Members in our DB but not in the Congressus list: deleted when they have no

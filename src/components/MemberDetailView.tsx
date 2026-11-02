@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { formatRoleDiscount } from "@/lib/roles";
+import MemberInvoiceList from "@/components/MemberInvoiceList";
 
 interface Role {
   id: string;
@@ -43,6 +44,7 @@ interface Data {
     active: boolean;
     roles: Role[];
     cards: CardInfo[];
+    billing: { iban: string | null; bic: string | null; studentNumber: string | null } | null;
   };
   sss: Totals;
   ppp: Totals;
@@ -147,6 +149,13 @@ export default function MemberDetailView({ site }: { site: "sss" | "ppp" }) {
           <p className="text-gray-400">
             {member.email} · Congressus #{member.congressusId}
           </p>
+          {member.billing && (
+            <p className="text-sm text-gray-500">
+              IBAN {member.billing.iban ?? <span className="text-amber-400">missing</span>}
+              {member.billing.bic && <> · BIC {member.billing.bic}</>} · Student number{" "}
+              {member.billing.studentNumber ?? <span className="text-amber-400">missing</span>}
+            </p>
+          )}
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {member.roles.map((r) => (
               <span
@@ -227,34 +236,46 @@ export default function MemberDetailView({ site }: { site: "sss" | "ppp" }) {
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        {/* Cards */}
-        <section className="rounded-2xl border border-gray-800 bg-gray-900 p-6 xl:col-span-1">
-          <h2 className="mb-1 text-lg font-semibold">Linked cards</h2>
-          <p className="mb-4 text-sm text-gray-500">Lost card? Unlink it — the member and their history stay.</p>
-          {member.cards.length === 0 ? (
-            <p className="text-gray-500">No cards linked.</p>
-          ) : (
-            <ul className="space-y-2">
-              {member.cards.map((c) => (
-                <li key={c.id} className="flex items-center justify-between gap-3 rounded-xl bg-gray-800/60 px-4 py-3">
-                  <div className="min-w-0">
-                    <p className="truncate font-mono text-sm font-semibold">{c.uid}</p>
-                    <p className="text-xs text-gray-500">
-                      {c.name ? `${c.name} · ` : ""}linked {new Date(c.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => unlink(c)}
-                    disabled={unlinking === c.id}
-                    className="flex-shrink-0 rounded-lg bg-gray-800 px-3 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-red-600 hover:text-white disabled:opacity-40"
-                  >
-                    {unlinking === c.id ? "Unlinking…" : "Unlink"}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        <div className="space-y-6 xl:col-span-1">
+          {/* Cards */}
+          <section className="rounded-2xl border border-gray-800 bg-gray-900 p-6">
+            <h2 className="mb-1 text-lg font-semibold">Linked cards</h2>
+            <p className="mb-4 text-sm text-gray-500">Lost card? Unlink it — the member and their history stay.</p>
+            {member.cards.length === 0 ? (
+              <p className="text-gray-500">No cards linked.</p>
+            ) : (
+              <ul className="space-y-2">
+                {member.cards.map((c) => (
+                  <li key={c.id} className="flex items-center justify-between gap-3 rounded-xl bg-gray-800/60 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-mono text-sm font-semibold">{c.uid}</p>
+                      <p className="text-xs text-gray-500">
+                        {c.name ? `${c.name} · ` : ""}linked {new Date(c.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => unlink(c)}
+                      disabled={unlinking === c.id}
+                      className="flex-shrink-0 rounded-lg bg-gray-800 px-3 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-red-600 hover:text-white disabled:opacity-40"
+                    >
+                      {unlinking === c.id ? "Unlinking…" : "Unlink"}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {/* Invoices — a PDF per invoice, to explain it to the member */}
+          <section className="rounded-2xl border border-gray-800 bg-gray-900 p-6">
+            <h2 className="mb-1 text-lg font-semibold">Invoices</h2>
+            <p className="mb-4 text-sm text-gray-500">Download one to send or show the member what they were billed for.</p>
+            <MemberInvoiceList
+              listUrl={`/api/admin/members/${member.id}/invoices`}
+              pdfUrl={(key) => `/api/admin/members/${member.id}/invoices/${key}`}
+            />
+          </section>
+        </div>
 
         {/* Purchases */}
         <section className="rounded-2xl border border-gray-800 bg-gray-900 p-6 xl:col-span-2">

@@ -47,6 +47,8 @@ per association.
 | `email` | String | **unique per association** — must match their Congressus login email |
 | `active` | Boolean | false if deleted/locked/archived/deceased in Congressus |
 | `deletedAt` | DateTime? | set when an admin deletes a member with exported history (row kept, anonymised, hidden from lists) |
+| `ibanEnc`, `bicEnc` | String? | Dimensie only: bank details from Congressus, AES-256-GCM encrypted (`MEMBER_DATA_KEY`); cleared on delete |
+| `studentNumber` | String? | Dimensie only: from a Congressus custom field |
 | `createdAt`, `updatedAt` | DateTime | |
 | Relations | `cards[]`, `invoices[]`, `user?` | |
 
@@ -193,3 +195,28 @@ npx prisma migrate deploy
 ```
 
 On Railway this runs automatically at container start (see [DEPLOYMENT.md](DEPLOYMENT.md)).
+
+### PppExportBatch
+One Dimensie export (Dimensie bills from an Excel sheet, not Congressus). Its
+orders point to it (`PppInvoice.exportBatchId`); the sheet is generated on download
+from those orders and the members' encrypted bank details.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `id` | String (cuid) | PK |
+| `number` | String | unique, `DIM-EXP-<year>-001…` |
+| `associationId` | String | `dimensie` |
+| `period` | String | e.g. "October 2026" (from the borrel dates) |
+| `members`, `totalCents` | Int | members with something to pay, and the total |
+| `createdAt`, `createdById` | | |
+
+### MemberSession
+A member signed in to the member portal (`ppp.51vo.nl/user`) via Congressus OAuth.
+Separate from staff `Session`s.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `token` | String | unique, random (cookie `member_session`) |
+| `memberId` | String | the membership they logged in with (cascade-deleted with it) |
+| `associationId` | String | whose Congressus they used |
+| `expiresAt`, `createdAt` | DateTime | 8 hours |

@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { requireMemberAdmin } from "@/lib/auth";
 import { inScope } from "@/lib/scope";
 import { rehomeCards, cardsByPerson } from "@/lib/memberships";
+import { congressusConfig } from "@/lib/congressus";
+import { isAssociationId } from "@/lib/associations";
+import { maskIban, open } from "@/lib/secret-box";
 
 // GET /api/admin/members/[id] — the member dashboard: cards (with UIDs), roles,
 // SSS + PPP spend totals, the open (confirmed, not yet exported) amount, and the
@@ -75,6 +78,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       email: member.email,
       active: member.active,
       roles: member.roles,
+      // Associations billing from a sheet (Dimensie): what the sheet will hold —
+      // the IBAN only masked here.
+      billing:
+        isAssociationId(member.associationId) && congressusConfig(member.associationId).billsFromSheet
+        ? { iban: maskIban(open(member.ibanEnc)), bic: open(member.bicEnc), studentNumber: member.studentNumber }
+        : null,
       // The person's cards, on whichever of their memberships they're stored.
       cards: ((await cardsByPerson()).get(member.email.toLowerCase()) ?? []).map((c) => ({
         id: c.id,
@@ -158,6 +167,9 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
         active: false,
         congressusId: null,
         deletedAt: new Date(),
+        ibanEnc: null,
+        bicEnc: null,
+        studentNumber: null,
         roles: { set: [] },
       },
     }),

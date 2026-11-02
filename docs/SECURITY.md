@@ -130,6 +130,27 @@ bound the exposure. Stronger options (not currently implemented): move the token
 into an httpOnly cookie so it can't be shared via URL, or use a crypto-random
 token instead of a cuid.
 
+### Member portal (`ppp.51vo.nl/user`)
+Members log in with their association's Congressus (OAuth 2.0 authorization code;
+`state` in a short-lived httpOnly cookie, compared in constant time; client secret
+server-side only). The portal session is a separate table and cookie
+(`member_session`, random 256-bit token, 8 h) — it never grants staff access, and a
+staff session doesn't open the portal. A member is matched by Congressus id (else
+email) within the association they logged in with, and sees only the purchases and
+invoices of their own memberships (same email). The portal is read-only; invoice
+PDFs are looked up within those memberships (another key → 404). No IBANs are shown.
+
+### Dimensie members' bank details
+Dimensie bills from an Excel sheet, so its member sync imports IBAN, BIC and student
+number. **IBAN and BIC are encrypted at rest** (AES-256-GCM, random IV, auth tag;
+key `MEMBER_DATA_KEY`, never in the DB or the repo; `src/lib/secret-box.ts`). They
+are decrypted only to build the export sheet — on download, never stored in a
+snapshot or file — and shown masked (`NL91 •••• 4300`) on the member page. The sheet
+is served only to Dimensie's PPP admins and the overall admin, with `no-store`, and
+every download is logged. Deleting a member clears them. The sheet is a personal-data
+file once downloaded: it should be handled by Dimensie's treasurer and deleted after
+collection. Stress's members' bank details are never imported.
+
 ## Prohibited / careful operations
 
 - **Member deletion** is blocked while invoices exist.

@@ -12,7 +12,7 @@ const PUBLIC_ADMIN = ["/admin/login", "/ppp/login"];
 // Two sites, one app (src/lib/site.ts): the snack system on snacks.51vo.nl and the
 // bar system on ppp.51vo.nl. Paths of the other site redirect to its domain, so
 // old bookmarks (snacks.51vo.nl/ppp, /admin/ppp/…) keep working.
-const PPP_PATHS = ["/ppp", "/wallstreet"];
+const PPP_PATHS = ["/ppp", "/wallstreet", "/user"];
 // What the PPP domain serves besides its own pages (APIs check the site themselves).
 const PPP_SHARED = ["/api/", "/set-password", "/uploads/"];
 // Old PPP admin URLs on the snack domain → the PPP admin.
