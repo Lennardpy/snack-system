@@ -17,10 +17,13 @@ const ORGANIZERS: Record<string, AssociationId> = {
   [process.env.ALEXIA_ORGANIZER_DIMENSIE ?? "Dimensie"]: "dimensie",
 };
 
-// The weekly joint drink: a Stress "Weekly Drink" on a Thursday (Amsterdam time).
-// Stress hosts and pays; members of both associations can pay there.
+// Joint drinks (Stress hosts and pays; members of both associations can pay):
+//   • the weekly drink — a Stress "Weekly Drink" on a Thursday (Amsterdam time);
+//   • ThuAD — any Stress borrel with "ThuAD" (or "TruAD") in its name, whatever the day.
 export function isJointBorrel(associationId: AssociationId, name: string, startsAt: Date): boolean {
-  if (associationId !== "stress" || !/weekly/i.test(name)) return false;
+  if (associationId !== "stress") return false;
+  if (/thuad|truad/i.test(name)) return true;
+  if (!/weekly/i.test(name)) return false;
   const weekday = new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: "Europe/Amsterdam" }).format(startsAt);
   return weekday === "Thu";
 }

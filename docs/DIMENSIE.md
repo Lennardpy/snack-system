@@ -8,7 +8,7 @@ Everything runs at **`ppp.51vo.nl`**. Dimensie gets its own admin login, which o
 
 | Borrel | Bar paid by | Prices | Who can pay |
 |---|---|---|---|
-| **Joint**, the Thursday Weekly Drink | Stress | Stress's | Stress and Dimensie members |
+| **Joint**: the Thursday Weekly Drink and ThuAD | Stress | Stress's | Stress and Dimensie members |
 | **Dimensie** | Dimensie | Dimensie's own | Dimensie members |
 | **Stress** | Stress | Stress's | Stress members |
 
