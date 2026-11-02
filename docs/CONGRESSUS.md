@@ -40,9 +40,12 @@ are deleted, locked, archived, or deceased. Members without an email are skipped
 sheet, `billsFromSheet` in `CONFIG`): `bank_account.iban` / `.bic` from the member
 object — fetched per member with `GET /members/{id}` when the list leaves them out —
 stored **AES-256-GCM encrypted** (`Member.ibanEnc` / `bicEnc`, key `MEMBER_DATA_KEY`,
-`src/lib/secret-box.ts`). The student number is a Congressus **custom field**: the
-field named in `CONGRESSUS_DIMENSIE_STUDENT_NUMBER_FIELD`, or else the first custom
-field whose key/label contains "student". Without `MEMBER_DATA_KEY` the sync still
+`src/lib/secret-box.ts`). Dimensie's member list includes `bank_account`, so no extra
+calls are needed. Dimensie keeps the **student number in the member's `username`**
+(`1234567` or `s1234567`; checked November 2026: 432 of 438 members, the rest have a
+name there and get no student number) — stored normalised as `s1234567`
+(`studentNumberInUsername` in `CONFIG`). Dimensie has no member custom fields; for an
+association that does, `CONGRESSUS_<ASSOC>_STUDENT_NUMBER_FIELD` names the field. Without `MEMBER_DATA_KEY` the sync still
 runs but leaves bank details as they were and says so; if fetching them fails,
 nothing is changed.
 

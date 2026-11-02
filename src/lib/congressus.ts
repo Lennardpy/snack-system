@@ -22,6 +22,9 @@ interface CongressusConfig {
   // Bills its members from an Excel sheet (with their IBAN/BIC from Congressus)
   // instead of Congressus sale invoices — Dimensie.
   billsFromSheet: boolean;
+  // Where the student number lives: Dimensie keeps it in the member's username
+  // ("1234567" or "s1234567"); otherwise a custom field (see studentNumberOf).
+  studentNumberInUsername: boolean;
 }
 
 const intEnv = (name: string): number | null => {
@@ -42,6 +45,7 @@ const CONFIG: Record<AssociationId, CongressusConfig> = {
     // "SSS purchases Mendix" — €0.01 per unit, quantity = total cents.
     fallbackOfferId: intEnv("CONGRESSUS_PRODUCT_OFFER_ID") ?? 118389,
     billsFromSheet: false,
+    studentNumberInUsername: false,
   },
   dimensie: {
     tokenEnv: "CONGRESSUS_API_TOKEN_DIMENSIE",
@@ -53,6 +57,7 @@ const CONFIG: Record<AssociationId, CongressusConfig> = {
     pppFolderId: intEnv("CONGRESSUS_PPP_FOLDER_ID_DIMENSIE"),
     fallbackOfferId: intEnv("CONGRESSUS_PRODUCT_OFFER_ID_DIMENSIE"),
     billsFromSheet: true,
+    studentNumberInUsername: true,
   },
 };
 
@@ -106,7 +111,14 @@ export interface MemberBankDetails {
   studentNumber: string | null;
 }
 
-// The student number is a custom field in Congressus, not a standard one. Its key
+// A UT student number from a username such as "1234567", "s1234567" or " 1234567 "
+// → "s1234567"; null when the username isn't one (e.g. a name).
+export function studentNumberFromUsername(username: string | null | undefined): string | null {
+  const m = (username ?? "").replace(/\s+/g, "").match(/^s?(\d{6,8})$/i);
+  return m ? `s${m[1]}` : null;
+}
+
+// Otherwise the student number is a custom field in Congressus, not a standard one. Its key
 // or label comes from CONGRESSUS_<ASSOC>_STUDENT_NUMBER_FIELD (e.g. "studentnummer");
 // without it, any custom field whose key/label mentions "student" is used.
 // Handles both shapes Congressus uses: { key: value | { value } } and
@@ -143,15 +155,14 @@ function bankDetailsOf(association: AssociationId, m: CongressusMember): MemberB
   return {
     iban: clean(m.bank_account?.iban),
     bic: clean(m.bank_account?.bic),
-    studentNumber: studentNumberOf(
-      m.custom_field_data,
-      process.env[`CONGRESSUS_${association.toUpperCase()}_STUDENT_NUMBER_FIELD`]
-    ),
+    studentNumber: CONFIG[association].studentNumberInUsername
+      ? studentNumberFromUsername(m.username)
+      : studentNumberOf(m.custom_field_data, process.env[`CONGRESSUS_${association.toUpperCase()}_STUDENT_NUMBER_FIELD`]),
   };
 }
 
 // Bank details of these members, by Congressus id. Uses the list objects when they
-// carry bank_account; otherwise fetches each member (GET /members/{id}), a few at
+// carry bank_account (Dimensie's do); otherwise fetches each member (GET /members/{id}), a few at
 // a time. Throws if a fetch fails, so a sync never wipes stored details by mistake.
 export async function fetchBankDetails(
   association: AssociationId,

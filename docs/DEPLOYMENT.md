@@ -38,7 +38,7 @@ Set these on the Railway **service** (not the database plugin).
 | `CONGRESSUS_OAUTH_DIMENSIE_DOMAIN` / `_CLIENT_ID` / `_CLIENT_SECRET` | for the portal | `https://www.svdimensie.nl` | The same for Dimensie, registered in Dimensie's Congressus. |
 | `CONGRESSUS_OAUTH_SCOPE` | – | `openid email profile` | Scopes the portal login asks for; must fall within the OAuth app's "Maximum access scope" in Congressus. |
 | `MEMBER_DATA_KEY` | for Dimensie | `openssl rand -base64 32` | Encrypts Dimensie members' IBAN/BIC (AES-256-GCM). Keep it secret and different per environment; if lost, the next member sync stores the bank details again. |
-| `CONGRESSUS_DIMENSIE_STUDENT_NUMBER_FIELD` | – | `studentnummer` | Key/label of Dimensie's Congressus custom field with the student number; default: the first custom field mentioning "student". |
+| `CONGRESSUS_<ASSOC>_STUDENT_NUMBER_FIELD` | – | `studentnummer` | Only for an association that keeps the student number in a Congressus custom field. Not needed for Dimensie: it's in their `username`. |
 | `CONGRESSUS_PRODUCT_OFFER_ID` | – | `118389` | Fallback "SSS purchases Mendix" product offer id used when a product has no offer id. |
 | `RESEND_API_KEY` | ✅ | `re_…` | Resend API key for verification emails. |
 | `EMAIL_FROM` | ✅ | `Stress Snack System <snacks@51vo.nl>` | From address (Resend-verified domain). **Not** a `no-reply@` address. |

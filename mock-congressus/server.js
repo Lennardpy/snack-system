@@ -168,14 +168,14 @@ async function load() {
   s.members.slice(10, 13).forEach((sm, i) => {
     d.members.push(member(sm.id, "Clash", String(i + 1), `clash${i + 1}@staging.local`, lid));
   });
-  // Bank details + student number (custom field) — only on GET /members/{id}, like
-  // the real list may leave them out. Fake IBANs; every 10th member has none.
+  // Like the real Dimensie Congressus: the student number is the username
+  // ("2400001" or "s2400001"; a few are names), and bank_account comes with the
+  // member list. Fake IBANs; every 10th member has none.
   d.members.forEach((m, i) => {
-    m._detail = {
-      bank_account:
-        i % 10 === 9 ? null : { iban: `NL${String(10 + (i % 89)).padStart(2, "0")}TEST${String(1000000000 + i)}`, bic: "TESTNL2A" },
-      custom_field_data: { studentnummer: `s${2400000 + i}` },
-    };
+    m.username = i % 40 === 39 ? `${m.first_name.toLowerCase()}.${i}` : `${i % 3 === 0 ? "s" : ""}${2400000 + i}`;
+    m.bank_account =
+      i % 10 === 9 ? null : { iban: `NL${String(10 + (i % 89)).padStart(2, "0")}TEST${String(1000000000 + i)}`, bic: "TESTNL2A" };
+    m.custom_field_data = {};
   });
   // No VAT categories at Dimensie.
   ["Snickers", "Mars", "Coca Cola"].forEach((n, i) => d.products.push(product(980000 + i, n, 0.6, 1921, null)));
@@ -338,14 +338,12 @@ async function api(t, method, path, q, b, res) {
   if (method === "GET" && path === "/member-statuses") return send(res, 200, page(t.statuses, q));
   if (method === "GET" && path === "/members") {
     const sid = q.get("status_id");
-    const rows = (sid ? t.members.filter((x) => String(x.status.id) === sid) : t.members).map(({ _detail, ...m }) => m);
-    return send(res, 200, page(rows, q));
+    return send(res, 200, page(sid ? t.members.filter((x) => String(x.status.id) === sid) : t.members, q));
   }
   if (method === "GET" && (m = path.match(/^\/members\/(\d+)$/))) {
     const found = t.members.find((x) => x.id === Number(m[1]));
     if (!found) return send(res, 404, { message: "Not found" });
-    const { _detail, ...rest } = found;
-    return send(res, 200, { ...rest, bank_account: null, custom_field_data: {}, ..._detail });
+    return send(res, 200, { bank_account: null, custom_field_data: {}, ...found });
   }
   if (method === "GET" && path === "/sale-invoices/workflows") {
     return send(res, 200, page(t.workflows.map((id) => ({ id, name: `Workflow ${id}`, deleted: false })), q));
