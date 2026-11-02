@@ -9,8 +9,8 @@ admin sites, each with its own login:
   **`ppp.51vo.nl/ppp/admin`**: Dashboard, Borrels, Invoices, Members, Member roles,
   Bartenders, Drinks, External cards and SBZ prices (see [PPP.md](PPP.md)). A Stress
   login sees Stress, a Dimensie login only Dimensie (its own drinks list for its own
-  borrels; no external cards or SSS; SBZ prices read-only). The Thursday **joint**
-  borrel is Stress's: Stress prices and bar bill, Dimensie members can pay there; the
+  borrels; no external cards or SSS; SBZ prices read-only). The **joint** borrels
+  (the Thursday weekly drink and ThuAD) are Stress's: Stress prices and bar bill, Dimensie members can pay there; the
   Dimensie admin sees it read-only. Use **Make joint / Not joint** on a Stress
   borrel's detail page if Alexia didn't mark it right. Wall Street, external cards and
   SumUp are Stress-only and don't appear on Dimensie borrels.

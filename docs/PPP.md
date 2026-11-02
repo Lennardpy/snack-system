@@ -131,7 +131,7 @@ Requirements & behaviour:
 | Borrel | Hosted by / pays the bar | Drink list | Who can pay |
 |---|---|---|---|
 | Stress | Stress | Stress | Stress members |
-| **Joint** (Thursday weekly drink) | Stress | Stress | Stress **and** Dimensie members |
+| **Joint** (Thursday weekly drink, ThuAD) | Stress | Stress | Stress **and** Dimensie members |
 | Dimensie | Dimensie | Dimensie | Dimensie members |
 
 - `PppActivity.associationId` = host, `PppActivity.joint` = both can pay. Alexia
@@ -485,7 +485,9 @@ can prepare specials in advance. Logic in `src/lib/alexia.ts`.
   carry `name`, `organizer`, `locations`, `starts_at`, `ends_at` — but **no id**.
 - **Auto-sync** — `POST /api/ppp/alexia/sync` keeps borrels organised by **Stress**
   or **Dimensie** (the organiser becomes the hosting association; a Stress
-  "Weekly Drink" on a Thursday is marked **joint**, `isJointBorrel()`) and
+  "Weekly Drink" on a Thursday, and any Stress borrel named "ThuAD", is marked
+  **joint**, `isJointBorrel()`; only on import — existing borrels are switched with
+  **Make joint**) and
   **find-or-creates** a `PppActivity` for each (date = `starts_at`), matched by
   **name + calendar day** (no id exists). It runs when a bartender lands on `/ppp`
   **and** when an admin opens **Admin → PPP → Activities**, so new borrels appear
