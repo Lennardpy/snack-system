@@ -9,7 +9,7 @@ export async function loadExternalTabs(where: { activityId?: string; id?: string
     orderBy: { createdAt: "asc" },
     include: {
       activity: { select: { id: true, name: true, date: true } },
-      card: { select: { id: true, name: true, uid: true } },
+      card: { select: { id: true, name: true, uid: true, limitCents: true } },
       orders: {
         orderBy: { createdAt: "asc" },
         include: {
@@ -37,6 +37,7 @@ export async function loadExternalTabs(where: { activityId?: string; id?: string
       priceLevel: t.priceLevel as ExternalPriceLevel,
       cardName: t.card?.name ?? t.cardName,
       cardUid: t.card?.uid ?? null,
+      cardLimitCents: t.card?.limitCents ?? null,
       activity: t.activity,
       breakdown,
       // Split of the total: the internal-price part counts as borrel revenue (P/L);
@@ -96,3 +97,17 @@ export const sumSplits = (m: Map<string, ExternalSplit>): ExternalSplit =>
     (s, e) => ({ internalCents: s.internalCents + e.internalCents, abProfitCents: s.abProfitCents + e.abProfitCents }),
     { internalCents: 0, abProfitCents: 0 }
   );
+
+// What an external card has spent on its tab at a borrel, at internal prices — what
+// its spending limit (ExternalCard.limitCents) is checked against.
+export async function externalTabUsedCents(
+  cardId: string,
+  activityId: string,
+  db: Pick<typeof prisma, "pppExternalLine"> = prisma
+): Promise<number> {
+  const lines = await db.pppExternalLine.findMany({
+    where: { order: { tab: { cardId, activityId } } },
+    select: { quantity: true, unitCents: true },
+  });
+  return lines.reduce((s, l) => s + l.quantity * l.unitCents, 0);
+}

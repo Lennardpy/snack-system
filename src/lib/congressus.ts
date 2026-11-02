@@ -29,8 +29,8 @@ const intEnv = (name: string): number | null => {
 const CONFIG: Record<AssociationId, CongressusConfig> = {
   stress: {
     tokenEnv: "CONGRESSUS_API_TOKEN",
-    // 1845 = The Primary Membership, 1844 = The Secondary membership
-    memberStatusIds: [1845, 1844],
+    // 1845 = The Primary Membership, 1844 = The Secondary membership, 4119 = Honorary
+    memberStatusIds: [1845, 1844, 4119],
     invoiceWorkflowId: 605,
     useDirectDebit: true,
     sssFolderId: 5952, // "SSS"

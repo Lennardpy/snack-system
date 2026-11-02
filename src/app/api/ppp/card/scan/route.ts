@@ -6,6 +6,7 @@ import { requireBartender } from "@/lib/auth";
 import { resolvePayer } from "@/lib/memberships";
 import { activityVisible } from "@/lib/scope-db";
 import { posScope } from "@/lib/scope";
+import { externalTabUsedCents } from "@/lib/external-db";
 
 // Bartender-operated scan at the bar POS. Resolves a tapped card UID to a member
 // so the bartender can confirm who they are charging.
@@ -44,7 +45,13 @@ export async function POST(req: NextRequest) {
     // external tab, invoiced separately.
     const external = await prisma.externalCard.findUnique({ where: { uid: normalizeUid(uid) } });
     if (external) {
-      return NextResponse.json({ external: true, cardId: external.id, name: external.name });
+      return NextResponse.json({
+        external: true,
+        cardId: external.id,
+        name: external.name,
+        limitCents: external.limitCents,
+        usedCents: await externalTabUsedCents(external.id, activityId),
+      });
     }
     // Not an error at the bar: the bartender can link this card to a member on
     // the spot. Return the normalised UID so the POS can offer to link it.

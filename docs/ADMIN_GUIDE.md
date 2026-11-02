@@ -43,10 +43,10 @@ All figures count **confirmed and exported** purchases in the chosen period.
 - **Sync Stress / Sync Dimensie** — each syncs one association from its own
   Congressus (Dimensie: Lid and Extraordinary member) and only cleans up within that
   association. The rest of this paragraph describes the Stress sync, which
-  imports/updates all Primary & Secondary members. Run
+  imports/updates all Primary, Secondary & Honorary members. Run
   this whenever membership changes (new members, status changes). Inactive
   members are flagged and cannot link cards. Members **no longer in Congressus**
-  (removed there, or no longer a Primary/Secondary member) are cleaned up: those
+  (removed there, or no longer a Primary/Secondary/Honorary member) are cleaned up: those
   with no purchases are **removed**; those with purchase history are
   **deactivated** — they can't buy anymore, but their history and open invoice are
   kept. The result lists anyone who still has an **unexported balance**, so you can
@@ -169,7 +169,11 @@ Drink prices that move with demand, for a borrel game.
 For external parties at a borrel: give them an **external card** — a bar card not
 linked to any member.
 
-- **PPP → External cards:** tap the card into the UID field, name it, **Add card**.
+- **PPP → External cards:** click **🪪 Scan card** and tap the card on the bar's
+  reader (or type/paste the UID), name it, optionally set a
+  **limit per borrel** (e.g. €100 at internal prices), **Add card**. **Set / Change
+  limit** on an existing card. At the bar the bartender sees what's left; once the
+  limit is reached the card turns red and no more drinks can be added.
   (At the bar, a bartender can also scan an unknown card → **Not a member — use as
   external card**.)
 - At the bar, drinks on that card go on the **borrel's external tab** (shown at

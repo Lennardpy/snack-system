@@ -11,7 +11,7 @@ and monthly sale-invoices (out). Client code lives in `src/lib/congressus.ts`.
 | | Stress | Dimensie |
 |---|---|---|
 | Token env var | `CONGRESSUS_API_TOKEN` | `CONGRESSUS_API_TOKEN_DIMENSIE` |
-| Imported member statuses | `1845` Primary, `1844` Secondary | `1588` Lid, `1671` Extraordinary member |
+| Imported member statuses | `1845` Primary, `1844` Secondary, `4119` Honorary | `1588` Lid, `1671` Extraordinary member |
 | Invoice workflow id | `605` (Contribution) | `309` (`CONGRESSUS_DIMENSIE_WORKFLOW_ID`) |
 | Direct debit | yes | yes |
 | SSS (snacks) folder | `5952` | – (no kiosk) |

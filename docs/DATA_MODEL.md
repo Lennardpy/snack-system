@@ -34,7 +34,7 @@ borrel (Stress hosts, both associations pay). `PppInvoiceLine.baseCents` /
 "Stress & Dimensie".
 
 ### Member
-A person synced from their association's Congressus (Stress: Primary and Secondary;
+A person synced from their association's Congressus (Stress: Primary, Secondary and Honorary;
 Dimensie: Lid and Extraordinary member). Someone in both associations has one row
 per association.
 
