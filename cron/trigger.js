@@ -1,5 +1,5 @@
 // Railway cron job for the month-end export (src/lib/monthly-export.ts). Runs at
-// 10:00 and 11:00 UTC on the 1st (railway.toml) — 12:00 Amsterdam in summer and in
+// 10:00 and 11:00 UTC on the 1st (the service's cron schedule) — 12:00 Amsterdam in summer and in
 // winter; the app only acts on the call that falls at 12:xx, once per month.
 // Env: APP_URL (the app's internal or public URL), CRON_SECRET (same as the app's).
 const url = `${(process.env.APP_URL ?? "").replace(/\/+$/, "")}/api/cron/monthly-export`;

@@ -169,10 +169,13 @@ Local Postgres just needs a `DATABASE_URL` in `.env.local` (e.g.
 
 ## Month-end export cron job
 
-The automatic export is triggered by a separate Railway service built from `cron/`
-(`railway up ./cron --path-as-root -s <cron service>`), which Railway runs on its
-`cronSchedule` (`0 10,11 1 * *`, UTC — 12:00 Amsterdam in summer and winter; the app
-acts only on the call at 12:xx). It calls `POST <APP_URL>/api/cron/monthly-export`
+The automatic export is triggered by a separate Railway service, `monthly-export-cron`,
+deployed from `cron/` (`railway up ./cron --path-as-root -e <env> -s <cron service>`).
+Its settings are on the service in Railway (a `railway.toml` isn't applied with
+`--path-as-root`): **cron schedule `0 10,11 1 * *`** (UTC — 12:00 Amsterdam in summer
+and winter; the app acts only on the call at 12:xx), start command `node trigger.js`,
+restart policy *never*. Railway also runs it once on each deploy — harmless, the app
+just answers "not the scheduled moment". It calls `POST <APP_URL>/api/cron/monthly-export`
 with `Authorization: Bearer $CRON_SECRET` and exits. Service variables:
 `APP_URL` (e.g. `http://${{app.RAILWAY_PRIVATE_DOMAIN}}:${{app.PORT}}` or the public
 URL) and `CRON_SECRET` (`${{app.CRON_SECRET}}`). To test it by hand:

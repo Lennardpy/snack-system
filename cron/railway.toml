@@ -1,8 +1,0 @@
-[build]
-builder = "nixpacks"
-
-[deploy]
-startCommand = "node trigger.js"
-# 1st of the month, 10:00 and 11:00 UTC = 12:00 Amsterdam (summer / winter time).
-cronSchedule = "0 10,11 1 * *"
-restartPolicyType = "NEVER"
