@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requirePpp } from "@/lib/auth";
+import { categoryWhere } from "@/lib/scope";
+import { pickAssociation } from "@/lib/associations";
+import { congressusConfig } from "@/lib/congressus";
 import { createPppCongressusProduct } from "@/lib/congressus";
 
 const VAT = ["ZERO", "LOW", "STANDARD"] as const;
@@ -9,24 +12,28 @@ function asVat(v: unknown): Vat {
   return VAT.includes(v as Vat) ? (v as Vat) : "LOW";
 }
 
-export async function GET() {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+// One association's drink list (Stress's is also used at joint borrels).
+// ?association= picks one for the overall admin; other logins get their own.
+export async function GET(req: NextRequest) {
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const association = ctx.scope ?? pickAssociation(req.nextUrl.searchParams.get("association"));
 
   const [products, categories] = await Promise.all([
     prisma.pppProduct.findMany({
+      where: { associationId: association },
       include: { category: true },
       orderBy: [{ category: { sortOrder: "asc" } }, { sortOrder: "asc" }],
     }),
-    prisma.pppProductCategory.findMany({ orderBy: { sortOrder: "asc" } }),
+    prisma.pppProductCategory.findMany({ where: { associationId: association }, orderBy: { sortOrder: "asc" } }),
   ]);
 
   return NextResponse.json({ products, categories });
 }
 
 export async function POST(req: NextRequest) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { name, price, specialPrice, categoryId, vatCategory, color } = await req.json();
   if (!name || typeof price !== "number" || !categoryId) {
@@ -38,11 +45,17 @@ export async function POST(req: NextRequest) {
       ? null
       : Math.max(0, Math.round(Number(specialPrice)));
 
-  const vat = asVat(vatCategory);
+  // The drink joins its category's association (which must be the login's).
+  const category = await prisma.pppProductCategory.findFirst({ where: { id: categoryId, ...categoryWhere(ctx.scope) } });
+  if (!category) return NextResponse.json({ error: "Category not found" }, { status: 404 });
+  const association = category.associationId as "stress" | "dimensie";
+  // Dimensie doesn't do VAT: its drinks carry none.
+  const vat = association === "dimensie" ? "ZERO" : asVat(vatCategory);
 
   // Create in our DB first.
   const product = await prisma.pppProduct.create({
     data: {
+      associationId: association,
       name,
       price,
       specialPrice: special,
@@ -53,9 +66,12 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Sync to Congressus — creates a matching product in the PPP folder (8804).
+  // Sync to Congressus — creates a matching product in Stress's PPP folder (8804).
+  // Only Stress drinks sync now; Dimensie's get their product in Dimensie's
+  // Congressus on its first export of them (src/lib/export-offers.ts).
+  if (association !== "stress" || congressusConfig(association).pppFolderId == null) return NextResponse.json({ product });
   try {
-    const { offerId } = await createPppCongressusProduct(name, price / 100, vat);
+    const { offerId } = await createPppCongressusProduct(association, name, price / 100, vat);
     if (offerId !== null) {
       const updated = await prisma.pppProduct.update({
         where: { id: product.id },

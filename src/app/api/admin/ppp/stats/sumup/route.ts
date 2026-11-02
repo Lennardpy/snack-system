@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { requirePpp } from "@/lib/auth";
 import { getActivitySumup } from "@/lib/activity-sumup";
 import { costedActivityIds, resolvePppRange } from "@/lib/ppp-pl";
 
@@ -8,11 +8,13 @@ import { costedActivityIds, resolvePppRange } from "@/lib/ppp-pl";
 // borrels come from their saved snapshot; only today's/unsaved ones hit SumUp.
 // GET /api/admin/ppp/stats/sumup?range=7d|30d|90d|365d|all|since_export
 export async function GET(req: NextRequest) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { from } = await resolvePppRange(req.nextUrl.searchParams.get("range") ?? "90d");
-  const ids = await costedActivityIds(from);
+  // The SumUp account is Stress's: only Stress borrels (none for a Dimensie login).
+  if (ctx.scope === "dimensie") return NextResponse.json({ available: false });
+  const ids = await costedActivityIds(from, "stress");
 
   let revenueCents = 0;
   let saved = 0;

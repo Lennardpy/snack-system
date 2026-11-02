@@ -1,0 +1,7 @@
+{
+  "name": "ppp-monthly-export-cron",
+  "private": true,
+  "description": "Railway cron job: triggers the PPP month-end export",
+  "scripts": { "start": "node trigger.js" },
+  "engines": { "node": ">=20" }
+}

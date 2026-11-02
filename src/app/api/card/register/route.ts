@@ -29,9 +29,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "This card is an external bar card and can't be registered" }, { status: 409 });
   }
 
-  // Look up member by email
+  // Look up member by email. The snack kiosk is for Stress members only.
   const member = await prisma.member.findUnique({
-    where: { email: email.trim().toLowerCase() },
+    where: { associationId_email: { associationId: "stress", email: email.trim().toLowerCase() } },
   });
 
   // No member with this email — tell the user so they can correct a typo.

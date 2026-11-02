@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requirePpp } from "@/lib/auth";
+import { activityWhere, activityVisibleWhere, pppInvoiceWhere } from "@/lib/scope";
 import { sumLineDiscounts } from "@/lib/roles";
 import { sbzCostInclCents } from "@/lib/sbz";
 import { loadSbzLists, sbzCatalogAt } from "@/lib/sbz-db";
@@ -10,15 +11,18 @@ import { externalSplitByActivity } from "@/lib/external-db";
 // (from entered SBZ usage), and the discount given (specials-only + total) per
 // activity. OPEN ones first.
 export async function GET() {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const [activities, invoices, usage, sbzLists, external] = await Promise.all([
+    // Its own borrels, plus (Dimensie) the joint ones — read-only, own members only.
     prisma.pppActivity.findMany({
+      where: activityVisibleWhere(ctx.scope),
       orderBy: { date: "desc" },
       include: { sumup: { select: { revenueCents: true } } },
     }),
     prisma.pppInvoice.findMany({
+      where: pppInvoiceWhere(ctx.scope),
       select: {
         activityId: true,
         totalCents: true,
@@ -33,9 +37,12 @@ export async function GET() {
         },
       },
     }),
-    prisma.pppActivityUsage.findMany({ select: { activityId: true, sbzKey: true, quantity: true } }),
+    prisma.pppActivityUsage.findMany({
+      where: { activity: activityWhere(ctx.scope) },
+      select: { activityId: true, sbzKey: true, quantity: true },
+    }),
     loadSbzLists(),
-    externalSplitByActivity(),
+    externalSplitByActivity({ activity: activityWhere(ctx.scope) }),
   ]);
 
   type Agg = { orders: number; revenue: number; specials: number; total: number };
@@ -72,6 +79,9 @@ export async function GET() {
         name: a.name,
         status: a.status,
         date: a.date,
+        associationId: a.associationId,
+        joint: a.joint,
+        readOnly: ctx.scope !== null && a.associationId !== ctx.scope,
         orderCount: e?.orders ?? 0,
         revenueCents: e?.revenue ?? 0,
         // External cards' tabs (incl. VAT): internal-price part (revenue, in the

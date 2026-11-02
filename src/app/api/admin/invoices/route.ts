@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requireSss, requireStressExporter } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
   // CONFIRMED = pending export, EXPORTED, or EXPORTING = needs check (an export's
   // outcome was unknown — see /api/admin/invoices/reconcile).
   const raw = req.nextUrl.searchParams.get("status");
   const status = raw === "EXPORTED" || raw === "EXPORTING" ? raw : "CONFIRMED";
+
+  // The SSS admin's list. "Needs check" belongs to the combined Stress export, so
+  // the Stress side of the PPP admin can read it too (to resolve it there).
+  const admin = status === "EXPORTING" ? await requireStressExporter() : await requireSss();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const invoices = await prisma.saleInvoice.findMany({
     where: { status },
@@ -27,7 +29,7 @@ export async function GET(req: NextRequest) {
 // Bulk-deletes every invoice (and its lines) with the given status. Used to
 // clear out test data so the dashboard starts counting fresh.
 export async function DELETE(req: NextRequest) {
-  const admin = await requireAdmin();
+  const admin = await requireSss();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const status = req.nextUrl.searchParams.get("status");

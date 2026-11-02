@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requireSss } from "@/lib/auth";
 import { fetchSSSFolderProducts } from "@/lib/congressus";
 
 // POST /api/admin/sync-product-offers
 // Matches local products to Congressus folder products by name (and price) and
 // stores the product_offer_id. Run this once to backfill existing products.
 export async function POST() {
-  const admin = await requireAdmin();
+  const admin = await requireSss();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const [localProducts, congressusProducts] = await Promise.all([
@@ -70,7 +70,7 @@ export async function POST() {
 
 // GET — returns all products in the SSS Congressus folder for inspection
 export async function GET() {
-  const admin = await requireAdmin();
+  const admin = await requireSss();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const [congressusProducts, localProducts] = await Promise.all([

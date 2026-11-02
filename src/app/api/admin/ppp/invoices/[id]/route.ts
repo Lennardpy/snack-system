@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requirePpp } from "@/lib/auth";
+import { pppInvoiceWhere, inScope, type Scope } from "@/lib/scope";
+
+// Orders are changed by the association hosting the borrel: Dimensie sees its
+// members' orders at a joint borrel (Stress's) but can't edit them.
+const hostsBorrel = (scope: Scope, hostId: string) => inScope(scope, hostId);
+// On a finalised invoice from Stress to Dimensie: frozen (undo that invoice first).
+const settledResponse = () =>
+  NextResponse.json(
+    { error: "This order is on a finalised invoice from Stress to Dimensie — undo that invoice first to change it." },
+    { status: 409 }
+  );
+const readOnlyResponse = () =>
+  NextResponse.json({ error: "This order is at a borrel Stress hosts — only Stress can change it." }, { status: 403 });
 
 // PATCH — edit a pending (not yet exported) PPP order.
 // Body: { lines: [{ id, quantity?, removeDiscount? }] }
@@ -10,8 +23,8 @@ import { requireAdmin } from "@/lib/auth";
 //     The line then counts as undiscounted in all discount/role-cost reports.
 // The total is recalculated. If no lines remain, the order is deleted.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
@@ -19,11 +32,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     ? body.lines
     : [];
 
-  const invoice = await prisma.pppInvoice.findUnique({
-    where: { id },
-    include: { lines: { include: { product: { select: { price: true } } } } },
+  const invoice = await prisma.pppInvoice.findFirst({
+    where: { id, ...pppInvoiceWhere(ctx.scope) },
+    include: {
+      activity: { select: { associationId: true } }, lines: { include: { product: { select: { price: true } } } } },
   });
   if (!invoice) return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
+  if (!hostsBorrel(ctx.scope, invoice.activity.associationId)) return readOnlyResponse();
+  if (invoice.settlementId) return settledResponse();
   if (invoice.status === "EXPORTING") {
     return NextResponse.json(
       { error: "This order is being exported (or waiting for a check after an export) and can't be changed now." },
@@ -72,12 +88,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 // Delete a single PPP invoice (and its lines). Exported invoices are protected.
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const invoice = await prisma.pppInvoice.findUnique({ where: { id } });
+  const invoice = await prisma.pppInvoice.findFirst({
+    where: { id, ...pppInvoiceWhere(ctx.scope) },
+    include: { activity: { select: { associationId: true } } },
+  });
   if (!invoice) return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
+  if (!hostsBorrel(ctx.scope, invoice.activity.associationId)) return readOnlyResponse();
+  if (invoice.settlementId) return settledResponse();
 
   if (invoice.status === "EXPORTING") {
     return NextResponse.json(

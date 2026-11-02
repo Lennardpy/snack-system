@@ -1,10 +1,35 @@
 # Admin Guide (for the board)
 
-Everything board members need for day-to-day operation. Log in at **`/admin`**
-with the board credentials. The left sidebar has Dashboard, Members, Products,
-and Invoices, plus links back to the Kiosk and Log out.
+Everything board members need for day-to-day operation. There are two separate
+admin sites, each with its own login:
+
+- **SSS admin** — the snack system, at **`snacks.51vo.nl/admin`**: Dashboard,
+  Members (Stress), Products and Invoices, plus links to the Kiosk and Log out.
+- **PPP admin** — the bar system for Stress and Dimensie, at
+  **`ppp.51vo.nl/ppp/admin`**: Dashboard, Borrels, Invoices, Members, Member roles,
+  Bartenders, Drinks, External cards and SBZ prices (see [PPP.md](PPP.md)). A Stress
+  login sees Stress, a Dimensie login only Dimensie (its own drinks list for its own
+  borrels; no external cards or SSS; SBZ prices read-only). The Thursday **joint**
+  borrel is Stress's: Stress prices and bar bill, Dimensie members can pay there; the
+  Dimensie admin sees it read-only. Use **Make joint / Not joint** on a Stress
+  borrel's detail page if Alexia didn't mark it right. Wall Street, external cards and
+  SumUp are Stress-only and don't appear on Dimensie borrels.
+
+The **overall admin** sees everything on both sites and manages logins under
+**Accounts**: per login, tick SSS and/or PPP and pick the association (Stress,
+Dimensie, or All = overall admin). New logins get an emailed set-password link for
+their site; "Reset link" sends a new one. Dimensie logins can't get SSS access.
 
 ## Dashboard
+
+**PPP admin:** at the top, a block per association you manage (the overall admin
+sees both): active members and how many have a card, what's **still to bill**
+(and orders that need a check), the last export, the specifications between Stress
+and Dimensie (Stress: still to send; Dimensie: latest received), upcoming borrels,
+and — for Dimensie — members without an IBAN. Below it the bar statistics; SumUp
+and external-card figures are Stress-only.
+
+**SSS admin:**
 
 A sales overview with a timeframe selector (**7 days / 30 days / 90 days / 1 year
 / All time**):
@@ -21,8 +46,13 @@ All figures count **confirmed and exported** purchases in the chosen period.
 
 ## Members
 
-- **Search** by name or email.
-- **Sync from Congressus** — imports/updates all Primary, Secondary & Honorary members. Run
+- **Search** by name or email; filter on **All / Stress / Dimensie**. Dimensie members
+  carry a "Dimensie" badge; they can't use the snack kiosk (no "Enter store") and can
+  only get Dimensie roles.
+- **Sync Stress / Sync Dimensie** — each syncs one association from its own
+  Congressus (Dimensie: Lid and Extraordinary member) and only cleans up within that
+  association. The rest of this paragraph describes the Stress sync, which
+  imports/updates all Primary, Secondary & Honorary members. Run
   this whenever membership changes (new members, status changes). Inactive
   members are flagged and cannot link cards. Members **no longer in Congressus**
   (removed there, or no longer a Primary/Secondary/Honorary member) are cleaned up: those
@@ -97,8 +127,35 @@ Two tabs: **Pending export** (confirmed, awaiting billing) and **Exported**
   to remove it; the total recalculates live. Use this when a member was charged
   for something by mistake or that wasn't actually in stock. **Save changes**.
 - **Delete invoice** (pending only) — remove a whole invoice.
+- **To Dimensie** (PPP admin; Dimensie sees **From Stress**) — each time Dimensie
+  exports its invoices, a specification is created of what Dimensie members drank at
+  joint borrels and Dimensie has now billed (drink prices before Dimensie's own
+  discounts, incl. VAT, without bartender drinks); those orders are locked. The
+  treasurer downloads the **PDF** / **CSV**, attaches it to their own invoice to
+  Dimensie, books and sends it, then clicks **Mark sent to Dimensie** — only then does
+  Dimensie see it. **Undo** is possible until then; **Create now** makes one by hand.
+- **Automatic month-end export** — on the **1st of every month at 12:00** the
+  system bills the previous month by itself: Stress's invoices in Congressus and
+  Dimensie's export sheet (plus the specification for Stress). It takes only orders
+  from before the 1st at **closed** borrels — a borrel that's still open waits for
+  the next month, so close borrels after they end. Afterwards the treasurers
+  (treasurer@stress.utwente.nl, treasurer@svdimensie.nl) get a summary by email,
+  with lennard@stress.utwente.nl in copy: what was billed, anything that needs a
+  check or failed, and which open borrels are waiting. It runs once per month; the
+  export buttons still work any time (they bill everything pending). The dashboard
+  shows the last automatic run.
+- **Invoice PDF per member** — on a member's page (**Invoices**), each invoice can be
+  downloaded as a PDF with the association's logo: per borrel (and kiosk day for
+  Stress) what they had and paid. Use it when a member asks what their invoice is
+  for. Dimensie: one per export; Stress: one per Congressus invoice (a specification).
+- **Export Dimensie (Excel)** (PPP invoices page, Dimensie and overall logins) —
+  bills Dimensie members' pending drinks (Dimensie and joint borrels) into an Excel
+  sheet that downloads right away: one row per member with First Name, Last Name,
+  Email, IBAN, BIC, Event ("Drink costs <month>"), Event price (their total, no VAT)
+  and Student number. Dimensie collects from it itself. Earlier sheets can be
+  downloaded again under **Dimensie exports**; members without an IBAN are flagged.
 - **Export SSS + PPP to Congressus** (same button on the SSS and PPP invoices
-  pages) — bills ALL pending snack and drink orders together: **one Congressus
+  pages; on the PPP page "Export Stress") — bills ALL pending snack and drink orders together: **one Congressus
   invoice per member** with all their snacks and drinks — also when the orders are
   from several months ("SSS & PPP oktober 2026", or "SSS & PPP september – oktober
   2026") — so each member gets one invoice and one direct debit. Members who only
@@ -162,6 +219,14 @@ linked to any member.
 2. Check the **Dashboard** for the month.
 3. **Invoices → Export SSS + PPP to Congressus** to bill the month's snacks and drinks.
 4. Verify the new invoices in Congressus.
+
+## Member portal (ppp.51vo.nl/user)
+
+Members of both associations log in with **their own Congressus account** ("Log in
+with Stress" / "Log in with Dimensie") and see what they still owe, their spending
+per month, every purchase, and their invoices as PDF. Someone in both associations
+sees both. Each association has to register the portal as an OAuth client in its
+Congressus once (see DEPLOYMENT.md).
 
 ## Member-facing flows (what members experience)
 

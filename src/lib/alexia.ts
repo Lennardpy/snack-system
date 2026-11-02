@@ -7,9 +7,23 @@
 // to it server-side. Everything here fails soft: any error → no Alexia events,
 // PPP keeps working.
 
+import type { AssociationId } from "./associations";
+
 const ALEXIA_URL = process.env.ALEXIA_API_URL ?? "https://alex.ia.utwente.nl/api/1/";
-// Only show borrels organised by us. Override if the organiser label changes.
-const ORGANIZER = process.env.ALEXIA_ORGANIZER ?? "Stress";
+// Only borrels organised by Stress or Dimensie are imported; the organiser decides
+// which association hosts (and pays for) the borrel. Override if a label changes.
+const ORGANIZERS: Record<string, AssociationId> = {
+  [process.env.ALEXIA_ORGANIZER ?? "Stress"]: "stress",
+  [process.env.ALEXIA_ORGANIZER_DIMENSIE ?? "Dimensie"]: "dimensie",
+};
+
+// The weekly joint drink: a Stress "Weekly Drink" on a Thursday (Amsterdam time).
+// Stress hosts and pays; members of both associations can pay there.
+export function isJointBorrel(associationId: AssociationId, name: string, startsAt: Date): boolean {
+  if (associationId !== "stress" || !/weekly/i.test(name)) return false;
+  const weekday = new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: "Europe/Amsterdam" }).format(startsAt);
+  return weekday === "Thu";
+}
 
 interface AlexiaRawEvent {
   name: string;
@@ -20,14 +34,15 @@ interface AlexiaRawEvent {
 }
 
 export interface AlexiaEvent {
+  associationId: AssociationId; // the organiser
   name: string;
   startsAt: string; // ISO
   endsAt: string; // ISO
   locations: string[];
 }
 
-// Fetch upcoming (+ ongoing) borrels for our organisation, soonest first.
-export async function fetchStressEvents(): Promise<AlexiaEvent[]> {
+// Fetch upcoming (+ ongoing) borrels of Stress and Dimensie, soonest first.
+export async function fetchAlexiaEvents(): Promise<AlexiaEvent[]> {
   try {
     const res = await fetch(ALEXIA_URL, {
       method: "POST",
@@ -45,8 +60,9 @@ export async function fetchStressEvents(): Promise<AlexiaEvent[]> {
     const body = (await res.json()) as { result?: AlexiaRawEvent[] };
     const events = body.result ?? [];
     return events
-      .filter((e) => e.organizer === ORGANIZER)
+      .filter((e) => e.organizer in ORGANIZERS)
       .map((e) => ({
+        associationId: ORGANIZERS[e.organizer],
         name: e.name,
         startsAt: e.starts_at,
         endsAt: e.ends_at,

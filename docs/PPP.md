@@ -19,12 +19,12 @@ session/auth model, the same Congressus client, and the same card-reader hook.
 | Path | Who | Purpose |
 |------|-----|---------|
 | `/ppp/login` | public | Bartender sign-in: email/password **or scan a linked card** |
-| `/ppp` | bartender/admin | Activity selector — auto-imports scheduled borrels from Alexia, open one or create your own; **Log out**. Shows **today's** borrels only, **plus** any still-OPEN borrel that started before today (so a borrel running past midnight stays accessible while open). Future/old borrels are hidden here — admins still see all on the admin Activities page. Also reachable at **`ppp.51vo.nl`** (redirects to `/ppp`). |
+| `/ppp` | bartender/admin | Activity selector — auto-imports scheduled borrels from Alexia, open one or create your own; **Log out**. Shows **today's** borrels only, **plus** any still-OPEN borrel that started before today (so a borrel running past midnight stays accessible while open). Future/old borrels are hidden here — admins still see all on the admin Activities page. Lives on the PPP site **`ppp.51vo.nl`** (`/` there opens `/ppp`); a Stress or Dimensie account only sees its own association's borrels. |
 | `/ppp/<activityId>` | bartender/admin | The POS screen (cart, scan, regulars, specials toggle, **Log out**) |
-| `/admin/ppp/*` | admin | Management: dashboard, drinks, activities, roles, bartenders, invoices |
+| `/ppp/admin/*` | admin | Management: dashboard, drinks, activities, roles, bartenders, invoices |
 
 Roles: `requireBartender()` allows `BARTENDER` **or** `ADMIN`. Admin-only PPP
-management uses `requireAdmin()`. Middleware gates `/ppp` and `/api/ppp`
+management uses `requirePpp()` (PPP site, scoped to the login's association). Middleware gates `/ppp` and `/api/ppp`
 (`/ppp/login` is public).
 
 ## The POS screen (`/ppp/<activityId>`)
@@ -126,6 +126,75 @@ Requirements & behaviour:
   and add the deterministic transform in `normalizeUid()` (`src/lib/card.ts`,
   which already documents the spot). See [CARD_READER.md](CARD_READER.md).
 
+## Stress & Dimensie: borrel types, price lists, who pays
+
+| Borrel | Hosted by / pays the bar | Drink list | Who can pay |
+|---|---|---|---|
+| Stress | Stress | Stress | Stress members |
+| **Joint** (Thursday weekly drink) | Stress | Stress | Stress **and** Dimensie members |
+| Dimensie | Dimensie | Dimensie | Dimensie members |
+
+- `PppActivity.associationId` = host, `PppActivity.joint` = both can pay. Alexia
+  sets both; the admin can switch a Stress borrel to/from joint (**Make joint** on its detail page),
+  but not stop it being joint once Dimensie members ordered there.
+- **Drink lists** — `PppProduct`/`PppProductCategory.associationId`: each
+  association manages its own on **Drinks** (the overall admin switches); the POS
+  and the order route only accept the host's drinks.
+- **Who pays** (`src/lib/memberships.ts`, enforced server-side on scan, link and
+  order) — someone in both associations has one `Member` row per association,
+  recognised by the **same email**. One card works for both: at a joint or Stress
+  borrel their **Stress** membership pays, at a Dimensie borrel the Dimensie one.
+  Linking a card at the bar searches by name with **one row per person**; the card
+  is stored on the Stress membership if there is one (the snack kiosk is Stress's).
+  Cards belong to the **person**: both associations' admins see them (and can
+  unlink a lost one) on whichever membership they're stored. The member sync moves
+  cards when someone joins Stress (to the new Stress membership) and when a
+  membership is deactivated or removed (to their other, active membership);
+  earlier orders stay with the membership that paid. A person whose Stress
+  membership is inactive pays as Dimensie member at a joint borrel. Bartender
+  card login finds the account on either membership.
+- Roles and discounts are the paying member's own association's. A Dimensie
+  bartender's own free drinks at a joint borrel are covered by Stress.
+- Every order line snapshots `baseCents` (price before role discounts / comps) and
+  `vatRate` — what Stress invoices Dimensie for Dimensie members' drinks.
+- **Visibility** — Dimensie bartenders see Dimensie and joint borrels at the POS;
+  the Dimensie admin sees joint borrels **read-only** (its members' orders only; no
+  order edits, SBZ usage, specials, Wall Street, external cards). External cards
+  only work at Stress borrels.
+
+### Billing Dimensie members (`PppExportBatch`)
+
+Dimensie collects from its members itself: **Export Dimensie (Excel)** marks their
+pending orders exported in a batch and downloads a sheet with one row per member
+(name, email, IBAN, BIC, "Drink costs <month>", total, student number). Bank details
+and student numbers come from Dimensie's Congressus with the member sync; IBAN/BIC
+are stored encrypted. See [CONGRESSUS.md](CONGRESSUS.md).
+
+### Specification Stress → Dimensie (`AssociationSettlement`)
+
+**PPP admin → To Dimensie** (Dimensie: **From Stress**). Created **automatically by
+each Dimensie export**: it covers every order of a **Dimensie member at a borrel
+Stress hosts** (the joint drink) that Dimensie has now billed (EXPORTED) and that
+isn't on an earlier specification — so Stress specifies exactly what Dimensie billed
+its members; orders Dimensie hasn't exported yet wait for a later one. Numbered
+`STRESS-DIM-<year>-001…`; the period is taken from the borrel dates. Logic in
+`src/lib/settlement.ts`, PDF/CSV in `src/lib/settlement-pdf.ts`.
+
+- **Price** = the line's `baseCents`: the drink price before role discounts (Wall
+  Street / borrel special / drink special / list) — Dimensie covers its members'
+  discounts. **Bartender free drinks are excluded** (Stress covers them). Incl. VAT
+  at the line's `vatRate`; excl. + VAT per rate are backed out.
+- Creating it freezes the figures (`snapshot`) and locks its orders
+  (`PppInvoice.settlementId`: no edits/deletes, the borrel can't stop being joint).
+  **Undo** unlocks them while not sent (they go on the next one; **Create now** makes
+  one by hand); **Mark sent** makes it permanent.
+- The PDF is a **specification** to attach to the treasurer's own invoice: per
+  borrel, each member with the drinks they had there and their subtotal, the borrel
+  subtotal, and at the end the total with VAT per category (always VL 9% and VH 21%);
+  the CSV has one row per purchase. The system sends nothing: the treasurer books and
+  sends it, then marks it sent — **Dimensie only sees it once marked sent**. Header
+  lines: `SETTLEMENT_FROM`, `SETTLEMENT_TO` (lines separated by `|`).
+
 ## Pricing & discounts
 
 Several discount mechanisms stack in a defined order. The shared logic lives in
@@ -214,7 +283,7 @@ Managed under **Admin → PPP → Bartenders**.
 
 What the association pays SBZ per drink lives in the database as **versioned price
 lists** (`SbzPriceList` + `SbzPrice`), managed on **Admin → PPP → SBZ prices**
-(`/admin/ppp/sbz`):
+(`/ppp/admin/sbz`):
 
 - Each list is **valid from a date** until the next list starts. A borrel's cost of
   goods always uses the list valid on the **borrel's date** — so a new price list
@@ -239,7 +308,7 @@ lists** (`SbzPriceList` + `SbzPrice`), managed on **Admin → PPP → SBZ prices
 - The usage form and the Alexia usage-PDF import on a borrel's page use the list
   valid on that borrel's date; the page names which list applies.
 
-## Admin pages (`/admin/ppp/*`)
+## Admin pages (`/ppp/admin/*`)
 
 | Page | What |
 |------|------|
@@ -247,7 +316,7 @@ lists** (`SbzPriceList` + `SbzPrice`), managed on **Admin → PPP → SBZ prices
 | **Drinks** | PPP catalog: categories, create/edit/publish/archive drinks with price, **special price**, VAT, and a 5-colour **tile colour** picker. |
 | **Activities** | List borrels (auto-synced from Alexia + manual), close/reopen, rename, **total revenue (PPP member orders + SumUp card)** with the split underneath, **cost of goods**, and a **green ▲ profit / red ▼ loss** badge when costs are uploaded (large, per event). SumUp comes from each borrel's saved snapshot; past borrels not saved yet are fetched once in the background (which saves them) + order counts + **discount given** (specials / total), order list (each order shows the **🍺 tapper** — the bartender who rang it up). **Closing** shows the discount totals. Each links to its detail page. |
 | **Delete activity** | On the Activities list, **Delete** removes an activity that has **no PPP orders** — e.g. an external activity or a free drink synced from Alexia. It's disabled (and the API returns `409`) once an activity has orders. Its specials, usage and saved SumUp go with it. Because Alexia events have no id (matched by name + day), the deleted event's key is stored in `PppDismissedEvent` so the **Alexia sync never re-imports it**. |
-| **Activity detail** (`/admin/ppp/activities/[id]`) | Manage the borrel's **drink specials**, and see its full **profit/loss** (see below): revenue, cost of goods, discounts, per-drink. Manage specials as before (also in advance for future borrels). |
+| **Activity detail** (`/ppp/admin/activities/[id]`) | Manage the borrel's **drink specials**, and see its full **profit/loss** (see below): revenue, cost of goods, discounts, per-drink. Manage specials as before (also in advance for future borrels). |
 | **SBZ prices** | The cost prices paid to SBZ, as versioned price lists — view, edit, upload the SBZ PDF; each list applies from its date onward. See [SBZ prices](#sbz-prices-cost-of-goods). |
 | **Member roles** | Create/edit roles with a `%` and/or `€` discount. Highest wins. |
 | **External cards** | Bar cards **not linked to a member** (for external parties): add by tapping the card into the UID field + a name, rename, delete (past tabs are kept). See [External cards](#external-cards). |
@@ -414,8 +483,10 @@ can prepare specials in advance. Logic in `src/lib/alexia.ts`.
   `POST https://alex.ia.utwente.nl/api/1/` with
   `{"jsonrpc":"2.0","method":"event.upcoming_list","params":[true],"id":1}`. Events
   carry `name`, `organizer`, `locations`, `starts_at`, `ends_at` — but **no id**.
-- **Auto-sync** — `POST /api/ppp/alexia/sync` keeps only `organizer === "Stress"`
-  and **find-or-creates** a `PppActivity` for each (date = `starts_at`), matched by
+- **Auto-sync** — `POST /api/ppp/alexia/sync` keeps borrels organised by **Stress**
+  or **Dimensie** (the organiser becomes the hosting association; a Stress
+  "Weekly Drink" on a Thursday is marked **joint**, `isJointBorrel()`) and
+  **find-or-creates** a `PppActivity` for each (date = `starts_at`), matched by
   **name + calendar day** (no id exists). It runs when a bartender lands on `/ppp`
   **and** when an admin opens **Admin → PPP → Activities**, so new borrels appear
   automatically and the admin can pre-set specials on future ones.
@@ -425,7 +496,8 @@ can prepare specials in advance. Logic in `src/lib/alexia.ts`.
   activity makes the next sync re-create the original (a duplicate). A stable Alexia
   reference field would need a schema change.
 
-Configurable via `ALEXIA_API_URL` and `ALEXIA_ORGANIZER` (default `Stress`).
+Configurable via `ALEXIA_API_URL`, `ALEXIA_ORGANIZER` (default `Stress`) and
+`ALEXIA_ORGANIZER_DIMENSIE` (default `Dimensie`).
 
 ## Data model (PPP)
 
@@ -480,7 +552,7 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
 | GET/POST | `/api/auth/set-password` | Validate / consume a set-password token |
 | GET | `/api/wallstreet` | Wall Street board data: running market (or `?activityId=`), current prices, last hour of ticks (`?history=0` skips them); `{ active: false }` when off. Rate-limited 240/min/IP |
 
-**Admin** (`requireAdmin`): `/api/admin/ppp/products`, `…/categories`, `…/roles`,
+**Admin** (`requirePpp`, scoped): `/api/admin/ppp/products`, `…/categories`, `…/roles`,
 `…/bartenders` (+`/[id]`, `/[id]/resend`), `…/activities/[id]` (GET = detail + P/L,
 PUT = save SBZ usage; +`/discounts`, +`/sumup` = live card revenue, +`/import` =
 extract usage from an uploaded Alexia PDF), `…/sbz` (GET = all price lists +

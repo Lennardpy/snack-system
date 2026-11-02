@@ -4,10 +4,20 @@ SSS syncs three things with **Congressus API v30**: members (in), products (out)
 and monthly sale-invoices (out). Client code lives in `src/lib/congressus.ts`.
 
 - **Base URL:** `https://api.congressus.nl/v30`
-- **Auth:** `Authorization: Bearer ${CONGRESSUS_API_TOKEN}` (a generic API token)
-- **SSS product folder id:** `5952` · **PPP (drinks) folder id:** `8804`
-- **Imported member statuses:** `1845` (Primary), `1844` (Secondary), `4119` (Honorary)
-- **Invoice workflow id:** `605` (Contribution)
+- **One Congressus per association.** Stress and SV Dimensie each have their own
+  Congressus; `src/lib/congressus.ts` holds a config per association (`CONFIG`) and
+  every call names the association it talks to:
+
+| | Stress | Dimensie |
+|---|---|---|
+| Token env var | `CONGRESSUS_API_TOKEN` | `CONGRESSUS_API_TOKEN_DIMENSIE` |
+| Imported member statuses | `1845` Primary, `1844` Secondary, `4119` Honorary | `1588` Lid, `1671` Extraordinary member |
+| Billing | Congressus sale invoices (workflow `605`, direct debit) | **Excel sheet** — Dimensie collects itself; no Congressus invoices |
+| Bank details + student number | not imported | imported (IBAN/BIC encrypted) |
+| SSS (snacks) folder | `5952` | – (no kiosk) |
+| PPP (drinks) folder | `8804` (`CONGRESSUS_PPP_FOLDER_ID`) | – (folder 9445 "PPP" exists from earlier, unused) |
+| Fallback product | `118389` "SSS purchases Mendix" | – |
+| VAT on products | yes (VL 9% / VH 21%) | none — Dimensie doesn't do VAT |
 
 > The bar subsystem (PPP) reuses this same client. See [PPP.md](PPP.md). PPP
 > products live in folder **`8804`** (`webshop/ppp`). The export puts a member's
@@ -16,11 +26,28 @@ and monthly sale-invoices (out). Client code lives in `src/lib/congressus.ts`.
 
 ## Members (Congressus → SSS)
 
-`Members → Sync from Congressus` calls `fetchAllMembers()`, which pages through
-`GET /members?status_id=…` for the Primary, Secondary and Honorary statuses and upserts
-each by `congressusId`. A member is marked `active` unless Congressus says they
+`Members → Sync Stress` / `Sync Dimensie` calls `fetchAllMembers(association)`,
+which pages through `GET /members?status_id=…` for that association's statuses and
+upserts each by (association, `congressusId`). Everything stays within the one
+association: the email clash check, and the clean-up of members no longer in that
+Congressus — syncing Stress never deletes or deactivates a Dimensie member. Someone
+in both associations has one member row per association (Congressus ids are per
+instance, so the same id can belong to different people). A member is marked `active` unless Congressus says they
 are deleted, locked, archived, or deceased. Members without an email are skipped
 (email is the unique key used for card linking).
+
+**Dimensie also imports bank details and the student number** (it bills from a
+sheet, `billsFromSheet` in `CONFIG`): `bank_account.iban` / `.bic` from the member
+object — fetched per member with `GET /members/{id}` when the list leaves them out —
+stored **AES-256-GCM encrypted** (`Member.ibanEnc` / `bicEnc`, key `MEMBER_DATA_KEY`,
+`src/lib/secret-box.ts`). Dimensie's member list includes `bank_account`, so no extra
+calls are needed. Dimensie keeps the **student number in the member's `username`**
+(`1234567` or `s1234567`; checked November 2026: 432 of 438 members, the rest have a
+name there and get no student number) — stored normalised as `s1234567`
+(`studentNumberInUsername` in `CONFIG`). Dimensie has no member custom fields; for an
+association that does, `CONGRESSUS_<ASSOC>_STUDENT_NUMBER_FIELD` names the field. Without `MEMBER_DATA_KEY` the sync still
+runs but leaves bank details as they were and says so; if fetching them fails,
+nothing is changed.
 
 ## Products (SSS → Congressus)
 
@@ -103,6 +130,24 @@ The bar subsystem syncs the same way, into its own folder.
   activities/prices stays on separate lines. Every line keeps its own offer id;
   lines without one use the Mendix fallback. Source rows (both tables) are marked
   `EXPORTED` with the same Congressus invoice id.
+
+## Dimensie's export (PPP → Excel sheet)
+
+Dimensie collects from its members itself, so its export creates **no Congressus
+invoices**. `POST /api/admin/invoices/export` with `{ "association": "dimensie" }`
+(PPP admin, Dimensie or overall login) marks the pending drink orders of **Dimensie
+members** — at Dimensie borrels and joint borrels — `EXPORTED` and ties them to a
+`PppExportBatch` (`DIM-EXP-<year>-001…`), in one transaction. The sheet
+(`GET /api/admin/ppp/exports/<id>/xlsx`, `src/lib/export-sheet.ts`) has one row per
+member with something to pay:
+
+| First Name | Last Name | Email | IBAN | BIC | Event | Event price | Student number |
+|---|---|---|---|---|---|---|---|
+| | | | decrypted on download | | `Drink costs <period>` | member's total (€, no VAT) | |
+
+It's built on each download from the batch's orders, so IBANs are never stored
+outside the encrypted member fields. Then the specification for Stress is created
+as before.
 
 ## Quick reference of quirks
 

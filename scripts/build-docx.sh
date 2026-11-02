@@ -18,6 +18,7 @@ SECTIONS=(
   "docs/CONGRESSUS.md"
   "docs/ADMIN_GUIDE.md"
   "docs/PPP.md"
+  "docs/DIMENSIE.md"
   "docs/SECURITY.md"
 )
 

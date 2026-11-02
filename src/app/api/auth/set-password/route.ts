@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { setSessionCookie } from "@/lib/auth";
+import { setSessionCookie, canUseSite, homePath } from "@/lib/auth";
+import { siteForHost } from "@/lib/site";
 import { prisma } from "@/lib/prisma";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import bcrypt from "bcryptjs";
@@ -36,21 +37,29 @@ export async function POST(req: NextRequest) {
   if (setup.usedAt) return NextResponse.json({ error: "This link has already been used" }, { status: 410 });
 
   const passwordHash = await bcrypt.hash(password, 10);
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: setup.userId } });
+  const site = siteForHost(req.headers.get("host"));
 
-  // Set the password, consume the token, and start a session — all atomically.
+  // Set the password, consume the token, and — if the account may use this site —
+  // start a session here. All atomically.
   const [, , session] = await prisma.$transaction([
     prisma.user.update({ where: { id: setup.userId }, data: { passwordHash } }),
     prisma.passwordSetupToken.update({ where: { id: setup.id }, data: { usedAt: new Date() } }),
-    prisma.session.create({
-      data: {
-        userId: setup.userId,
-        kind: "password",
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      },
-    }),
+    ...(canUseSite(user, site)
+      ? [
+          prisma.session.create({
+            data: {
+              userId: setup.userId,
+              kind: "password",
+              site,
+              expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            },
+          }),
+        ]
+      : []),
   ]);
 
-  const res = NextResponse.json({ ok: true });
-  setSessionCookie(res, session);
+  const res = NextResponse.json({ ok: true, home: session ? homePath(user, site) : null });
+  if (session) setSessionCookie(res, session);
   return res;
 }

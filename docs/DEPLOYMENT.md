@@ -32,6 +32,15 @@ Set these on the Railway **service** (not the database plugin).
 |----------|----------|-------------------|---------|
 | `DATABASE_URL` | ✅ | `${{Postgres.DATABASE_URL}}` | Postgres connection (use the internal URL). |
 | `CONGRESSUS_API_TOKEN` | ✅ | `Pxw3…` | Bearer token for Congressus API v30. |
+| `SETTLEMENT_FROM` / `SETTLEMENT_TO` | – | `Studievereniging Stress\|Ravelijn 1336\|…` | Header lines of the monthly specification PDF Stress sends to Dimensie with its invoice (lines separated by `\|`). |
+| `CONGRESSUS_API_TOKEN_DIMENSIE` | – | – | Bearer token for SV Dimensie's Congressus (member sync). Never give staging a real token. |
+| `CONGRESSUS_OAUTH_STRESS_DOMAIN` / `_CLIENT_ID` / `_CLIENT_SECRET` | for the portal | `https://www.<stress site>` | "Log in with Congressus" for Stress members on `ppp.51vo.nl/user`. Register the client in Stress's Congressus with redirect URI `https://ppp.51vo.nl/api/user/oauth/callback`. Without them there's no Stress login button. |
+| `CONGRESSUS_OAUTH_DIMENSIE_DOMAIN` / `_CLIENT_ID` / `_CLIENT_SECRET` | for the portal | `https://www.svdimensie.nl` | The same for Dimensie, registered in Dimensie's Congressus. |
+| `CONGRESSUS_OAUTH_SCOPE` | – | `openid email profile` | Scopes the portal login asks for; must fall within the OAuth app's "Maximum access scope" in Congressus. |
+| `CRON_SECRET` | for Phase 7 | `openssl rand -hex 32` | Shared secret between the app and the **cron** service that triggers the month-end export (`POST /api/cron/monthly-export`). At least 16 characters; set the same value on both services. |
+| `MONTHLY_EXPORT_TO_STRESS` / `MONTHLY_EXPORT_TO_DIMENSIE` / `MONTHLY_EXPORT_CC` | – | defaults: `treasurer@stress.utwente.nl` / `treasurer@svdimensie.nl` / `lennard@stress.utwente.nl` | Recipients of the month-end export summaries (comma-separated; `off` = none). Staging sets all three to `off`. |
+| `MEMBER_DATA_KEY` | for Dimensie | `openssl rand -base64 32` | Encrypts Dimensie members' IBAN/BIC (AES-256-GCM). Keep it secret and different per environment; if lost, the next member sync stores the bank details again. |
+| `CONGRESSUS_<ASSOC>_STUDENT_NUMBER_FIELD` | – | `studentnummer` | Only for an association that keeps the student number in a Congressus custom field. Not needed for Dimensie: it's in their `username`. |
 | `CONGRESSUS_PRODUCT_OFFER_ID` | – | `118389` | Fallback "SSS purchases Mendix" product offer id used when a product has no offer id. |
 | `RESEND_API_KEY` | ✅ | `re_…` | Resend API key for verification emails. |
 | `EMAIL_FROM` | ✅ | `Stress Snack System <snacks@51vo.nl>` | From address (Resend-verified domain). **Not** a `no-reply@` address. |
@@ -68,18 +77,21 @@ The app is served from Railway under the custom domain **`https://51vo.nl`**:
    enough, because `NEXT_PUBLIC_BASE_URL` is baked into the client at build time.
 3. Keep `EMAIL_FROM` on a Resend-verified domain (already `…@51vo.nl`).
 
-### Bar POS vanity domain (`ppp.51vo.nl`)
-`ppp.51vo.nl` is a shortcut to the bar POS. The app already redirects
-`ppp.51vo.nl/*` → `https://snacks.51vo.nl/ppp` (in `src/middleware.ts`), so only
-the routing needs wiring up — once, in two places:
+### The PPP site (`ppp.51vo.nl`)
+`ppp.51vo.nl` is the bar system's own site (POS + PPP admin), served by the same
+service: `src/middleware.ts` routes by domain and redirects the other site's
+paths (`snacks.51vo.nl/ppp…` → `ppp.51vo.nl/ppp…`). The domain needs wiring up
+once, in two places:
 1. Railway → the **snack-system** service → **Settings → Networking → Custom
    Domain** → add **`ppp.51vo.nl`** (target port **8080**, same as `snacks.51vo.nl`).
 2. At the DNS provider (51vo.nl zone) add the **CNAME** record Railway shows for it
    (a per-domain `…up.railway.app` target). Wait for Railway to validate + issue
    the TLS cert.
 
-No env-var or `BASE_URL` changes are needed — the redirect sends users to the
-canonical `snacks.51vo.nl`, where cookies, the PWA manifest and the cert all live.
+Optional env vars `SSS_ORIGIN` / `PPP_ORIGIN` override the two sites' origins
+(defaults `https://snacks.51vo.nl` / `https://ppp.51vo.nl`; staging sets its own).
+Locally, `localhost:3000` is the SSS and `ppp.localhost:3000` the PPP. Each site
+has its own login (host-only session cookie).
 
 ## Email deliverability (verification emails)
 
@@ -154,3 +166,18 @@ npm run dev
 Local Postgres just needs a `DATABASE_URL` in `.env.local` (e.g.
 `postgresql://you@localhost/snacksystem`). The card reader is optional — see
 [CARD_READER.md](CARD_READER.md#testing-without-a-reader).
+
+## Month-end export cron job
+
+The automatic export is triggered by a separate Railway service, `monthly-export-cron`,
+deployed from `cron/` (`railway up ./cron --path-as-root -e <env> -s <cron service>`).
+Its settings are on the service in Railway (a `railway.toml` isn't applied with
+`--path-as-root`): **cron schedule `0 10,11 1 * *`** (UTC — 12:00 Amsterdam in summer
+and winter; the app acts only on the call at 12:xx), start command `node trigger.js`,
+restart policy *never*. Railway also runs it once on each deploy — harmless, the app
+just answers "not the scheduled moment". It calls `POST <APP_URL>/api/cron/monthly-export`
+with `Authorization: Bearer $CRON_SECRET` and exits. Service variables:
+`APP_URL` (e.g. `http://${{app.RAILWAY_PRIVATE_DOMAIN}}:${{app.PORT}}` or the public
+URL) and `CRON_SECRET` (`${{app.CRON_SECRET}}`). To test it by hand:
+`POST /api/cron/monthly-export?force=1` with the secret — it still runs only once
+per month (`MonthlyExportRun`).

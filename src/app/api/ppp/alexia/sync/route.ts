@@ -1,16 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireBartender } from "@/lib/auth";
-import { fetchStressEvents, alexiaMatchKey } from "@/lib/alexia";
+import { fetchAlexiaEvents, alexiaMatchKey, isJointBorrel } from "@/lib/alexia";
 
-// Import every upcoming Stress borrel from Alexia into PPP activities. Runs when a
+// Import every upcoming Stress and Dimensie borrel from Alexia into PPP
+// activities, hosted by the organiser (Stress's Thursday weekly drink is joint). Runs when a
 // bartender (or admin) lands, so new borrels appear automatically and the admin
 // can pre-set specials on the future ones. Idempotent + fail-soft.
 export async function POST() {
   const user = await requireBartender();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const events = await fetchStressEvents();
+  const events = await fetchAlexiaEvents();
   if (events.length === 0) return NextResponse.json({ imported: 0 });
 
   // Existing activities, keyed by name + calendar day (Alexia events have no id),
@@ -28,6 +29,8 @@ export async function POST() {
   if (toCreate.length > 0) {
     await prisma.pppActivity.createMany({
       data: toCreate.map((e) => ({
+        associationId: e.associationId,
+        joint: isJointBorrel(e.associationId, e.name, new Date(e.startsAt)),
         name: e.name,
         date: new Date(e.startsAt),
         startsAt: new Date(e.startsAt),

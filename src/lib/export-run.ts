@@ -1,0 +1,348 @@
+import { randomUUID } from "crypto";
+import { prisma } from "./prisma";
+import { createSaleInvoice, congressusConfig, congressusConfigured, CongressusHttpError, InvoiceLineItem } from "./congressus";
+import { createSheetExport, pppCutoffWhere, SheetExportError } from "./export-sheet";
+import type { AssociationId } from "./associations";
+import { pppOffersFor } from "./export-offers";
+import { createSettlement } from "./settlement";
+
+// Billing an association's members — shared by the export button
+// (POST /api/admin/invoices/export) and the monthly run (src/lib/monthly-export.ts).
+//   • Stress   — snacks + drinks of Stress members, reference "SSS & PPP <period>",
+//                with VAT (from the products), in Stress's Congressus.
+//   • Dimensie — drinks of Dimensie members (Dimensie borrels and joint ones). Dimensie
+//                collects from its members itself, so no Congressus invoices: the
+//                orders go into an export batch whose Excel sheet is downloaded
+//                (src/lib/export-sheet.ts).
+//
+// One combined export: ONE Congressus sale invoice per member per export, holding
+// all their pending SSS snack lines and PPP drink lines — whatever month the
+// orders are from. The reference names the period: "SSS & PPP oktober 2026", or
+// "SSS & PPP september – oktober 2026" when the orders span months. One invoice →
+// one direct debit per member, instead of separate SSS and PPP invoices. Every line keeps its own Congressus product offer,
+// so revenue per product stays correct. Reuses createSaleInvoice() (and its Mendix
+// fallback for lines without a Congressus offer id).
+//
+// Never twice: the run first CLAIMS the orders it exports from both tables — one
+// atomic update each, CONFIRMED → EXPORTING tagged with this run's id — so a
+// concurrent run, double click or retry can't pick up the same orders. Per
+// member-month group, after calling Congressus:
+//   • success                         → EXPORTED (+ Congressus invoice id)
+//   • Congressus rejected it (4xx)    → back to CONFIRMED (nothing was created)
+//   • unknown (timeout, 5xx, network, crash, or our DB write failed after
+//     Congressus succeeded)          → stays EXPORTING ("needs check"); an admin
+//     checks Congressus and resolves the member's group at once
+//     (POST /api/admin/invoices/reconcile).
+
+type System = "sss" | "ppp";
+
+interface ExpLine {
+  aggKey: string; // de-dup key within a member-month
+  description: string; // becomes the Congressus line description / productName
+  quantity: number;
+  unitCents: number;
+  congressusOfferId: number | null;
+}
+interface ExpInvoice {
+  system: System;
+  id: string;
+  memberId: string;
+  congressusMemberId: number | null; // null = member deleted (can't be billed)
+  memberName: string;
+  when: Date;
+  lines: ExpLine[];
+}
+interface Group {
+  congressusMemberId: number | null;
+  memberName: string;
+  months: Set<string>; // "YYYY-MM" of every order in the group
+  ids: Record<System, string[]>;
+  lineMap: Map<string, InvoiceLineItem>;
+}
+
+const REFERENCE_PREFIX: Record<AssociationId, string> = { stress: "SSS & PPP", dimensie: "Borrels" };
+
+function monthName(yearMonth: string): string {
+  const [year, month] = yearMonth.split("-");
+  return new Date(Number(year), Number(month) - 1, 1).toLocaleString("nl-NL", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+// "oktober 2026", or "september – oktober 2026" / "december 2026 – januari 2027".
+function periodName(months: Set<string>): string {
+  const sorted = [...months].sort();
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  if (first === last) return monthName(first);
+  const firstName = first.slice(0, 4) === last.slice(0, 4) ? monthName(first).replace(/\s+\d{4}$/, "") : monthName(first);
+  return `${firstName} – ${monthName(last)}`;
+}
+
+// Set a group's claimed orders (in both tables) to EXPORTED or back to CONFIRMED.
+// Only rows still claimed by this run are touched.
+async function settle(
+  runId: string,
+  ids: Record<System, string[]>,
+  outcome: { exported: number | null } | "release"
+) {
+  const data =
+    outcome === "release"
+      ? { status: "CONFIRMED" as const, exportClaim: null, exportClaimedAt: null }
+      : {
+          status: "EXPORTED" as const,
+          exportedAt: new Date(),
+          congressusInvoiceId: outcome.exported,
+          exportClaim: null,
+        };
+  await prisma.$transaction([
+    prisma.saleInvoice.updateMany({ where: { id: { in: ids.sss }, exportClaim: runId }, data }),
+    prisma.pppInvoice.updateMany({ where: { id: { in: ids.ppp }, exportClaim: runId }, data }),
+  ]);
+}
+
+export interface ExportResult {
+  status: number;
+  // The export's outcome as the button shows it (see src/lib/export-message.ts).
+  body: Record<string, unknown> & { error?: string };
+}
+
+// Bills this association's pending orders: Stress in its Congressus, Dimensie into
+// an export sheet. `cutoff` (the monthly run) limits it to orders before that
+// moment at closed borrels; without it (the button) everything pending is billed.
+export async function exportAssociation(
+  association: AssociationId,
+  userId: string | null,
+  cutoff: Date | null = null
+): Promise<ExportResult> {
+  if (congressusConfig(association).billsFromSheet) return sheetExport(association, userId, cutoff);
+  if (!congressusConfigured(association)) {
+    return { status: 400, body: { error: `No Congressus API key configured for ${association}.` } };
+  }
+
+  // ── Claim every pending order of this association's members for this run ─────
+  // Each association's members are invoiced in its own Congressus. The snack kiosk
+  // is Stress's, so only Stress exports SSS orders.
+  const runId = randomUUID();
+  const claim = { status: "EXPORTING" as const, exportClaim: runId, exportClaimedAt: new Date() };
+  const pending = { status: "CONFIRMED" as const, member: { associationId: association } };
+  await prisma.$transaction([
+    ...(association === "stress"
+      ? [prisma.saleInvoice.updateMany({ where: { ...pending, ...(cutoff ? { confirmedAt: { lt: cutoff } } : {}) }, data: claim })]
+      : []),
+    prisma.pppInvoice.updateMany({ where: { ...pending, ...pppCutoffWhere(cutoff) }, data: claim }),
+  ]);
+
+  const [sssInvoices, pppInvoices] = await Promise.all([
+    prisma.saleInvoice.findMany({
+      where: { status: "EXPORTING", exportClaim: runId },
+      include: { member: true, lines: { include: { product: true } } },
+      orderBy: { confirmedAt: "asc" },
+    }),
+    prisma.pppInvoice.findMany({
+      where: { status: "EXPORTING", exportClaim: runId },
+      include: { member: true, activity: true, lines: { include: { product: true } } },
+      orderBy: { confirmedAt: "asc" },
+    }),
+  ]);
+
+  // Drinks' products in this association's Congressus (Dimensie: created when missing).
+  let offers: Map<string, number | null>;
+  try {
+    offers = await pppOffersFor(association, pppInvoices.flatMap((inv) => inv.lines.map((l) => l.productId)));
+  } catch (err) {
+    console.error(`[export] ${association}: preparing Congressus products failed`, err);
+    await settle(runId, { sss: sssInvoices.map((i) => i.id), ppp: pppInvoices.map((i) => i.id) }, "release");
+    return { status: 502, body: { error: `Could not prepare the drinks' products in Congressus: ${(err as Error).message} — nothing was exported.` } };
+  }
+
+  const all: ExpInvoice[] = [
+    ...sssInvoices.map((inv) => ({
+      system: "sss" as const,
+      id: inv.id,
+      memberId: inv.memberId,
+      congressusMemberId: inv.member.congressusId,
+      memberName: `${inv.member.firstName} ${inv.member.lastName}`,
+      when: inv.confirmedAt ?? inv.createdAt,
+      lines: inv.lines.map((l) => ({
+        aggKey: `sss-${l.productId}-${l.unitCents}`,
+        description: l.product.name,
+        quantity: l.quantity,
+        unitCents: l.unitCents,
+        congressusOfferId: l.product.congressusProductOfferId ?? null,
+      })),
+    })),
+    // Drink lines include the borrel name (e.g. "Pils – Weekly drink"); the same
+    // drink at different borrels stays on separate lines.
+    ...pppInvoices.map((inv) => ({
+      system: "ppp" as const,
+      id: inv.id,
+      memberId: inv.memberId,
+      congressusMemberId: inv.member.congressusId,
+      memberName: `${inv.member.firstName} ${inv.member.lastName}`,
+      when: inv.confirmedAt,
+      lines: inv.lines.map((l) => ({
+        aggKey: `ppp-${l.productId}-${l.unitCents}-${inv.activityId}`,
+        description: `${l.product.name} – ${inv.activity.name}`,
+        quantity: l.quantity,
+        unitCents: l.unitCents,
+        congressusOfferId: offers.get(l.productId) ?? null,
+      })),
+    })),
+  ];
+
+  // ── Group by member — all their pending orders, any month (snacks first) ─────
+  const groups = new Map<string, Group>();
+  for (const inv of all) {
+    const d = inv.when;
+    const yearMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    let g = groups.get(inv.memberId);
+    if (!g) {
+      g = {
+        congressusMemberId: inv.congressusMemberId,
+        memberName: inv.memberName,
+        months: new Set(),
+        ids: { sss: [], ppp: [] },
+        lineMap: new Map(),
+      };
+      groups.set(inv.memberId, g);
+    }
+    g.months.add(yearMonth);
+    g.ids[inv.system].push(inv.id);
+    for (const line of inv.lines) {
+      const existing = g.lineMap.get(line.aggKey);
+      if (existing) existing.quantity += line.quantity;
+      else
+        g.lineMap.set(line.aggKey, {
+          productName: line.description,
+          quantity: line.quantity,
+          unitCents: line.unitCents,
+          congressusOfferId: line.congressusOfferId,
+        });
+    }
+  }
+
+  // ── One Congressus invoice per group ─────────────────────────────────────────
+  const out = {
+    sssOrders: 0, // SSS orders marked EXPORTED
+    pppOrders: 0, // PPP orders marked EXPORTED
+    congressusInvoices: 0,
+    billedCents: 0, // total of the Congressus invoices created
+    failed: 0,
+    nothingToPay: 0, // members whose orders were all €0 (free drinks): no invoice made
+    needsCheck: 0, // orders left EXPORTING because the outcome is unknown
+    errors: [] as string[],
+  };
+
+  for (const g of groups.values()) {
+    const reference = `${REFERENCE_PREFIX[association]} ${periodName(g.months)}`;
+    const label = `${g.memberName} (${periodName(g.months)})`;
+    const orders = g.ids.sss.length + g.ids.ppp.length;
+    let congressusInvoiceId: number | null = null;
+    // Only €0 lines (e.g. Board or bartender free drinks): nothing to bill. Congressus
+    // would drop the €0 lines and leave an empty €0.00 invoice, so don't create one.
+    const totalCents = [...g.lineMap.values()].reduce((s, l) => s + l.quantity * l.unitCents, 0);
+    if (totalCents === 0) {
+      await settle(runId, g.ids, { exported: null });
+      out.sssOrders += g.ids.sss.length;
+      out.pppOrders += g.ids.ppp.length;
+      out.nothingToPay++;
+      continue;
+    }
+    if (g.congressusMemberId == null) {
+      // Unreachable in practice: a member can only be deleted once nothing is unbilled.
+      out.failed++;
+      await settle(runId, g.ids, "release").catch(() => {});
+      out.errors.push(`${label}: member has no Congressus id (deleted) — not exported, back to pending.`);
+      continue;
+    }
+    try {
+      congressusInvoiceId = await createSaleInvoice(
+        association,
+        g.congressusMemberId,
+        Array.from(g.lineMap.values()),
+        reference
+      );
+      await settle(runId, g.ids, { exported: congressusInvoiceId });
+      out.sssOrders += g.ids.sss.length;
+      out.pppOrders += g.ids.ppp.length;
+      out.congressusInvoices++;
+      out.billedCents += totalCents;
+      console.log(
+        `[export] ${association} ${label}: ${g.ids.sss.length} SSS + ${g.ids.ppp.length} PPP order(s) → Congressus #${congressusInvoiceId}`
+      );
+    } catch (err) {
+      out.failed++;
+      console.error(`[export] Failed for ${label}:`, err);
+      const msg = (err as Error).message;
+      if (congressusInvoiceId != null) {
+        // Created in Congressus, but marking it exported here failed.
+        out.needsCheck += orders;
+        out.errors.push(
+          `${label}: created in Congressus as #${congressusInvoiceId} but not marked exported here (${msg}). ` +
+            `Resolve under "needs a check" → mark exported.`
+        );
+      } else if (err instanceof CongressusHttpError && err.definitelyNotCreated) {
+        // Rejected by Congressus — nothing created, safe to retry later.
+        try {
+          await settle(runId, g.ids, "release");
+          out.errors.push(`${label}: ${msg} — not created, back to pending.`);
+        } catch {
+          out.needsCheck += orders;
+          out.errors.push(`${label}: ${msg} — not created; resolve under "needs a check" → back to pending.`);
+        }
+      } else {
+        // Timeout / 5xx / network: it may or may not exist in Congressus.
+        out.needsCheck += orders;
+        out.errors.push(
+          `${label}: ${msg} — outcome unknown. Check Congressus for this member, then resolve under "needs a check".`
+        );
+      }
+    }
+  }
+
+  return {
+    status: 200,
+    body: {
+      association,
+      ok: out.failed === 0,
+      exported: out.sssOrders + out.pppOrders,
+      ...out,
+    },
+  };
+}
+
+// Dimensie: bill the pending orders into an export batch (its sheet is downloaded
+// from /api/admin/ppp/exports/<id>/xlsx), then Stress's specification of the
+// joint-borrel drinks now billed.
+async function sheetExport(association: AssociationId, userId: string | null, cutoff: Date | null): Promise<ExportResult> {
+  let batch;
+  try {
+    batch = await createSheetExport(association, userId, cutoff);
+  } catch (err) {
+    if (err instanceof SheetExportError) return { status: err.status, body: { error: err.message } };
+    throw err;
+  }
+  const errors: string[] = [];
+  let specification: string | null = null;
+  if (batch) {
+    try {
+      specification = (await createSettlement(userId))?.number ?? null;
+    } catch (err) {
+      console.error("[export] creating the specification for Stress failed:", err);
+      errors.push(`Specification for Stress not created (${(err as Error).message}) — create it on the specifications page.`);
+    }
+  }
+  return {
+    status: 200,
+    body: {
+      association,
+      ok: true,
+      sheet: batch && { id: batch.id, number: batch.number, members: batch.members, totalCents: batch.totalCents },
+      specification,
+      exported: batch ? await prisma.pppInvoice.count({ where: { exportBatchId: batch.id } }) : 0,
+      errors,
+    },
+  };
+}

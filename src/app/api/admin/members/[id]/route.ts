@@ -1,23 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requireMemberAdmin } from "@/lib/auth";
+import { inScope } from "@/lib/scope";
+import { rehomeCards, cardsByPerson } from "@/lib/memberships";
+import { congressusConfig } from "@/lib/congressus";
+import { isAssociationId } from "@/lib/associations";
+import { maskIban, open } from "@/lib/secret-box";
 
 // GET /api/admin/members/[id] — the member dashboard: cards (with UIDs), roles,
 // SSS + PPP spend totals, the open (confirmed, not yet exported) amount, and the
 // full purchase history of both systems, newest first.
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requireMemberAdmin();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const member = await prisma.member.findUnique({
     where: { id },
     include: {
-      cards: { orderBy: { createdAt: "asc" } },
       roles: { select: { id: true, name: true, discountPercent: true, discountCents: true, ownDrinkOnly: true, color: true } },
     },
   });
-  if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });
+  if (!member || !inScope(ctx.scope, member.associationId)) {
+    return NextResponse.json({ error: "Member not found" }, { status: 404 });
+  }
 
   const [sss, ppp] = await Promise.all([
     prisma.saleInvoice.findMany({
@@ -65,13 +71,26 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   return NextResponse.json({
     member: {
       id: member.id,
+      associationId: member.associationId,
       congressusId: member.congressusId,
       firstName: member.firstName,
       lastName: member.lastName,
       email: member.email,
       active: member.active,
       roles: member.roles,
-      cards: member.cards.map((c) => ({ id: c.id, uid: c.uid, name: c.name, createdAt: c.createdAt.toISOString() })),
+      // Associations billing from a sheet (Dimensie): what the sheet will hold —
+      // the IBAN only masked here.
+      billing:
+        isAssociationId(member.associationId) && congressusConfig(member.associationId).billsFromSheet
+        ? { iban: maskIban(open(member.ibanEnc)), bic: open(member.bicEnc), studentNumber: member.studentNumber }
+        : null,
+      // The person's cards, on whichever of their memberships they're stored.
+      cards: ((await cardsByPerson()).get(member.email.toLowerCase()) ?? []).map((c) => ({
+        id: c.id,
+        uid: c.uid,
+        name: c.name,
+        createdAt: c.createdAt.toISOString(),
+      })),
     },
     sss: totals(sss),
     ppp: totals(ppp),
@@ -88,12 +107,17 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 //     Congressus, deletedAt set. The row stays so past orders and every revenue /
 //     P/L figure remain correct; they show as "Deleted member".
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requireMemberAdmin();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const member = await prisma.member.findUnique({ where: { id }, select: { id: true, email: true, deletedAt: true } });
-  if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });
+  const member = await prisma.member.findUnique({
+    where: { id },
+    select: { id: true, email: true, deletedAt: true, associationId: true },
+  });
+  if (!member || !inScope(ctx.scope, member.associationId)) {
+    return NextResponse.json({ error: "Member not found" }, { status: 404 });
+  }
   if (member.deletedAt) return NextResponse.json({ error: "Member is already deleted" }, { status: 409 });
 
   const unbilled = { status: { in: ["CONFIRMED" as const, "EXPORTING" as const] }, memberId: id };
@@ -116,10 +140,12 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
   // Abandoned kiosk carts (CONCEPT) are never billed — always removed.
   const concept = { memberId: id, status: "CONCEPT" as const };
+  // Someone also in the other association keeps their card there.
+  await rehomeCards(id);
   const cleanup = [
     prisma.invoiceLine.deleteMany({ where: { invoice: concept } }),
     prisma.saleInvoice.deleteMany({ where: concept }),
-    prisma.card.deleteMany({ where: { memberId: id } }),
+    prisma.card.deleteMany({ where: { memberId: id } }), // after rehomeCards: only cards with nowhere to go
     prisma.shopSession.deleteMany({ where: { memberId: id } }),
     prisma.cardRegistration.deleteMany({ where: { email: member.email } }),
     prisma.user.updateMany({ where: { memberId: id }, data: { memberId: null } }),
@@ -141,6 +167,9 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
         active: false,
         congressusId: null,
         deletedAt: new Date(),
+        ibanEnc: null,
+        bicEnc: null,
+        studentNumber: null,
         roles: { set: [] },
       },
     }),

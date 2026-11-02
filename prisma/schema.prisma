@@ -7,15 +7,48 @@ datasource db {
   provider = "postgresql"
 }
 
+// A study association using the system, each with its own Congressus. The id is
+// a fixed slug ("stress", "dimensie") so code and defaults can refer to it; the
+// rows are created by migrations. Everything that existed before Dimensie joined
+// belongs to Stress.
+model Association {
+  id        String   @id
+  name      String
+  createdAt DateTime @default(now())
+  // The folder for PPP drink products in this association's Congressus, created on
+  // its first export when not set (Stress uses its fixed folder, see congressus.ts).
+  congressusPppFolderId Int?
+
+  members    Member[]
+  roles      MemberRole[]
+  users      User[]
+  activities PppActivity[]
+  pppCategories PppProductCategory[]
+  pppProducts   PppProduct[]
+  pppOffers     PppProductOffer[]
+  exportBatches PppExportBatch[]
+}
+
 model Member {
   id           String   @id @default(cuid())
+  // Which association's Congressus this member comes from (and is invoiced by).
+  // Someone in both associations has one Member row per association.
+  associationId String      @default("stress")
+  association   Association @relation(fields: [associationId], references: [id])
+  // Ids are per Congressus instance, so unique per association only.
   // null once the member is deleted (anonymised) — detached from Congressus, so a
   // later sync creates them afresh if they're (still) a member there.
-  congressusId Int?     @unique
+  congressusId Int?
   firstName    String
   lastName     String
-  email        String   @unique
+  email        String
   active       Boolean  @default(true)
+  // Dimensie only (their export sheet, not Congressus invoices): bank details from
+  // Congressus, AES-256-GCM encrypted with MEMBER_DATA_KEY (src/lib/secret-box.ts),
+  // and the student number.
+  ibanEnc       String?
+  bicEnc        String?
+  studentNumber String?
   // Set when an admin deletes a member who has exported purchase history: the row
   // stays (anonymised) so past orders and revenue figures remain correct.
   deletedAt    DateTime?
@@ -27,6 +60,10 @@ model Member {
   pppInvoices PppInvoice[]
   roles       MemberRole[]
   user        User?
+  portalSessions MemberSession[]
+
+  @@unique([associationId, congressusId])
+  @@unique([associationId, email])
 }
 
 // A role/committee a member can belong to, carrying a drink discount applied at
@@ -34,7 +71,10 @@ model Member {
 // A member may hold several roles; the BEST (highest) discount wins.
 model MemberRole {
   id              String   @id @default(cuid())
-  name            String   @unique
+  // Roles belong to one association and only apply to its members.
+  associationId   String      @default("stress")
+  association     Association @relation(fields: [associationId], references: [id])
+  name            String
   // A role can discount drinks by a percentage and/or a fixed amount per product.
   // The two stack within a role; across a member's roles the BEST (largest) total
   // discount per product wins. PilsCie = 75 cents off each drink → discountCents 75.
@@ -48,6 +88,8 @@ model MemberRole {
   createdAt       DateTime @default(now())
 
   members Member[]
+
+  @@unique([associationId, name])
 }
 
 model Card {
@@ -146,6 +188,15 @@ model User {
   email        String   @unique
   passwordHash String
   role         UserRole @default(ADMIN)
+  // The association this account works for. null = the overall admin, who sees
+  // every association (and manages accounts). PPP admin data is scoped by it.
+  associationId String?
+  association   Association? @relation(fields: [associationId], references: [id])
+  // Which admin site(s) an ADMIN account may sign in to: the snack system
+  // (snacks.51vo.nl) and/or the bar system (ppp.51vo.nl). Bartenders only use the
+  // PPP POS. Each site has its own login (separate session cookie per domain).
+  sssAccess    Boolean  @default(false)
+  pppAccess    Boolean  @default(false)
   createdAt    DateTime @default(now())
 
   memberId String? @unique
@@ -177,6 +228,8 @@ model Session {
   // "password" (7 days) or "card" (bar POS: sliding 2 h of inactivity, max 16 h —
   // see src/lib/auth.ts), so a card login never outlives the borrel.
   kind      String   @default("password")
+  // The site ("sss" | "ppp") the session was created on; it's only valid there.
+  site      String   @default("sss")
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -220,17 +273,26 @@ enum VatCategory {
 
 model PppProductCategory {
   id        String       @id @default(cuid())
-  name      String       @unique
+  // Each association has its own drink list (Dimensie for its own borrels);
+  // joint borrels use Stress's.
+  associationId String      @default("stress")
+  association   Association @relation(fields: [associationId], references: [id])
+  name      String
   sortOrder Int          @default(0)
   // When true, drinks in this category are FREE for the bartender currently
   // operating the POS when they charge their own card (the association covers
   // these — e.g. soft drinks & 0.0% for the on-shift bartender).
   bartenderFree Boolean  @default(false)
   products  PppProduct[]
+
+  @@unique([associationId, name])
 }
 
 model PppProduct {
   id        String   @id @default(cuid())
+  // The association whose drink list this is (always its category's association).
+  associationId String      @default("stress")
+  association   Association @relation(fields: [associationId], references: [id])
   name      String
   price     Int // cents
   // Optional special/promo price (cents). When set, this is what members pay and
@@ -257,10 +319,37 @@ model PppProduct {
   invoiceLines      PppInvoiceLine[]
   activityDiscounts PppActivityDiscount[]
   externalLines     PppExternalLine[]
+  offers            PppProductOffer[]
+}
+
+// A drink's product in ANOTHER association's Congressus — e.g. a Stress drink
+// bought by a Dimensie member at a joint borrel needs a product in Dimensie's
+// Congressus to be invoiced there. Created on that association's first export of
+// the drink. (A drink's product in its own association's Congressus: Stress keeps
+// using PppProduct.congressusProductOfferId; Dimensie drinks use this table too.)
+model PppProductOffer {
+  id        String   @id @default(cuid())
+  offerId   Int // product_offer_id in that association's Congressus
+  createdAt DateTime @default(now())
+
+  productId     String
+  product       PppProduct  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  associationId String
+  association   Association @relation(fields: [associationId], references: [id])
+
+  @@unique([productId, associationId])
 }
 
 model PppActivity {
   id        String         @id @default(cuid())
+  // The association hosting the borrel (pays the bar bill, owns the revenue).
+  associationId String      @default("stress")
+  association   Association @relation(fields: [associationId], references: [id])
+  // Joint borrel (the weekly Thursday drink): hosted by Stress — Stress's prices,
+  // Stress pays the bar bill — and members of BOTH associations can pay. Dimensie
+  // members' drinks go on Stress's monthly invoice to Dimensie. Someone in both
+  // associations is charged as a Stress member.
+  joint     Boolean        @default(false)
   name      String
   status    ActivityStatus @default(OPEN)
   date      DateTime       @default(now())
@@ -384,6 +473,44 @@ model PppInvoice {
   createdById String?
   createdBy   User?        @relation("PppTapper", fields: [createdById], references: [id])
   lines      PppInvoiceLine[]
+  // Set when this order is on a finalised monthly invoice from Stress to Dimensie
+  // (a Dimensie member's drinks at a borrel Stress hosts). Locks the order.
+  settlementId String?
+  settlement   AssociationSettlement? @relation(fields: [settlementId], references: [id], onDelete: SetNull)
+  // Dimensie: the export (Excel sheet) the order was billed in.
+  exportBatchId String?
+  exportBatch   PppExportBatch? @relation(fields: [exportBatchId], references: [id], onDelete: SetNull)
+}
+
+// Stress's specification to Dimensie of what Dimensie members drank at joint
+// borrels (Stress hosts and pays the bar; Dimensie collects from its members),
+// created automatically by each Dimensie export: it covers the joint-borrel orders
+// Dimensie has billed (EXPORTED) that aren't on an earlier one. Charged at the
+// drink price BEFORE Dimensie's role discounts (Dimensie covers those), incl. VAT;
+// Dimensie bartenders' free drinks are Stress's. Not booked in Congressus — the
+// treasurer attaches the PDF/CSV to their own invoice. FINAL freezes the figures
+// (snapshot) and locks the orders.
+model AssociationSettlement {
+  id             String           @id @default(cuid())
+  number         String           @unique // e.g. "STRESS-DIM-2026-001"
+  period         String // e.g. "October 2026" / "September – October 2026" (borrel dates)
+  debtorId       String // the association that pays: "dimensie"
+  creditorId     String           @default("stress")
+  status         SettlementStatus @default(FINAL)
+  totalExclCents Int
+  totalVatCents  Int
+  totalInclCents Int
+  snapshot       Json // per drink, per member, per borrel, VAT per rate (see src/lib/settlement.ts)
+  createdById    String?
+  createdAt      DateTime         @default(now())
+  sentAt         DateTime?
+
+  orders PppInvoice[]
+}
+
+enum SettlementStatus {
+  FINAL // figures frozen, orders locked; can be undone while not sent
+  SENT // sent to the debtor; can't be undone
 }
 
 model PppInvoiceLine {
@@ -397,6 +524,11 @@ model PppInvoiceLine {
   // their own card for a bartender-free category. The association covers the cost
   // (= listCents); surfaced separately on the dashboard.
   bartenderFree Boolean @default(false)
+  // Price per unit BEFORE role discounts and bartender comps (Wall Street price,
+  // else borrel special, else drink special, else price) — what Stress charges
+  // Dimensie for a Dimensie member's drink at a joint borrel. Null on old rows.
+  baseCents Int?
+  vatRate   Int? // 0, 9 or 21 — the drink's VAT at sale time. Null on old rows.
 
   invoiceId String
   invoice   PppInvoice @relation(fields: [invoiceId], references: [id])
@@ -507,4 +639,47 @@ model PppExternalLine {
   order     PppExternalOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId String
   product   PppProduct       @relation(fields: [productId], references: [id])
+}
+
+// One Dimensie export: Dimensie collects from its members itself, from an Excel
+// sheet (one row per member: name, email, IBAN, BIC, total, student number). The
+// sheet is built on download from the orders in the batch, so bank details are
+// never copied out of the encrypted member fields.
+model PppExportBatch {
+  id            String      @id @default(cuid())
+  number        String      @unique // "DIM-EXP-<year>-NNN"
+  associationId String
+  association   Association @relation(fields: [associationId], references: [id])
+  period        String // e.g. "October 2026"
+  members       Int
+  totalCents    Int
+  createdAt     DateTime    @default(now())
+  createdById   String?
+  orders        PppInvoice[]
+}
+
+// A member signed in to the member portal (ppp.51vo.nl/user) with Congressus OAuth
+// of one of their associations. Separate from staff sessions (Session): own cookie
+// ("member_session"), read-only access to the person's own purchases and invoices.
+model MemberSession {
+  id          String   @id @default(cuid())
+  token       String   @unique
+  memberId    String
+  member      Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  // The association whose Congressus they signed in with.
+  associationId String
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+}
+
+// One automatic month-end export (src/lib/monthly-export.ts): at most one per month
+// (`period` is unique), so a repeated or overlapping trigger never bills twice.
+model MonthlyExportRun {
+  id         String    @id @default(cuid())
+  period     String    @unique // the month billed, "2026-10"
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  // Per association: the export's outcome, open borrels left for next month, errors.
+  result     Json?
+  emailed    Boolean   @default(false)
 }

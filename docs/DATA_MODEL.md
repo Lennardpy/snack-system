@@ -20,17 +20,35 @@ CardRegistration   (pending card links; standalone)
 
 ## Models
 
+### Association
+A study association using the system: `stress` and `dimensie` (SV Dimensie). The id
+is a fixed slug; rows are created by the migration `…_associations`. Everything that
+existed before Dimensie joined belongs to Stress. `Member`, `MemberRole` and
+`PppActivity` (the host) carry `associationId` (default `stress`); `User.associationId`
+is null for the overall admin.
+
+Also per association: `PppProductCategory` / `PppProduct` (each association's drink
+list; category names unique per association). `PppActivity.joint` marks a joint
+borrel (Stress hosts, both associations pay). `PppInvoiceLine.baseCents` /
+`vatRate` snapshot the price before role discounts and the VAT rate. See PPP.md →
+"Stress & Dimensie".
+
 ### Member
-A person synced from Congressus. Only Primary, Secondary and Honorary members are imported.
+A person synced from their association's Congressus (Stress: Primary, Secondary and Honorary;
+Dimensie: Lid and Extraordinary member). Someone in both associations has one row
+per association.
 
 | Field | Type | Notes |
 |-------|------|-------|
 | `id` | String (cuid) | PK |
-| `congressusId` | Int? | **unique** — the Congressus member id; null once deleted (anonymised) |
+| `associationId` | String | which association (and Congressus) the member belongs to |
+| `congressusId` | Int? | the Congressus member id, **unique per association**; null once deleted (anonymised) |
 | `firstName`, `lastName` | String | |
-| `email` | String | **unique** — must match their Congressus login email |
+| `email` | String | **unique per association** — must match their Congressus login email |
 | `active` | Boolean | false if deleted/locked/archived/deceased in Congressus |
 | `deletedAt` | DateTime? | set when an admin deletes a member with exported history (row kept, anonymised, hidden from lists) |
+| `ibanEnc`, `bicEnc` | String? | Dimensie only: bank details from Congressus, AES-256-GCM encrypted (`MEMBER_DATA_KEY`); cleared on delete |
+| `studentNumber` | String? | Dimensie only: from a Congressus custom field |
 | `createdAt`, `updatedAt` | DateTime | |
 | Relations | `cards[]`, `invoices[]`, `user?` | |
 
@@ -177,3 +195,33 @@ npx prisma migrate deploy
 ```
 
 On Railway this runs automatically at container start (see [DEPLOYMENT.md](DEPLOYMENT.md)).
+
+### PppExportBatch
+One Dimensie export (Dimensie bills from an Excel sheet, not Congressus). Its
+orders point to it (`PppInvoice.exportBatchId`); the sheet is generated on download
+from those orders and the members' encrypted bank details.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `id` | String (cuid) | PK |
+| `number` | String | unique, `DIM-EXP-<year>-001…` |
+| `associationId` | String | `dimensie` |
+| `period` | String | e.g. "October 2026" (from the borrel dates) |
+| `members`, `totalCents` | Int | members with something to pay, and the total |
+| `createdAt`, `createdById` | | |
+
+### MemberSession
+A member signed in to the member portal (`ppp.51vo.nl/user`) via Congressus OAuth.
+Separate from staff `Session`s.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `token` | String | unique, random (cookie `member_session`) |
+| `memberId` | String | the membership they logged in with (cascade-deleted with it) |
+| `associationId` | String | whose Congressus they used |
+| `expiresAt`, `createdAt` | DateTime | 8 hours |
+
+### MonthlyExportRun
+One automatic month-end export. `period` ("2026-10") is **unique**, so a month is never
+billed twice by the job. `result` holds each association's export outcome and the
+open borrels left waiting; `emailed` whether the summaries went out.

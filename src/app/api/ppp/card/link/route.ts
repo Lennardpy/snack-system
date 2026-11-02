@@ -2,21 +2,29 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { normalizeUid } from "@/lib/card";
 import { requireBartender } from "@/lib/auth";
+import { resolvePayer, cardHolderFor } from "@/lib/memberships";
+import { activityVisible } from "@/lib/scope-db";
+import { posScope } from "@/lib/scope";
 
 // Link an unrecognised card to a member from the bar POS. The bartender scans a
 // card that isn't in the shared Card table yet, searches the member by name, and
 // links it here. The card then works everywhere (bar + snack kiosk), exactly like
 // one linked via the kiosk's email flow — PPP keeps no card tables of its own.
 //
-// Body: { uid, memberId }. Returns the member (name + roles) so the POS can set
-// them as the charge target immediately.
+// Body: { uid, memberId, activityId }. Someone in both associations is one person:
+// the card is linked once and works for both memberships. Returns the membership
+// that pays at this borrel (name + roles) so the POS can charge them immediately.
 export async function POST(req: NextRequest) {
   const user = await requireBartender();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { uid, memberId } = await req.json();
-  if (!uid || typeof uid !== "string" || !memberId || typeof memberId !== "string") {
-    return NextResponse.json({ error: "uid and memberId are required" }, { status: 400 });
+  const { uid, memberId, activityId } = await req.json();
+  if (!uid || typeof uid !== "string" || !memberId || typeof memberId !== "string" || typeof activityId !== "string") {
+    return NextResponse.json({ error: "uid, memberId and activityId are required" }, { status: 400 });
+  }
+  const activity = await prisma.pppActivity.findUnique({ where: { id: activityId }, select: { associationId: true, joint: true } });
+  if (!activity || !(await activityVisible(activityId, posScope(user)))) {
+    return NextResponse.json({ error: "Activity not found" }, { status: 404 });
   }
 
   const normalised = normalizeUid(uid);
@@ -39,23 +47,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "This is an external card — it can't be linked to a member" }, { status: 409 });
   }
 
-  const member = await prisma.member.findUnique({
-    where: { id: memberId },
-    include: {
-      roles: { select: { name: true, discountPercent: true, discountCents: true, ownDrinkOnly: true, color: true } },
-    },
-  });
-  if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });
-  if (!member.active) return NextResponse.json({ error: "Member inactive" }, { status: 403 });
+  // The person must be able to pay here; then the card goes on their Stress
+  // membership if they have one (kiosk) — it works for all their memberships.
+  const result = await resolvePayer(memberId, activity);
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+  const holderId = await cardHolderFor(memberId);
+  if (!holderId) return NextResponse.json({ error: "Member not found" }, { status: 404 });
 
   await prisma.card.create({
-    data: { uid: normalised, memberId: member.id, name: "Linked at the bar" },
+    data: { uid: normalised, memberId: holderId, name: "Linked at the bar" },
   });
 
+  const { payer } = result;
   return NextResponse.json({
-    memberId: member.id,
-    firstName: member.firstName,
-    lastName: member.lastName,
-    roles: member.roles,
+    memberId: payer.id,
+    firstName: payer.firstName,
+    lastName: payer.lastName,
+    associationId: payer.associationId,
+    roles: payer.roles,
   });
 }

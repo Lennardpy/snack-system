@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requirePpp } from "@/lib/auth";
+import { activityAccess, activityInScope } from "@/lib/scope-db";
 import { sumLineDiscounts, attributeRoleDiscount } from "@/lib/roles";
 import { sbzCostInclCents, sbzCostExclCents, type SbzProduct } from "@/lib/sbz";
 import { loadSbzLists, sbzCatalogAt, sbzListAt } from "@/lib/sbz-db";
@@ -14,10 +15,16 @@ import { externalSplitByActivity } from "@/lib/external-db";
 //   • discounts given: specials, per-role (Board/PilsCie/…), bartender comps
 //   • a per-drink breakdown (consumed via member charges, revenue, discount)
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  // Dimensie views a joint borrel read-only: only its own members' orders, no
+  // costs / usage / external tabs (that's Stress's side of the borrel).
+  const access = await activityAccess(id, ctx.scope);
+  if (!access) return NextResponse.json({ error: "Activity not found" }, { status: 404 });
+  const readOnly = access === "read";
+  const host = await prisma.pppActivity.findUniqueOrThrow({ where: { id }, select: { associationId: true } });
   const [activity, products, invoices, usage, sbzLists, external] = await Promise.all([
     prisma.pppActivity.findUnique({
       where: { id },
@@ -28,13 +35,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         },
       },
     }),
+    // The host's drink list (for the specials picker).
     prisma.pppProduct.findMany({
-      where: { archived: false },
+      where: { archived: false, associationId: host.associationId },
       orderBy: [{ category: { sortOrder: "asc" } }, { sortOrder: "asc" }, { name: "asc" }],
       select: { id: true, name: true, price: true, specialPrice: true },
     }),
     prisma.pppInvoice.findMany({
-      where: { activityId: id },
+      where: { activityId: id, ...(readOnly ? { member: { associationId: ctx.scope! } } : {}) },
       select: {
         totalCents: true,
         member: { select: { roles: { select: { name: true, discountPercent: true, discountCents: true, ownDrinkOnly: true } } } },
@@ -50,9 +58,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         },
       },
     }),
-    prisma.pppActivityUsage.findMany({ where: { activityId: id }, select: { sbzKey: true, quantity: true } }),
+    readOnly ? [] : prisma.pppActivityUsage.findMany({ where: { activityId: id }, select: { sbzKey: true, quantity: true } }),
     loadSbzLists(),
-    externalSplitByActivity({ activityId: id }),
+    readOnly ? new Map<string, { internalCents: number; abProfitCents: number }>() : externalSplitByActivity({ activityId: id }),
   ]);
 
   if (!activity) return NextResponse.json({ error: "Activity not found" }, { status: 404 });
@@ -126,6 +134,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   return NextResponse.json({
     activity,
+    readOnly,
     products,
     orderCount: invoices.length,
     memberRevenueCents,
@@ -150,13 +159,45 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   });
 }
 
+// Mark a Stress borrel as joint (both associations can pay) or not. Body: { joint }
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id } = await params;
+  if (!(await activityInScope(id, ctx.scope))) {
+    return NextResponse.json({ error: "Activity not found" }, { status: 404 });
+  }
+  const body = await req.json().catch(() => ({}));
+  if (typeof body.joint !== "boolean") return NextResponse.json({ error: "joint must be true or false" }, { status: 400 });
+  const activity = await prisma.pppActivity.findUniqueOrThrow({ where: { id }, select: { associationId: true } });
+  // Joint borrels are hosted by Stress (Stress prices, Stress pays the bar bill).
+  if (activity.associationId !== "stress") {
+    return NextResponse.json({ error: "Only a Stress borrel can be joint" }, { status: 400 });
+  }
+  if (!body.joint) {
+    const dimensieOrders = await prisma.pppInvoice.count({ where: { activityId: id, member: { associationId: "dimensie" } } });
+    if (dimensieOrders > 0) {
+      return NextResponse.json(
+        { error: `Dimensie members already ordered here (${dimensieOrders} order(s)) — it can't stop being joint.` },
+        { status: 409 }
+      );
+    }
+  }
+  await prisma.pppActivity.update({ where: { id }, data: { joint: body.joint } });
+  return NextResponse.json({ ok: true, joint: body.joint });
+}
+
 // Save the manually-entered SBZ usage for this borrel.
 // Body: { usage: [{ sbzKey, quantity }] } — quantity 0/blank removes the entry.
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  if (!(await activityInScope(id, ctx.scope))) {
+    return NextResponse.json({ error: "Activity not found" }, { status: 404 });
+  }
   const activity = await prisma.pppActivity.findUnique({ where: { id }, select: { id: true, date: true } });
   if (!activity) return NextResponse.json({ error: "Activity not found" }, { status: 404 });
   const catalog = sbzCatalogAt(await loadSbzLists(), activity.date);
@@ -190,10 +231,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 // a free drink synced from Alexia). Its specials, usage and saved SumUp go with it
 // (cascade). Its Alexia name+day is remembered so the sync won't re-import it.
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  if (!(await activityInScope(id, ctx.scope))) {
+    return NextResponse.json({ error: "Activity not found" }, { status: 404 });
+  }
   const activity = await prisma.pppActivity.findUnique({
     where: { id },
     select: { name: true, date: true, startsAt: true, _count: { select: { invoices: true } } },

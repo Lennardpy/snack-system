@@ -6,20 +6,39 @@ trade-offs made for a shared, physical kiosk.
 
 ## Authentication & authorisation
 
+### Two sites, separate logins
+- One app serves two sites, told apart by the domain (`src/lib/site.ts`): the
+  **SSS** (snack system, `snacks.51vo.nl`) and the **PPP** (bar system,
+  `ppp.51vo.nl`). The session cookie is host-only, and every `Session` row stores
+  the `site` it was created on — `getSession()` rejects it on the other site, so a
+  copied cookie doesn't work across domains either.
+- Accounts (`User`) carry `sssAccess` / `pppAccess` (admins) and an
+  `associationId` (null = the **overall admin**, who sees everything and manages
+  accounts). Bartenders only use the PPP. Login (`POST /api/auth/login`) refuses an
+  account without access to the site it signs in on.
+
 ### Admin
-- Login (`POST /api/auth/login`) verifies a bcrypt password and sets an
-  **httpOnly**, **Secure** (in production), `SameSite=Lax` `session` cookie
-  (7-day `Session` row, `kind: "password"`). All logins go through
-  `createSession()` / `setSessionCookie()` in `src/lib/auth.ts`.
-- `requireAdmin()` (`src/lib/auth.ts`) loads the session, checks it isn't expired,
-  and checks `role === "ADMIN"`. **Every** `/api/admin/*` handler calls it.
-- The admin pages are gated by a **server-side layout** (`requireAdmin()` →
-  `redirect("/admin/login")`), so unauthenticated users never receive page HTML
-  or data — only a redirect.
-- Middleware (`src/middleware.ts`) additionally requires the cookie to be present
-  on `/admin/*` and `/api/admin/*`. This is a fast pre-check; the real validation
-  is `requireAdmin()` (a forged/expired cookie passes middleware but is rejected
-  by the handler).
+- Login verifies a bcrypt password and sets an **httpOnly**, **Secure** (in
+  production), `SameSite=Lax` `session` cookie (7-day `Session` row, `kind:
+  "password"`). All logins go through `createSession()` / `setSessionCookie()` in
+  `src/lib/auth.ts`.
+- Every `/api/admin/*` handler calls one of (`src/lib/auth.ts`):
+  - `requireSss()` — snack-system routes (products, SSS invoices, SSS dashboard);
+  - `requirePpp()` — bar routes; returns the login's **scope** (association);
+  - `requireMemberAdmin()` — shared member routes (SSS → Stress members, PPP → its scope);
+  - `requireStressExporter()` — the combined Stress export (SSS admin or a Stress-side PPP admin);
+  - `requireOverallAdmin()` — account management.
+- **Association scoping** (`src/lib/scope.ts`, `scope-db.ts`): PPP routes filter
+  every list by the scope and answer **404** for a record of another association
+  (so its existence isn't revealed). Stress-only parts (the drink list, external
+  cards, SBZ edits, SumUp figures) refuse a Dimensie login. POS routes scope by the
+  bartender's association (`posScope`).
+- The admin pages are gated by **server-side layouts** (`requireSss()` →
+  `/admin/login`, `requirePpp()` → `/ppp/login`), so unauthenticated users never
+  receive page HTML or data — only a redirect.
+- Middleware (`src/middleware.ts`) routes each domain to its own pages and requires
+  the cookie on protected prefixes. This is a fast pre-check; the real validation
+  is in the handlers (a forged/expired cookie passes middleware but is rejected).
 
 ### Bar POS (bartenders)
 - **Card login** (`POST /api/auth/card-login`) creates a short `kind: "card"`
@@ -111,6 +130,34 @@ bound the exposure. Stronger options (not currently implemented): move the token
 into an httpOnly cookie so it can't be shared via URL, or use a crypto-random
 token instead of a cuid.
 
+### Month-end export trigger
+`POST /api/cron/monthly-export` is not behind a login: it requires the shared
+`CRON_SECRET` (≥ 16 chars, compared in constant time; without it set, it refuses
+everything). Even with the secret it only bills on the 1st at 12:xx unless forced, and
+each month at most once (unique `MonthlyExportRun.period`). The summary emails contain
+no IBANs; problem lines may name the member concerned.
+
+### Member portal (`ppp.51vo.nl/user`)
+Members log in with their association's Congressus (OAuth 2.0 authorization code;
+`state` in a short-lived httpOnly cookie, compared in constant time; client secret
+server-side only). The portal session is a separate table and cookie
+(`member_session`, random 256-bit token, 8 h) — it never grants staff access, and a
+staff session doesn't open the portal. A member is matched by Congressus id (else
+email) within the association they logged in with, and sees only the purchases and
+invoices of their own memberships (same email). The portal is read-only; invoice
+PDFs are looked up within those memberships (another key → 404). No IBANs are shown.
+
+### Dimensie members' bank details
+Dimensie bills from an Excel sheet, so its member sync imports IBAN, BIC and student
+number. **IBAN and BIC are encrypted at rest** (AES-256-GCM, random IV, auth tag;
+key `MEMBER_DATA_KEY`, never in the DB or the repo; `src/lib/secret-box.ts`). They
+are decrypted only to build the export sheet — on download, never stored in a
+snapshot or file — and shown masked (`NL91 •••• 4300`) on the member page. The sheet
+is served only to Dimensie's PPP admins and the overall admin, with `no-store`, and
+every download is logged. Deleting a member clears them. The sheet is a personal-data
+file once downloaded: it should be handled by Dimensie's treasurer and deleted after
+collection. Stress's members' bank details are never imported.
+
 ## Prohibited / careful operations
 
 - **Member deletion** is blocked while invoices exist.
@@ -127,10 +174,63 @@ token instead of a cuid.
 - **Bulk invoice clearing** requires a double confirmation in the UI and is
   intended for test-data cleanup only.
 
+## Audit: two sites + Stress/Dimensie (branch `dimensie`, October 2026)
+
+Scope: everything the multi-association work added — site separation, logins,
+association scoping, the POS rules, the Dimensie export and the specifications.
+
+**How it was checked.** All 118 API handlers were listed with the access check they
+call: every `/api/admin/*` and `/api/ppp/*` handler calls a `require…()` guard (101);
+the 17 without one are the intended public / token endpoints (kiosk, card
+registration, login, health, product images, product list, Wall Street board). Every
+PPP handler that takes an id was checked for association scoping. Behaviour was
+verified with scripted access-matrix tests (~170 checks: each login type × site ×
+route, other-association ids → 404, joint-borrel read-only, exports, specifications)
+against a local server and the mock Congressus, and on staging.
+
+**Found and fixed**
+- *Open redirect after login* (pre-existing): `?from=` on both login pages was
+  followed unchecked → now only same-site paths (`src/lib/safe-path.ts`).
+- *CSV formula injection*: member/drink/borrel names starting with `= + - @` (names
+  come from Congressus, set by members) would run as formulas in Excel → prefixed
+  with `'` in the purchases CSV.
+- *External cards*: any PPP bartender could register an external card via the API
+  (the POS only hid the button for Dimensie) → Stress-side staff only.
+- *Host-based site detection*: the `ppp.localhost` derivation is now dev-only, so a
+  forged `Host` can't influence redirects in production.
+- Earlier in the branch: card login for someone in both associations, an inactive
+  Stress membership blocking payment as Dimensie member, cards lost when a membership
+  was deleted, SBZ editing UI shown to Dimensie (the API already refused it).
+
+**Verified as designed**
+- Sessions are per site (`Session.site`, host-only cookie); a cookie copied to the
+  other domain is rejected. Login refuses accounts without access to that site — and
+  only after the password matched (no account enumeration).
+- A Dimensie login gets 404 for any Stress record (members, roles, bartenders, orders,
+  borrels, drinks), can't see the SSS, SBZ edits, SumUp, Wall Street or external
+  cards, and views joint borrels read-only (its own members' orders).
+- Who pays where is resolved server-side from the card/member — the POS can't choose
+  another membership or association. Prices come from the host's drink list only.
+- Exports: each side only runs and resolves its own association's export; Stress's
+  never claims Dimensie members' orders and vice versa. Specifications are created
+  only from orders Dimensie exported; finalised orders are locked; Dimensie sees a
+  specification only once Stress marked it sent.
+- Secrets: no API keys in the repository or its history; per-association Congressus
+  tokens live in Railway variables only. Staging uses a mock Congressus and an
+  anonymised copy of the data.
+
+**Accepted / by design**
+- Card UIDs are visible to both associations' admins for people in both (cards
+  belong to the person); bartenders at a joint borrel see each other's members'
+  names in the shared order history.
+- People in both associations are matched by email; different emails → two people.
+- Set-password (invite) links don't expire (as for bartenders before); "Reset link"
+  invalidates the previous one. Consider an expiry for admin invites later.
+
 ## Audit checklist
 
 When adding a new endpoint:
-- [ ] Does it touch member/admin data? → call `requireAdmin()` (admin) or validate a token (shop/registration).
+- [ ] Does it touch member/admin data? → call the right `require…()` for its site (see above), scope it with `src/lib/scope.ts`, or validate a token (shop/registration).
 - [ ] Does it return more fields than the caller needs? → `select` only what's required.
 - [ ] Is it public and write-capable or enumeration-prone? → add rate limiting.
 - [ ] Does it render raw HTML with external data? → escape it.

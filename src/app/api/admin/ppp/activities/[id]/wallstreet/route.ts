@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requirePpp } from "@/lib/auth";
+import { activityInScope } from "@/lib/scope-db";
 import { CRASH_MS, getWallstreet, isVolatility } from "@/lib/wallstreet";
 
 // Wall Street settings for an activity.
@@ -9,10 +10,14 @@ import { CRASH_MS, getWallstreet, isVolatility } from "@/lib/wallstreet";
 //   • active true (from off) starts a fresh market: tick 0 = normal prices.
 //   • crash true → every drink at the floor for CRASH_MS, effective immediately.
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  if (!(await activityInScope(id, ctx.scope))) {
+    return NextResponse.json({ error: "Activity not found" }, { status: 404 });
+  }
+  const host = await prisma.pppActivity.findUniqueOrThrow({ where: { id }, select: { associationId: true } });
   const [activity, products] = await Promise.all([
     prisma.pppActivity.findUnique({
       where: { id },
@@ -25,8 +30,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         wallstreetStartedAt: true,
       },
     }),
+    // The host's drink list.
     prisma.pppProduct.findMany({
-      where: { archived: false, published: true },
+      where: { archived: false, published: true, associationId: host.associationId },
       orderBy: [{ category: { sortOrder: "asc" } }, { sortOrder: "asc" }, { name: "asc" }],
       select: { id: true, name: true, price: true, specialPrice: true, category: { select: { name: true } } },
     }),
@@ -36,10 +42,18 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  if (!(await activityInScope(id, ctx.scope))) {
+    return NextResponse.json({ error: "Activity not found" }, { status: 404 });
+  }
+  // Wall Street is a Stress feature: not on Dimensie borrels.
+  const host = await prisma.pppActivity.findUnique({ where: { id }, select: { associationId: true } });
+  if (host?.associationId !== "stress") {
+    return NextResponse.json({ error: "Wall Street is only available at Stress borrels" }, { status: 400 });
+  }
   const activity = await prisma.pppActivity.findUnique({
     where: { id },
     select: { status: true, wallstreetActive: true, wallstreetMinPct: true, wallstreetMaxPct: true, wallstreetProductIds: true },
@@ -73,8 +87,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!Array.isArray(body.productIds) || body.productIds.some((x: unknown) => typeof x !== "string")) {
       return NextResponse.json({ error: "Invalid drinks" }, { status: 400 });
     }
+    const host = await prisma.pppActivity.findUniqueOrThrow({ where: { id }, select: { associationId: true } });
     const valid = await prisma.pppProduct.findMany({
-      where: { id: { in: body.productIds }, archived: false },
+      where: { id: { in: body.productIds }, archived: false, associationId: host.associationId },
       select: { id: true },
     });
     data.wallstreetProductIds = valid.map((p) => p.id);

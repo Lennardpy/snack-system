@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
 
   // Find the member
   const member = await prisma.member.findUnique({
-    where: { email: registration.email },
+    where: { associationId_email: { associationId: "stress", email: registration.email } },
   });
 
   if (!member) {

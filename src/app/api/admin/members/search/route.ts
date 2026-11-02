@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requirePpp } from "@/lib/auth";
+import { memberWhere } from "@/lib/scope";
 
 // Lightweight member typeahead for linking a bartender to a member.
 // GET /api/admin/members/search?q=...
 export async function GET(req: NextRequest) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requirePpp();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const q = (req.nextUrl.searchParams.get("q") ?? "").trim();
   if (q.length < 2) return NextResponse.json({ members: [] });
@@ -16,6 +17,7 @@ export async function GET(req: NextRequest) {
   const rows = await prisma.member.findMany({
     where: {
       deletedAt: null,
+      ...memberWhere(ctx.scope),
       AND: tokens.map((t) => ({
         OR: [
           { firstName: { contains: t, mode: "insensitive" as const } },

@@ -20,6 +20,8 @@ async function main() {
         email,
         passwordHash: await bcrypt.hash(password, 12),
         role: "ADMIN",
+        sssAccess: true,
+        pppAccess: true,
       },
     });
     console.log(`✓ Admin user created: ${email} / ${password}`);
