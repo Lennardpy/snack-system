@@ -671,3 +671,15 @@ model MemberSession {
   expiresAt   DateTime
   createdAt   DateTime @default(now())
 }
+
+// One automatic month-end export (src/lib/monthly-export.ts): at most one per month
+// (`period` is unique), so a repeated or overlapping trigger never bills twice.
+model MonthlyExportRun {
+  id         String    @id @default(cuid())
+  period     String    @unique // the month billed, "2026-10"
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  // Per association: the export's outcome, open borrels left for next month, errors.
+  result     Json?
+  emailed    Boolean   @default(false)
+}

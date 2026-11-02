@@ -134,6 +134,16 @@ Two tabs: **Pending export** (confirmed, awaiting billing) and **Exported**
   treasurer downloads the **PDF** / **CSV**, attaches it to their own invoice to
   Dimensie, books and sends it, then clicks **Mark sent to Dimensie** — only then does
   Dimensie see it. **Undo** is possible until then; **Create now** makes one by hand.
+- **Automatic month-end export** — on the **1st of every month at 12:00** the
+  system bills the previous month by itself: Stress's invoices in Congressus and
+  Dimensie's export sheet (plus the specification for Stress). It takes only orders
+  from before the 1st at **closed** borrels — a borrel that's still open waits for
+  the next month, so close borrels after they end. Afterwards the treasurers
+  (treasurer@stress.utwente.nl, treasurer@svdimensie.nl) get a summary by email,
+  with lennard@stress.utwente.nl in copy: what was billed, anything that needs a
+  check or failed, and which open borrels are waiting. It runs once per month; the
+  export buttons still work any time (they bill everything pending). The dashboard
+  shows the last automatic run.
 - **Invoice PDF per member** — on a member's page (**Invoices**), each invoice can be
   downloaded as a PDF with the association's logo: per borrel (and kiosk day for
   Stress) what they had and paid. Use it when a member asks what their invoice is

@@ -35,6 +35,8 @@ Joint borrels are shown read-only. Stress's data isn't visible to Dimensie, and 
 
 **Invoices → Export Dimensie (Excel)** downloads a sheet with one row per member: First Name, Last Name, Email, IBAN, BIC, Event ("Drink costs October 2026"), Event price (their total) and Student number. You collect from your members with it yourself. It covers drinks at both Dimensie and joint borrels, without VAT, at the price each member was charged at the bar, including your own discounts. Earlier sheets stay available under **Dimensie exports**.
 
+**Automatically every month:** on the 1st at 12:00 the system makes the sheet for the previous month by itself, and emails `treasurer@svdimensie.nl` that it's ready (no bank details in the email). Borrels that are still open then are included the month after. You can still export by hand at any time.
+
 The dashboard shows what's still to bill, the last export, the latest invoice from Stress, and how many members have no IBAN in Congressus.
 
 ## Your members' own overview

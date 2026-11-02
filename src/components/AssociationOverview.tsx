@@ -26,12 +26,15 @@ interface Overview {
   };
   unbilled: { cents: number; orders: number; members: number; needsCheck: number };
   lastExport: { at: string; label: string } | null;
+  monthly: { period: string; finishedAt: string | null; ok: boolean | null } | null;
   specifications:
     | { toSend: number; toSendCents: number; latest: Spec | null }
     | { received: number; latest: Spec | null };
 }
 
 const euro = (c: number) => `€${(c / 100).toFixed(2)}`;
+const monthName = (ym: string) =>
+  new Date(`${ym}-15T12:00:00`).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
 
 export default function AssociationOverview() {
@@ -61,6 +64,8 @@ export default function AssociationOverview() {
               label="Last export"
               value={o.lastExport ? day(o.lastExport.at) : "never"}
               sub={o.lastExport?.label}
+              warn={o.monthly && o.monthly.ok === false ? `automatic export ${monthName(o.monthly.period)} failed` : undefined}
+              note={o.monthly && o.monthly.ok ? `automatic export ${monthName(o.monthly.period)} ✓` : "automatic: the 1st, 12:00"}
             />
             {"toSend" in o.specifications ? (
               <Fact
@@ -109,13 +114,28 @@ export default function AssociationOverview() {
   );
 }
 
-function Fact({ label, value, sub, warn, href }: { label: string; value: string; sub?: string; warn?: string; href?: string }) {
+function Fact({
+  label,
+  value,
+  sub,
+  warn,
+  note,
+  href,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  warn?: string;
+  note?: string;
+  href?: string;
+}) {
   const body = (
     <>
       <p className="text-gray-400">{label}</p>
       <p className="text-2xl font-bold tabular-nums">{value}</p>
       {sub && <p className="text-xs text-gray-500">{sub}</p>}
       {warn && <p className="text-xs text-amber-400">⚠ {warn}</p>}
+      {note && <p className="text-xs text-gray-600">{note}</p>}
     </>
   );
   return href ? (

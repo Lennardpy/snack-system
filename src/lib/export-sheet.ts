@@ -14,6 +14,12 @@ import { open } from "./secret-box";
 // The sheet itself is built when it's downloaded, from the batch's orders and the
 // members' encrypted bank details — so IBANs are never stored anywhere else.
 
+// Orders the monthly run may bill: at borrels held before the cut-off (the 1st of
+// the month) that are closed — a borrel still open waits for the next month.
+export function pppCutoffWhere(cutoff: Date | null) {
+  return cutoff ? { activity: { date: { lt: cutoff }, status: "CLOSED" as const } } : {};
+}
+
 const PREFIX: Record<AssociationId, string> = { stress: "STRESS-EXP", dimensie: "DIM-EXP" };
 
 export class SheetExportError extends Error {
@@ -22,12 +28,13 @@ export class SheetExportError extends Error {
   }
 }
 
-// Bills every unbilled (CONFIRMED) order of this association's members. null when
+// Bills every unbilled (CONFIRMED) order of this association's members — with a
+// `cutoff` (monthly run) only those at closed borrels held before it. null when
 // there's nothing to export.
-export async function createSheetExport(association: AssociationId, userId: string | null) {
+export async function createSheetExport(association: AssociationId, userId: string | null, cutoff: Date | null = null) {
   return prisma.$transaction(async (tx) => {
     const orders = await tx.pppInvoice.findMany({
-      where: { status: "CONFIRMED", member: { associationId: association } },
+      where: { status: "CONFIRMED", member: { associationId: association }, ...pppCutoffWhere(cutoff) },
       select: { id: true, memberId: true, totalCents: true, activity: { select: { date: true } } },
     });
     if (orders.length === 0) return null;

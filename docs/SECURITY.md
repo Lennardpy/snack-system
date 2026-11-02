@@ -130,6 +130,13 @@ bound the exposure. Stronger options (not currently implemented): move the token
 into an httpOnly cookie so it can't be shared via URL, or use a crypto-random
 token instead of a cuid.
 
+### Month-end export trigger
+`POST /api/cron/monthly-export` is not behind a login: it requires the shared
+`CRON_SECRET` (≥ 16 chars, compared in constant time; without it set, it refuses
+everything). Even with the secret it only bills on the 1st at 12:xx unless forced, and
+each month at most once (unique `MonthlyExportRun.period`). The summary emails contain
+no IBANs; problem lines may name the member concerned.
+
 ### Member portal (`ppp.51vo.nl/user`)
 Members log in with their association's Congressus (OAuth 2.0 authorization code;
 `state` in a short-lived httpOnly cookie, compared in constant time; client secret

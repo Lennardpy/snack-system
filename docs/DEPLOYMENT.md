@@ -37,6 +37,8 @@ Set these on the Railway **service** (not the database plugin).
 | `CONGRESSUS_OAUTH_STRESS_DOMAIN` / `_CLIENT_ID` / `_CLIENT_SECRET` | for the portal | `https://www.<stress site>` | "Log in with Congressus" for Stress members on `ppp.51vo.nl/user`. Register the client in Stress's Congressus with redirect URI `https://ppp.51vo.nl/api/user/oauth/callback`. Without them there's no Stress login button. |
 | `CONGRESSUS_OAUTH_DIMENSIE_DOMAIN` / `_CLIENT_ID` / `_CLIENT_SECRET` | for the portal | `https://www.svdimensie.nl` | The same for Dimensie, registered in Dimensie's Congressus. |
 | `CONGRESSUS_OAUTH_SCOPE` | – | `openid email profile` | Scopes the portal login asks for; must fall within the OAuth app's "Maximum access scope" in Congressus. |
+| `CRON_SECRET` | for Phase 7 | `openssl rand -hex 32` | Shared secret between the app and the **cron** service that triggers the month-end export (`POST /api/cron/monthly-export`). At least 16 characters; set the same value on both services. |
+| `MONTHLY_EXPORT_TO_STRESS` / `MONTHLY_EXPORT_TO_DIMENSIE` / `MONTHLY_EXPORT_CC` | – | defaults: `treasurer@stress.utwente.nl` / `treasurer@svdimensie.nl` / `lennard@stress.utwente.nl` | Recipients of the month-end export summaries (comma-separated; `off` = none). Staging sets all three to `off`. |
 | `MEMBER_DATA_KEY` | for Dimensie | `openssl rand -base64 32` | Encrypts Dimensie members' IBAN/BIC (AES-256-GCM). Keep it secret and different per environment; if lost, the next member sync stores the bank details again. |
 | `CONGRESSUS_<ASSOC>_STUDENT_NUMBER_FIELD` | – | `studentnummer` | Only for an association that keeps the student number in a Congressus custom field. Not needed for Dimensie: it's in their `username`. |
 | `CONGRESSUS_PRODUCT_OFFER_ID` | – | `118389` | Fallback "SSS purchases Mendix" product offer id used when a product has no offer id. |
@@ -164,3 +166,15 @@ npm run dev
 Local Postgres just needs a `DATABASE_URL` in `.env.local` (e.g.
 `postgresql://you@localhost/snacksystem`). The card reader is optional — see
 [CARD_READER.md](CARD_READER.md#testing-without-a-reader).
+
+## Month-end export cron job
+
+The automatic export is triggered by a separate Railway service built from `cron/`
+(`railway up ./cron --path-as-root -s <cron service>`), which Railway runs on its
+`cronSchedule` (`0 10,11 1 * *`, UTC — 12:00 Amsterdam in summer and winter; the app
+acts only on the call at 12:xx). It calls `POST <APP_URL>/api/cron/monthly-export`
+with `Authorization: Bearer $CRON_SECRET` and exits. Service variables:
+`APP_URL` (e.g. `http://${{app.RAILWAY_PRIVATE_DOMAIN}}:${{app.PORT}}` or the public
+URL) and `CRON_SECRET` (`${{app.CRON_SECRET}}`). To test it by hand:
+`POST /api/cron/monthly-export?force=1` with the secret — it still runs only once
+per month (`MonthlyExportRun`).

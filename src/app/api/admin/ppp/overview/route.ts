@@ -16,8 +16,9 @@ export async function GET() {
 
   const cards = await cardsByPerson();
   const now = new Date();
+  const lastRun = await prisma.monthlyExportRun.findFirst({ orderBy: { startedAt: "desc" } });
   const associations = await Promise.all(
-    scopeAssociations(ctx.scope).map((association) => overview(association, cards, now))
+    scopeAssociations(ctx.scope).map((association) => overview(association, cards, now, lastRun))
   );
   return NextResponse.json({ scope: ctx.scope, associations });
 }
@@ -25,7 +26,8 @@ export async function GET() {
 async function overview(
   association: AssociationId,
   cards: Awaited<ReturnType<typeof cardsByPerson>>,
-  now: Date
+  now: Date,
+  lastRun: { period: string; finishedAt: Date | null; result: unknown } | null
 ) {
   const sheet = congressusConfig(association).billsFromSheet;
   const monthAgo = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
@@ -81,6 +83,14 @@ async function overview(
       : lastExported?._max.exportedAt
         ? { at: lastExported._max.exportedAt.toISOString(), label: "Congressus" }
         : null,
+    // The last automatic month-end export (src/lib/monthly-export.ts) for this association.
+    monthly: lastRun && {
+      period: lastRun.period,
+      finishedAt: lastRun.finishedAt?.toISOString() ?? null,
+      ok: Array.isArray(lastRun.result)
+        ? (lastRun.result as { association: string; ok: boolean }[]).find((r) => r.association === association)?.ok ?? null
+        : null,
+    },
     // Stress: specifications still to send to Dimensie. Dimensie: the ones received.
     specifications:
       association === "stress"

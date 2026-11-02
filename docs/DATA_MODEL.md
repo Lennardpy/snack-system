@@ -220,3 +220,8 @@ Separate from staff `Session`s.
 | `memberId` | String | the membership they logged in with (cascade-deleted with it) |
 | `associationId` | String | whose Congressus they used |
 | `expiresAt`, `createdAt` | DateTime | 8 hours |
+
+### MonthlyExportRun
+One automatic month-end export. `period` ("2026-10") is **unique**, so a month is never
+billed twice by the job. `result` holds each association's export outcome and the
+open borrels left waiting; `emailed` whether the summaries went out.

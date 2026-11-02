@@ -254,3 +254,12 @@ Signed out: `{ signedIn: false, providers }`. Signed in: member, memberships,
 One of the person's own invoices as a PDF (404 otherwise).
 
 ### `POST /api/user/logout`
+
+## Cron
+
+### `POST /api/cron/monthly-export[?force=1]`  · `Authorization: Bearer $CRON_SECRET`
+The month-end export (`src/lib/monthly-export.ts`). Without `force` it only acts on
+the 1st at 12:xx Amsterdam time. Bills the previous month for both associations —
+orders before the 1st at **closed** borrels — at most once per month, then emails the
+summaries. Returns `{ period, label, outcomes: [{ association, ok, body, waiting }], emailed }`,
+or `{ skipped }`.

@@ -100,3 +100,25 @@ export async function sendAccountInviteEmail(to: string, token: string, site: Si
 
   console.log("Resend sent (invite):", data?.id);
 }
+
+// The month-end export summary (src/lib/monthly-export.ts) to an association's
+// treasurer, with the operator in copy. No recipients → nothing is sent.
+export async function sendMonthlyExportEmail(
+  recipients: { to: string[]; cc: string[] },
+  message: { subject: string; html: string }
+) {
+  if (recipients.to.length === 0 && recipients.cc.length === 0) return;
+  const { data, error } = await getResend().emails.send({
+    from: FROM,
+    to: recipients.to.length > 0 ? recipients.to : recipients.cc,
+    ...(recipients.to.length > 0 && recipients.cc.length > 0 ? { cc: recipients.cc } : {}),
+    ...(REPLY_TO ? { replyTo: REPLY_TO } : {}),
+    subject: message.subject,
+    html: message.html,
+  });
+  if (error) {
+    console.error("Resend error:", JSON.stringify(error));
+    throw new Error(`Email failed: ${error.message}`);
+  }
+  console.log("Resend sent (monthly export):", data?.id);
+}
