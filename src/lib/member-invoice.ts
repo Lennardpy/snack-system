@@ -7,8 +7,8 @@ import { ASSOCIATION_LABEL, isAssociationId, type AssociationId } from "./associ
 
 // A member's invoices, as the member (portal) or an admin (member page) sees them —
 // so a board member can explain an invoice: what was billed, per borrel / kiosk day.
-//   • Dimensie — one per export (PppExportBatch): Dimensie collects from its sheet,
-//     so this PDF is the member's invoice.            key "b-<batchId>"
+//   • Dimensie — one per export (PppExportBatch): Dimensie collects from its sheet;
+//     this PDF is a statement of what was billed.      key "b-<batchId>"
 //   • Stress   — one per Congressus sale invoice (snacks + drinks); the PDF is its
 //     specification.                                  key "c-<association>-<id>"
 // Orders exported without an invoice (only €0 lines) aren't on any.
@@ -239,7 +239,7 @@ export async function renderMemberInvoicePdf(inv: MemberInvoiceDetail): Promise<
   } else {
     text(name, M, 22, bold);
   }
-  right(inv.association === "stress" ? "INVOICE SPECIFICATION" : "INVOICE", W, 13, bold);
+  right(inv.association === "stress" ? "INVOICE SPECIFICATION" : "STATEMENT", W, 13, bold);
   y -= 15;
   right(`Reference ${inv.reference}`, W, 9, font, GREY);
   y -= 12;
