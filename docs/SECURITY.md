@@ -244,11 +244,14 @@ against a local server and the mock Congressus, and on staging.
   `Origin` is another site (requests without `Origin` — server-to-server — pass).
 
 **Open (decided later):**
-- Cross-association identity is still matched by email (`membershipsOf`); plan: an
-  explicit, admin-confirmed link between a Stress and a Dimensie membership.
 - Card UIDs still work alone for kiosk scan, bar card login and card registration;
   plan: trusted (registered) devices, optionally a PIN for staff card login.
 - Password links still don't expire (deliberate).
+
+**Accepted risk (decided November 2026):** a person in both associations is still
+recognised by the same email address (`membershipsOf`). Abusing it would take a
+member changing their Congressus email to someone else's in the other association;
+judged unlikely in practice. Revisit if that turns out to be possible or happens.
 
 ## Audit checklist
 
