@@ -62,54 +62,52 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Product unavailable" }, { status: 404 });
   }
 
-  // Get or create the concept invoice
-  let invoice = await prisma.saleInvoice.findFirst({
-    where: { memberId: session.memberId, status: "CONCEPT" },
-    orderBy: { createdAt: "desc" },
-  });
-
-  if (!invoice) {
-    invoice = await prisma.saleInvoice.create({
-      data: { memberId: session.memberId },
+  // Get or create the concept invoice and change it in one transaction, with the
+  // invoice row locked (the confirm route takes the same lock): once a cart is
+  // confirmed it can't be changed any more.
+  const result = await prisma.$transaction(async (tx) => {
+    let invoice = await tx.saleInvoice.findFirst({
+      where: { memberId: session.memberId, status: "CONCEPT" },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
     });
-  }
+    if (!invoice) {
+      if (delta <= 0) return { totalCents: 0 };
+      invoice = await tx.saleInvoice.create({ data: { memberId: session.memberId }, select: { id: true } });
+    }
+    const [locked] = await tx.$queryRaw<{ status: string }[]>`SELECT status FROM "SaleInvoice" WHERE id = ${invoice.id} FOR UPDATE`;
+    if (locked?.status !== "CONCEPT") return null;
 
-  // Upsert the line
-  const existing = await prisma.invoiceLine.findFirst({
-    where: { invoiceId: invoice.id, productId },
-  });
-
-  if (existing) {
-    const newQty = existing.quantity + delta;
-    if (newQty <= 0) {
-      await prisma.invoiceLine.delete({ where: { id: existing.id } });
-    } else {
-      await prisma.invoiceLine.update({
-        where: { id: existing.id },
-        data: { quantity: newQty },
+    // Upsert the line
+    const existing = await tx.invoiceLine.findFirst({ where: { invoiceId: invoice.id, productId } });
+    if (existing) {
+      const newQty = existing.quantity + delta;
+      if (newQty <= 0) {
+        await tx.invoiceLine.delete({ where: { id: existing.id } });
+      } else {
+        await tx.invoiceLine.update({ where: { id: existing.id }, data: { quantity: newQty } });
+      }
+    } else if (delta > 0) {
+      await tx.invoiceLine.create({
+        data: {
+          invoiceId: invoice.id,
+          productId,
+          quantity: delta,
+          // Snapshot the price actually charged — discounted if the product is in
+          // its final week / past its best-before date.
+          unitCents: effectivePriceCents(product.price, product.expiresAt),
+        },
       });
     }
-  } else if (delta > 0) {
-    await prisma.invoiceLine.create({
-      data: {
-        invoiceId: invoice.id,
-        productId,
-        quantity: delta,
-        // Snapshot the price actually charged — discounted if the product is in
-        // its final week / past its best-before date.
-        unitCents: effectivePriceCents(product.price, product.expiresAt),
-      },
-    });
-  }
 
-  // Recalculate total
-  const lines = await prisma.invoiceLine.findMany({ where: { invoiceId: invoice.id } });
-  const total = lines.reduce((sum, l) => sum + l.quantity * l.unitCents, 0);
-
-  await prisma.saleInvoice.update({
-    where: { id: invoice.id },
-    data: { totalCents: total },
+    // Recalculate total
+    const lines = await tx.invoiceLine.findMany({ where: { invoiceId: invoice.id } });
+    const totalCents = lines.reduce((sum, l) => sum + l.quantity * l.unitCents, 0);
+    await tx.saleInvoice.update({ where: { id: invoice.id }, data: { totalCents } });
+    return { totalCents };
   });
+  if (!result) return NextResponse.json({ error: "This order was already confirmed" }, { status: 409 });
+  const total = result.totalCents;
 
   // Extend session on activity
   await prisma.shopSession.update({

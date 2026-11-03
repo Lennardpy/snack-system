@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const invoices = await prisma.saleInvoice.findMany({
     where: { status },
     include: {
-      member: true,
+      member: { omit: { ibanEnc: true, bicEnc: true } },
       lines: { include: { product: true } },
     },
     orderBy: { confirmedAt: "desc" },

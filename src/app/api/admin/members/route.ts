@@ -11,6 +11,7 @@ export async function GET() {
 
   const rows = await prisma.member.findMany({
     where: { deletedAt: null, ...memberWhere(ctx.scope) }, // deleted (anonymised) members are hidden
+    omit: { ibanEnc: true, bicEnc: true }, // bank details stay on the server
     include: {
       roles: { select: { id: true, name: true, discountPercent: true, discountCents: true, ownDrinkOnly: true, color: true } },
     },

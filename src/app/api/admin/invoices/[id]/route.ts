@@ -52,7 +52,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const updated = await prisma.saleInvoice.findUnique({
     where: { id },
-    include: { member: true, lines: { include: { product: true } } },
+    include: { member: { omit: { ibanEnc: true, bicEnc: true } }, lines: { include: { product: true } } },
   });
   return NextResponse.json({ invoice: updated });
 }

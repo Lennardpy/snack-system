@@ -57,7 +57,7 @@ Set these on the Railway **service** (not the database plugin).
 | `SUMUP_API_KEY` | – | `sup_sk_…` | SumUp secret API key (Bearer token) for pulling card revenue into a borrel's profit/loss. Fail-soft if unset (card revenue shows "n/a"). |
 | `UPLOAD_DIR` | – | `/data/uploads/products` | Where product images are written (the volume mount). |
 | `ADMIN_EMAIL` | seed | `secretary@stress.utwente.nl` | Admin login created by `npm run seed`. |
-| `ADMIN_PASSWORD` | seed | – | Admin password for the seeded user. |
+| `ADMIN_PASSWORD` | seed | – | Admin password for the seeded user (at least 12 characters; the seed refuses to run without it and never logs it). |
 
 ### `BASE_URL` vs `NEXT_PUBLIC_BASE_URL` — important
 `NEXT_PUBLIC_*` variables are **baked into the client bundle at build time** and
