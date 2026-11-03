@@ -23,6 +23,7 @@ interface MemberResult {
   firstName: string;
   lastName: string;
   email: string;
+  associationIds: string[];
   cardCount: number;
 }
 
@@ -265,6 +266,8 @@ export default function BartendersPage() {
                     placeholder="Search member by name or email…"
                     className="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-500"
                   />
+                  {/* Shown here too: the page-level error is out of sight while picking. */}
+                  {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
                   {query.trim().length >= 2 && (
                     <ul className="mt-2 max-h-60 space-y-1 overflow-y-auto">
                       {results.length === 0 ? (
@@ -279,6 +282,9 @@ export default function BartendersPage() {
                               <span className="min-w-0">
                                 <span className="font-medium">{m.firstName} {m.lastName}</span>
                                 <span className="ml-2 text-gray-500">{m.email}</span>
+                                <span className="ml-2 text-xs text-gray-400">
+                                  {m.associationIds.map((a) => ASSOCIATION_LABEL[a as AssociationId] ?? a).join(" + ")}
+                                </span>
                               </span>
                               <span className={`flex-shrink-0 text-xs ${m.cardCount > 0 ? "text-green-400" : "text-amber-400"}`}>
                                 {m.cardCount > 0 ? `${m.cardCount} card${m.cardCount === 1 ? "" : "s"}` : "no card"}

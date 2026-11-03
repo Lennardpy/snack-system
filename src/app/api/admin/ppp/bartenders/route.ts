@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requirePpp } from "@/lib/auth";
 import { sendAccountInviteEmail } from "@/lib/email";
 import { userWhere } from "@/lib/scope";
+import { cardsByPerson } from "@/lib/memberships";
 import { isAssociationId, ASSOCIATION_LABEL, type AssociationId } from "@/lib/associations";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
@@ -22,10 +23,13 @@ export async function GET() {
       createdAt: true,
       passwordSetup: { select: { usedAt: true } },
       member: {
-        select: { id: true, firstName: true, lastName: true, email: true, cards: { select: { id: true } } },
+        select: { id: true, firstName: true, lastName: true, email: true },
       },
     },
   });
+
+  // Cards belong to the person (they sit on the Stress membership of someone in both).
+  const cards = await cardsByPerson();
 
   // "pending" = an invite token exists that hasn't been used yet.
   const bartenders = users.map((u) => ({
@@ -39,7 +43,7 @@ export async function GET() {
           id: u.member.id,
           name: `${u.member.firstName} ${u.member.lastName}`.trim(),
           email: u.member.email,
-          cardCount: u.member.cards.length,
+          cardCount: cards.get(u.member.email.toLowerCase())?.length ?? 0,
         }
       : null,
   }));
