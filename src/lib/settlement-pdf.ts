@@ -22,7 +22,8 @@ const GREY = rgb(0.42, 0.42, 0.42);
 const LINE = rgb(0.85, 0.85, 0.85);
 const SHADE = rgb(0.96, 0.96, 0.96);
 
-const euro = (c: number) => `${c < 0 ? "-" : ""}€${(Math.abs(c) / 100).toFixed(2)}`;
+// A space after the sign: in the standard Helvetica the € runs into the digits.
+const euro = (c: number) => `${c < 0 ? "-" : ""}€ ${(Math.abs(c) / 100).toFixed(2)}`;
 const day = (d: Date) =>
   d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Amsterdam" });
 const shortDay = (d: Date) =>

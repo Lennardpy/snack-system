@@ -195,7 +195,8 @@ const NOTE: Record<AssociationId, string> = {
   dimensie: "No VAT. Collected by Dimensie by direct debit.",
 };
 
-const euro = (c: number) => `${c < 0 ? "-" : ""}€${(Math.abs(c) / 100).toFixed(2)}`;
+// A space after the sign: in the standard Helvetica the € runs into the digits.
+const euro = (c: number) => `${c < 0 ? "-" : ""}€ ${(Math.abs(c) / 100).toFixed(2)}`;
 const day = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: AMS });
 const shortDay = (d: Date) => d.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: AMS });
 const WIN_ANSI_EXTRA = "€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ";

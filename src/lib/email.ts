@@ -13,6 +13,10 @@ function getResend() {
 // (e.g. the board inbox) while keeping a branded from-address.
 const FROM = process.env.EMAIL_FROM ?? "Stress Snack System <snacks@51vo.nl>";
 const REPLY_TO = process.env.EMAIL_REPLY_TO;
+
+// Names come from Congressus, where members set them themselves.
+const escapeHtml = (s: string) =>
+  s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 // BASE_URL is server-only (no NEXT_PUBLIC_ prefix) so it is never baked into
 // the client bundle and always reflects the runtime environment variable.
 const BASE_URL =
@@ -34,7 +38,7 @@ export async function sendCardVerificationEmail(
     subject: "Link your card to your SSS account",
     html: `
       <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
-        <h2>Hi ${firstName},</h2>
+        <h2>Hi ${escapeHtml(firstName)},</h2>
         <p>Someone just tapped an unregistered card at the SSS kiosk.</p>
         <p>If that was you, click the button below to link the card to your account. The link expires in <strong>15 minutes</strong>.</p>
         <p style="margin: 32px 0;">

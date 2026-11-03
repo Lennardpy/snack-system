@@ -4,6 +4,9 @@ import { requireBartender } from "@/lib/auth";
 import { activityInScope, activityVisible } from "@/lib/scope-db";
 import { posScope } from "@/lib/scope";
 
+// How long after its date a bartender may still reopen a closed borrel.
+const REOPEN_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
+
 // Activity for the POS: status, the discounts toggle, and the per-drink specials.
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await requireBartender();
@@ -53,6 +56,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: "status must be OPEN or CLOSED" }, { status: 400 });
     }
     data.status = status;
+    // Reopening an old borrel (likely billed already) is for admins only, so
+    // bartenders can't add charges to it after the fact.
+    if (status === "OPEN" && user.role !== "ADMIN") {
+      const current = await prisma.pppActivity.findUnique({ where: { id }, select: { status: true, date: true } });
+      if (current?.status === "CLOSED" && Date.now() - current.date.getTime() > REOPEN_WINDOW_MS) {
+        return NextResponse.json({ error: "Only an admin can reopen a borrel older than 2 days" }, { status: 403 });
+      }
+    }
   }
 
   if (name !== undefined) {

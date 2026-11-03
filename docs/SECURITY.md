@@ -253,6 +253,18 @@ recognised by the same email address (`membershipsOf`). Abusing it would take a
 member changing their Congressus email to someone else's in the other association;
 judged unlikely in practice. Revisit if that turns out to be possible or happens.
 
+## Internal audit, November 2026
+
+Every API route checked for its `require…()` call and association scoping; no gaps.
+Spoofing `X-Forwarded-For` doesn't bypass the rate limits (tested on staging —
+Railway sets the client IP). Card login can't yield an admin session: only
+bartender accounts can be linked to a member.
+
+**Fixed:**
+- A bartender can no longer reopen a closed borrel more than 2 days after its date
+  (it may be billed already); admins still can.
+- The card-link email escapes the member's first name.
+
 ## Audit checklist
 
 When adding a new endpoint:

@@ -1,4 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { readFileSync } from "fs";
+import { join } from "path";
 import type { ExternalTabView } from "./external-db";
 
 // The downloadable statement for an external tab: title, borrel, what was drunk
@@ -11,7 +13,8 @@ const ORANGE = rgb(0.93, 0.49, 0.09);
 const GREY = rgb(0.42, 0.42, 0.42);
 const LINE = rgb(0.85, 0.85, 0.85);
 
-const euro = (c: number) => `${c < 0 ? "-" : ""}€${(Math.abs(c) / 100).toFixed(2)}`;
+// A space after the sign: in the standard Helvetica the € runs into the digits.
+const euro = (c: number) => `${c < 0 ? "-" : ""}€ ${(Math.abs(c) / 100).toFixed(2)}`;
 const day = (d: Date) =>
   d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Amsterdam" });
 
@@ -59,11 +62,23 @@ export async function renderExternalTabPdf(tab: ExternalTabView): Promise<Uint8A
   };
 
   // ── Header ──────────────────────────────────────────────────────────────────
-  text("Stress", M, 22, bold, ORANGE);
+  // The Stress logo (public/stress-logo-hex.png); the name in orange if missing.
+  let logo: Awaited<ReturnType<PDFDocument["embedPng"]>> | null = null;
+  try {
+    logo = await doc.embedPng(readFileSync(join(process.cwd(), "public", "stress-logo-hex.png")));
+  } catch {
+    logo = null;
+  }
+  if (logo) {
+    const h = 62;
+    page.drawImage(logo, { x: M, y: y - h + 14, width: (logo.width / logo.height) * h, height: h });
+  } else {
+    text("Stress", M, 22, bold, ORANGE);
+  }
   right("Drinks statement", A4[0] - M, 11, font, GREY);
   y -= 14;
   right(`Date: ${day(new Date())}`, A4[0] - M, 9, font, GREY);
-  y -= 34;
+  y -= logo ? 48 : 34;
   for (const l of wrap(title, 17, bold, A4[0] - 2 * M)) {
     text(l, M, 17, bold);
     y -= 22;
