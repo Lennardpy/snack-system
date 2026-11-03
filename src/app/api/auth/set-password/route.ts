@@ -40,24 +40,29 @@ export async function POST(req: NextRequest) {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: setup.userId } });
   const site = siteForHost(req.headers.get("host"));
 
-  // Set the password, consume the token, and — if the account may use this site —
-  // start a session here. All atomically.
-  const [, , session] = await prisma.$transaction([
-    prisma.user.update({ where: { id: setup.userId }, data: { passwordHash } }),
-    prisma.passwordSetupToken.update({ where: { id: setup.id }, data: { usedAt: new Date() } }),
-    ...(canUseSite(user, site)
-      ? [
-          prisma.session.create({
-            data: {
-              userId: setup.userId,
-              kind: "password",
-              site,
-              expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-            },
-          }),
-        ]
-      : []),
-  ]);
+  // Consume the link, set the password, end every existing session of the account
+  // (a password change logs out everywhere) and — if the account may use this
+  // site — start a session here. All atomically; the link is consumed only if
+  // still unused, so two simultaneous submits can't both succeed.
+  const session = await prisma.$transaction(async (tx) => {
+    const { count } = await tx.passwordSetupToken.updateMany({
+      where: { id: setup.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+    if (count === 0) return "used" as const;
+    await tx.user.update({ where: { id: setup.userId }, data: { passwordHash } });
+    await tx.session.deleteMany({ where: { userId: setup.userId } });
+    if (!canUseSite(user, site)) return null;
+    return tx.session.create({
+      data: {
+        userId: setup.userId,
+        kind: "password",
+        site,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    });
+  });
+  if (session === "used") return NextResponse.json({ error: "This link has already been used" }, { status: 410 });
 
   const res = NextResponse.json({ ok: true, home: session ? homePath(user, site) : null });
   if (session) setSessionCookie(res, session);

@@ -21,10 +21,28 @@ const OLD_PPP_ADMIN = "/admin/ppp";
 const startsWithAny = (path: string, prefixes: string[]) =>
   prefixes.some((p) => path === p || path.startsWith(p.endsWith("/") ? p : `${p}/`));
 
+// A browser sends Origin on every state-changing request; one from another site is
+// refused (defence in depth on top of SameSite=Lax cookies). Requests without an
+// Origin — server-to-server, like the month-end cron job — aren't browsers and pass.
+function crossSiteWrite(req: NextRequest, host: string | null) {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return false;
+  const origin = req.headers.get("origin");
+  if (!origin) return false;
+  try {
+    return new URL(origin).host.toLowerCase() !== (host ?? "").toLowerCase();
+  } catch {
+    return true; // "null" or malformed
+  }
+}
+
 export function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   const host = req.headers.get("host");
   const site = siteForHost(host);
+
+  if (pathname.startsWith("/api/") && crossSiteWrite(req, host)) {
+    return NextResponse.json({ error: "Cross-site request refused" }, { status: 403 });
+  }
 
   if (site === "ppp") {
     if (pathname === "/") return NextResponse.redirect(new URL("/ppp", req.url));

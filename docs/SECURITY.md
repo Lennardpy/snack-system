@@ -227,6 +227,29 @@ against a local server and the mock Congressus, and on staging.
 - Set-password (invite) links don't expire (as for bartenders before); "Reset link"
   invalidates the previous one. Consider an expiry for admin invites later.
 
+## External audit, November 2026 (commit a03b3c6)
+
+**Fixed:**
+- Seed: no default admin credentials any more (`ADMIN_EMAIL` + `ADMIN_PASSWORD` ≥ 12
+  characters required); the password is never logged.
+- Kiosk checkout: confirm and cart edits lock the concept invoice row in one
+  transaction; a confirmed invoice can't change and stock is reduced once.
+- Password links: consumed atomically (`usedAt: null` guard), so a link works once
+  even under concurrent submits; setting a password ends all existing sessions.
+- Next.js 16.3.8 → 16.4.4 (critical/high advisories). Remaining `npm audit` items
+  are in the Prisma CLI (runs only `migrate deploy` at start) and ExcelJS's zip/glob
+  helpers — not reachable from requests.
+- Admin member payloads omit the encrypted IBAN/BIC; OAuth token/userinfo calls
+  have a 10 s timeout; the middleware refuses state-changing `/api/*` requests whose
+  `Origin` is another site (requests without `Origin` — server-to-server — pass).
+
+**Open (decided later):**
+- Cross-association identity is still matched by email (`membershipsOf`); plan: an
+  explicit, admin-confirmed link between a Stress and a Dimensie membership.
+- Card UIDs still work alone for kiosk scan, bar card login and card registration;
+  plan: trusted (registered) devices, optionally a PIN for staff card login.
+- Password links still don't expire (deliberate).
+
 ## Audit checklist
 
 When adding a new endpoint:

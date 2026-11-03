@@ -54,10 +54,14 @@ export async function GET(req: NextRequest) {
         client_secret: cfg.clientSecret,
         redirect_uri: `${siteOrigin("ppp", host)}/api/user/oauth/callback`,
       }),
+      signal: AbortSignal.timeout(10_000),
     });
     if (!tokenRes.ok) throw new Error(`token ${tokenRes.status}`);
     const { access_token } = await tokenRes.json();
-    const infoRes = await fetch(`${cfg.domain}/oauth/userinfo`, { headers: { Authorization: `Bearer ${access_token}` } });
+    const infoRes = await fetch(`${cfg.domain}/oauth/userinfo`, {
+      headers: { Authorization: `Bearer ${access_token}` },
+      signal: AbortSignal.timeout(10_000),
+    });
     if (!infoRes.ok) throw new Error(`userinfo ${infoRes.status}`);
     const info = await infoRes.json();
     userId = Number(info.user_id ?? info.sub);

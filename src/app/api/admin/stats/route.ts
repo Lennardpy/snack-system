@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
           status: { in: ["CONFIRMED", "EXPORTING", "EXPORTED"] },
           ...(from ? { confirmedAt: { gte: from } } : {}),
         },
-    include: { lines: { include: { product: true } }, member: true },
+    include: { lines: { include: { product: true } }, member: { omit: { ibanEnc: true, bicEnc: true } } },
     orderBy: { confirmedAt: "asc" },
   });
 

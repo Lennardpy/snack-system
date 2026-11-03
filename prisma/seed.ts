@@ -7,8 +7,12 @@ const prisma = new PrismaClient({ adapter });
 
 async function main() {
   // ── Admin user ────────────────────────────────────────────────────────────
-  const email = process.env.ADMIN_EMAIL ?? "admin@snackbar.local";
-  const password = process.env.ADMIN_PASSWORD ?? "changeme123";
+  // No defaults: a seeded admin with a known password would be a way in.
+  const email = process.env.ADMIN_EMAIL?.trim();
+  const password = process.env.ADMIN_PASSWORD ?? "";
+  if (!email || password.length < 12) {
+    throw new Error("Set ADMIN_EMAIL and ADMIN_PASSWORD (at least 12 characters) to seed the admin user.");
+  }
 
   const existing = await prisma.user.findUnique({ where: { email } });
 
@@ -24,7 +28,7 @@ async function main() {
         pppAccess: true,
       },
     });
-    console.log(`✓ Admin user created: ${email} / ${password}`);
+    console.log(`✓ Admin user created: ${email}`);
   }
 
   // ── Seed product categories ───────────────────────────────────────────────
