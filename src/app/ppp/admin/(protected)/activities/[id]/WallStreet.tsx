@@ -34,6 +34,8 @@ export default function WallStreet({ activityId, isOpen }: { activityId: string;
   const [settings, setSettings] = useState<Settings | null>(null);
   const [products, setProducts] = useState<ProductLite[]>([]);
   const [live, setLive] = useState<Live | null>(null);
+  const [sold, setSold] = useState<Record<string, number>>({});
+  const [result, setResult] = useState<{ diffCents: number; chargedCents: number; units: number } | null>(null);
   const [form, setForm] = useState({
     volatility: "HIGH" as Volatility,
     minPct: "50",
@@ -54,6 +56,8 @@ export default function WallStreet({ activityId, isOpen }: { activityId: string;
       setSettings(d.settings);
       setProducts(d.products);
       setLive(d.live);
+      setSold(d.sold ?? {});
+      setResult(d.result ?? null);
       if (resetForm) {
         const ids: string[] = d.settings.wallstreetProductIds;
         setForm({
@@ -131,6 +135,17 @@ export default function WallStreet({ activityId, isOpen }: { activityId: string;
           >
             {running ? "Running" : "Off"}
           </span>
+          {result && result.units > 0 && (
+            <span
+              title={`${result.units} Wall Street drinks charged ${euro(result.chargedCents)}, vs. normal prices`}
+              className={`rounded-full px-2.5 py-0.5 text-xs font-semibold tabular-nums ${
+                result.diffCents >= 0 ? "bg-emerald-500/20 text-emerald-300" : "bg-red-500/20 text-red-300"
+              }`}
+            >
+              {result.diffCents >= 0 ? "+" : "−"}
+              {euro(Math.abs(result.diffCents))} vs normal
+            </span>
+          )}
           {live?.crashUntil && (
             <span className="animate-pulse rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white">💥 CRASH</span>
           )}
@@ -265,6 +280,18 @@ export default function WallStreet({ activityId, isOpen }: { activityId: string;
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
             Live prices {live && <span className="font-normal normal-case text-gray-600">· tick {live.tickIndex}</span>}
           </p>
+          {result && result.units > 0 && (
+            <p className="mb-2 text-sm">
+              <span className="text-gray-400">Result vs normal prices: </span>
+              <span className={`font-semibold tabular-nums ${result.diffCents >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {result.diffCents >= 0 ? "+" : "−"}
+                {euro(Math.abs(result.diffCents))} {result.diffCents >= 0 ? "profit" : "loss"}
+              </span>
+              <span className="text-gray-500">
+                {" "}· {result.units} drinks for {euro(result.chargedCents)}
+              </span>
+            </p>
+          )}
           {!live ? (
             <p className="text-sm text-gray-500">{running ? "Loading…" : "Start Wall Street to see live prices."}</p>
           ) : (
@@ -274,6 +301,7 @@ export default function WallStreet({ activityId, isOpen }: { activityId: string;
                 return (
                   <li key={d.id} className="flex items-center gap-2 text-sm">
                     <span className="flex-1 truncate">{d.name}</span>
+                    <span className="text-xs tabular-nums text-gray-500">{sold[d.id] ?? 0} sold</span>
                     <span className="tabular-nums text-gray-500 line-through">{euro(d.baseCents)}</span>
                     <span className="w-16 text-right font-semibold tabular-nums">{euro(d.cents)}</span>
                     <span

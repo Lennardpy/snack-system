@@ -347,9 +347,13 @@ public board **`/wallstreet`** (snacks.51vo.nl/wallstreet) for a screen at the b
   rise is shared as a fall over the drinks that didn't sell (each at most *dropCap*),
   so the market stays level overall; (2) **random noise** σ; (3) **mean reversion**
   of 3% towards the normal price. It's clamped to floor/ceiling and the price rounded
-  to €0.05. Per volatility (Low / Medium / High): buy 6% / 9% / 12%, dropCap 6% / 9% /
-  12%, σ 1% / 2% / 3%. Example on High with 8 drinks: 2 beers in a tick → beer +24%,
-  the 7 others −3.4% each; with 4 drinks, 3 beers → beer +36%, the others −12%.
+  to €0.05. Per volatility (Low / Medium / High): buy 10% / 17% / 20%, dropCap 8% / 13% /
+  20%, σ 1% / 2% / 3%. Example on High with 8 drinks: 2 beers in a tick → beer +40%,
+  the 7 others −5.7% each; with 4 drinks, 3 beers → beer +60%, the others −20%. The
+  admin GET also returns `sold` (drinks sold per product since the start) and
+  `result` `{ diffCents, chargedCents, units }`: Σ (charged − normal price) × qty over
+  member lines of Wall Street drinks since the start (excl. bartender free drinks;
+  external cards pay normal prices) — the market's profit / loss vs. normal prices.
 - **Ticks** (`PppWallstreetTick`) are computed lazily by whichever request asks first
   (board, POS, order) and stored with a unique (activity, index) — concurrent
   requests can't compute a tick twice. The board shows the last 30 minutes.
