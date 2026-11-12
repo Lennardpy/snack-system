@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePpp } from "@/lib/auth";
 import { activityInScope } from "@/lib/scope-db";
-import { CRASH_MS, getWallstreet, isVolatility } from "@/lib/wallstreet";
+import { CRASH_MS, MAX_TICK_SEC, MIN_TICK_SEC, getWallstreet, isVolatility } from "@/lib/wallstreet";
 
 // Wall Street settings for an activity.
 // GET → settings + the drinks to choose from + the live state when running.
-// PATCH { active?, volatility?, minPct?, maxPct?, productIds?, crash? }
+// PATCH { active?, volatility?, minPct?, maxPct?, tickSec?, productIds?, crash? }
 //   • active true (from off) starts a fresh market: tick 0 = normal prices.
 //   • crash true → every drink at the floor for CRASH_MS, effective immediately.
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -26,6 +26,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         wallstreetVolatility: true,
         wallstreetMinPct: true,
         wallstreetMaxPct: true,
+        wallstreetTickSec: true,
         wallstreetProductIds: true,
         wallstreetStartedAt: true,
       },
@@ -56,7 +57,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   const activity = await prisma.pppActivity.findUnique({
     where: { id },
-    select: { status: true, wallstreetActive: true, wallstreetMinPct: true, wallstreetMaxPct: true, wallstreetProductIds: true },
+    select: {
+      status: true,
+      wallstreetActive: true,
+      wallstreetMinPct: true,
+      wallstreetMaxPct: true,
+      wallstreetTickSec: true,
+      wallstreetProductIds: true,
+    },
   });
   if (!activity) return NextResponse.json({ error: "Activity not found" }, { status: 404 });
 
@@ -67,6 +75,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     wallstreetVolatility?: string;
     wallstreetMinPct?: number;
     wallstreetMaxPct?: number;
+    wallstreetTickSec?: number;
     wallstreetProductIds?: string[];
     wallstreetCrashUntil?: Date | null;
   } = {};
@@ -82,6 +91,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   data.wallstreetMinPct = minPct;
   data.wallstreetMaxPct = maxPct;
+
+  if (body.tickSec !== undefined) {
+    const tickSec = Number(body.tickSec);
+    if (!Number.isInteger(tickSec) || tickSec < MIN_TICK_SEC || tickSec > MAX_TICK_SEC) {
+      return NextResponse.json(
+        { error: `Time between updates must be ${MIN_TICK_SEC}–${MAX_TICK_SEC} seconds` },
+        { status: 400 }
+      );
+    }
+    data.wallstreetTickSec = tickSec;
+  }
 
   if (body.productIds !== undefined) {
     if (!Array.isArray(body.productIds) || body.productIds.some((x: unknown) => typeof x !== "string")) {
@@ -111,8 +131,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const crash = body.crash === true && (activity.wallstreetActive || startingFresh);
   if (crash) data.wallstreetCrashUntil = new Date(Date.now() + CRASH_MS);
 
+  // Ticks are numbered from wallstreetStartedAt in whole intervals. When the
+  // interval changes on a running market, move the start so the latest tick keeps
+  // its number and the next one comes one new interval after it.
+  const tickChanged =
+    data.wallstreetTickSec !== undefined && data.wallstreetTickSec !== activity.wallstreetTickSec;
+
   await prisma.$transaction(async (tx) => {
     if (startingFresh) await tx.pppWallstreetTick.deleteMany({ where: { activityId: id } });
+    else if (tickChanged && activity.wallstreetActive) {
+      const latest = await tx.pppWallstreetTick.findFirst({ where: { activityId: id }, orderBy: { index: "desc" } });
+      if (latest) {
+        data.wallstreetStartedAt = new Date(latest.at.getTime() - latest.index * data.wallstreetTickSec! * 1000);
+      }
+    }
     await tx.pppActivity.update({ where: { id }, data });
     if (crash) {
       // Recompute the current tick right away (at the floor) instead of waiting

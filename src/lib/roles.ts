@@ -108,6 +108,7 @@ export interface OrderItem {
   product: PricedProduct;
   activitySpecialCents: number | null;
   free?: boolean; // comped (bartender's own free drink) → €0, no role discount
+  noRoleDiscount?: boolean; // Wall Street drink: the market price is the price
 }
 export interface PricedOrderPart {
   productId: string;
@@ -124,8 +125,8 @@ export function priceOrder(items: OrderItem[], roles: RoleDiscount[]): PricedOrd
   const hasOwnDrinkRole = everyUnit.length < roles.length;
   const priced = items.map((it) => ({
     it,
-    base: it.free ? 0 : activityDiscountedUnitPrice(it.product, it.activitySpecialCents, everyUnit),
-    own: it.free ? 0 : activityDiscountedUnitPrice(it.product, it.activitySpecialCents, roles),
+    base: it.free ? 0 : activityDiscountedUnitPrice(it.product, it.activitySpecialCents, it.noRoleDiscount ? [] : everyUnit),
+    own: it.free ? 0 : activityDiscountedUnitPrice(it.product, it.activitySpecialCents, it.noRoleDiscount ? [] : roles),
   }));
 
   let ownIdx = -1;
