@@ -33,9 +33,9 @@ export type Volatility = "LOW" | "MEDIUM" | "HIGH";
 // buy: rise per drink sold · dropCap: max fall of an unbought drink per tick ·
 // sigma: random noise.
 const PARAMS: Record<Volatility, { buy: number; dropCap: number; sigma: number }> = {
-  LOW: { buy: 0.06, dropCap: 0.06, sigma: 0.01 },
-  MEDIUM: { buy: 0.09, dropCap: 0.09, sigma: 0.02 },
-  HIGH: { buy: 0.12, dropCap: 0.12, sigma: 0.03 },
+  LOW: { buy: 0.1, dropCap: 0.08, sigma: 0.01 },
+  MEDIUM: { buy: 0.17, dropCap: 0.13, sigma: 0.02 },
+  HIGH: { buy: 0.2, dropCap: 0.2, sigma: 0.03 },
 };
 export const isVolatility = (v: unknown): v is Volatility => v === "LOW" || v === "MEDIUM" || v === "HIGH";
 
@@ -196,7 +196,7 @@ export async function getWallstreet(activityId: string, now = new Date()): Promi
 }
 
 // Drinks sold at the activity since a moment (member orders + external cards).
-async function demandSince(activityId: string, from: Date, to: Date): Promise<Record<string, number>> {
+export async function demandSince(activityId: string, from: Date, to: Date): Promise<Record<string, number>> {
   const [member, external] = await Promise.all([
     prisma.pppInvoiceLine.groupBy({
       by: ["productId"],
@@ -212,6 +212,30 @@ async function demandSince(activityId: string, from: Date, to: Date): Promise<Re
   const d: Record<string, number> = {};
   for (const r of [...member, ...external]) d[r.productId] = (d[r.productId] ?? 0) + (r._sum.quantity ?? 0);
   return d;
+}
+
+// Profit / loss of the market vs. normal prices: for every member purchase of a
+// Wall Street drink since the start, (charged − normal price) × quantity. Normal =
+// special price if set, else price (the same base the market moves from).
+// Bartender free drinks and external cards (they pay normal prices) don't count.
+export async function wallstreetResult(activityId: string, from: Date, productIds: string[]) {
+  const lines = await prisma.pppInvoiceLine.findMany({
+    where: {
+      productId: { in: productIds },
+      bartenderFree: false,
+      invoice: { activityId, confirmedAt: { gte: from } },
+    },
+    select: { quantity: true, unitCents: true, product: { select: { price: true, specialPrice: true } } },
+  });
+  let diffCents = 0;
+  let chargedCents = 0;
+  let units = 0;
+  for (const l of lines) {
+    diffCents += (l.unitCents - (l.product.specialPrice ?? l.product.price)) * l.quantity;
+    chargedCents += l.unitCents * l.quantity;
+    units += l.quantity;
+  }
+  return { diffCents, chargedCents, units };
 }
 
 // Prices to CHARGE for an order at this activity: productId → cents, or null when

@@ -2,7 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePpp } from "@/lib/auth";
 import { activityInScope } from "@/lib/scope-db";
-import { CRASH_MS, MAX_TICK_SEC, MIN_TICK_SEC, getWallstreet, isVolatility } from "@/lib/wallstreet";
+import {
+  CRASH_MS,
+  MAX_TICK_SEC,
+  MIN_TICK_SEC,
+  demandSince,
+  getWallstreet,
+  isVolatility,
+  wallstreetResult,
+} from "@/lib/wallstreet";
 
 // Wall Street settings for an activity.
 // GET → settings + the drinks to choose from + the live state when running.
@@ -39,7 +47,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     }),
   ]);
   if (!activity) return NextResponse.json({ error: "Activity not found" }, { status: 404 });
-  return NextResponse.json({ settings: activity, products, live: await getWallstreet(id) });
+  const live = await getWallstreet(id);
+  // Drinks sold since the market started — shows the admin which sales move the prices.
+  const started = activity.wallstreetStartedAt;
+  const [sold, result] = await Promise.all([
+    live && started ? demandSince(id, started, new Date()) : {},
+    // Profit / loss vs. normal prices — also after stopping, for the last market.
+    started ? wallstreetResult(id, started, activity.wallstreetProductIds) : null,
+  ]);
+  return NextResponse.json({ settings: activity, products, live, sold, result });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
