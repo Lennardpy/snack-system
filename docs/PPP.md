@@ -343,13 +343,13 @@ public board **`/wallstreet`** (snacks.51vo.nl/wallstreet) for a screen at the b
 - **Price model** (`src/lib/wallstreet.ts`): every tick (`wallstreetTickSec`) each
   drink's multiplier `m` of its normal price (special price if set, else price)
   changes by (1) **demand** — counted over the drinks sold since the last tick (member
-  orders + external cards): a drink that sold rises by *buy* × quantity; a drink that
-  didn't sell falls by *drop* × the number of other drinks sold, at most *dropCap*;
-  (2) **random noise** σ; (3) **mean reversion** of 3% towards the normal price. It's
-  clamped to floor/ceiling and the price rounded to €0.05. Per volatility
-  (Low / Medium / High): buy 5% / 7% / 10%, drop 2% / 3% / 4%, dropCap 8% / 12% / 16%,
-  σ 1% / 2% / 3%. Example on High: 3 beers in a tick → beer +30%, every unbought
-  drink −12%.
+  orders + external cards): a drink that sold rises by *buy* × quantity; the total
+  rise is shared as a fall over the drinks that didn't sell (each at most *dropCap*),
+  so the market stays level overall; (2) **random noise** σ; (3) **mean reversion**
+  of 3% towards the normal price. It's clamped to floor/ceiling and the price rounded
+  to €0.05. Per volatility (Low / Medium / High): buy 6% / 9% / 12%, dropCap 6% / 9% /
+  12%, σ 1% / 2% / 3%. Example on High with 8 drinks: 2 beers in a tick → beer +24%,
+  the 7 others −3.4% each; with 4 drinks, 3 beers → beer +36%, the others −12%.
 - **Ticks** (`PppWallstreetTick`) are computed lazily by whichever request asks first
   (board, POS, order) and stored with a unique (activity, index) — concurrent
   requests can't compute a tick twice. The board shows the last 30 minutes.
