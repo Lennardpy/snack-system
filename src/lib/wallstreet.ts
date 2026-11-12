@@ -6,9 +6,10 @@ import { Prisma } from "@prisma/client";
 // Every tick (wallstreetTickSec, set per borrel) the selected drinks get a new
 // price, as a multiplier `m` of their normal price (special price if set, else
 // price). Per tick:
-//   1. demand — every drink sold since the last tick pushes its price up by BUY
-//      (per drink). Drinks nobody bought fall by DROP per drink sold of the
-//      others (capped at DROP_CAP), so a round of beers makes the rest cheaper.
+//   1. demand — every drink sold since the last tick pushes its price up by `buy`
+//      (per drink: 2 beers in one order count twice). The drinks nobody bought
+//      share that rise as a fall (each at most `dropCap`), so the market as a
+//      whole stays level: what's popular climbs, the rest gets cheaper.
 //   2. noise — random, per the volatility level.
 //   3. mean reversion — a gentle pull back towards the normal price.
 //   4. clamp to [floor, ceiling] (% of the normal price) and round to €0.05.
@@ -29,12 +30,12 @@ const PRICE_GRACE_MS = 45_000;
 const HISTORY_MS = 60 * 60_000;
 
 export type Volatility = "LOW" | "MEDIUM" | "HIGH";
-// buy: rise per drink sold · drop: fall of an unbought drink per drink sold of
-// the others · dropCap: max fall per tick · sigma: random noise.
-const PARAMS: Record<Volatility, { buy: number; drop: number; dropCap: number; sigma: number }> = {
-  LOW: { buy: 0.05, drop: 0.02, dropCap: 0.08, sigma: 0.01 },
-  MEDIUM: { buy: 0.07, drop: 0.03, dropCap: 0.12, sigma: 0.02 },
-  HIGH: { buy: 0.1, drop: 0.04, dropCap: 0.16, sigma: 0.03 },
+// buy: rise per drink sold · dropCap: max fall of an unbought drink per tick ·
+// sigma: random noise.
+const PARAMS: Record<Volatility, { buy: number; dropCap: number; sigma: number }> = {
+  LOW: { buy: 0.06, dropCap: 0.06, sigma: 0.01 },
+  MEDIUM: { buy: 0.09, dropCap: 0.09, sigma: 0.02 },
+  HIGH: { buy: 0.12, dropCap: 0.12, sigma: 0.03 },
 };
 export const isVolatility = (v: unknown): v is Volatility => v === "LOW" || v === "MEDIUM" || v === "HIGH";
 
@@ -60,13 +61,16 @@ export function nextMultipliers(
 ): Record<string, number> {
   const ids = Object.keys(prev);
   if (ids.length === 0) return {};
-  const { buy, drop, dropCap, sigma } = PARAMS[volatility];
+  const { buy, dropCap, sigma } = PARAMS[volatility];
   const total = ids.reduce((s, id) => s + (demand[id] ?? 0), 0);
+  const unbought = ids.filter((id) => !(demand[id] > 0)).length;
+  // The total rise, shared out as a fall over the drinks nobody bought.
+  const fall = unbought > 0 ? Math.min(dropCap, (buy * total) / unbought) : 0;
 
   const next: Record<string, number> = {};
   for (const id of ids) {
     const sold = demand[id] ?? 0;
-    const move = sold > 0 ? buy * sold : -Math.min(dropCap, drop * total);
+    const move = sold > 0 ? buy * sold : -fall;
     const m = prev[id] + move + (noise ? sigma * gaussian() : 0) - REVERSION * (prev[id] - 1);
     next[id] = Math.round(Math.min(maxM, Math.max(minM, m)) * 10_000) / 10_000;
   }

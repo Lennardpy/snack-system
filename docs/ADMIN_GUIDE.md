@@ -181,9 +181,10 @@ Drink prices that move with demand, for a borrel game.
    price) and the seconds between price updates (default 20, 10–300), then **▶ Start Wall Street**.
 2. Put **snacks.51vo.nl/wallstreet** on a screen at the bar (no login): a live graph
    of every drink's price, the current prices and a ticker tape.
-3. At every update each drink sold pushes its price up (on High +10% per drink, so
-   3 beers = +30%), and the drinks nobody bought get cheaper (on High −4% per drink
-   the others sold, at most −16% per update), plus random swings. The POS charges the market price shown on its
+3. At every update each drink sold pushes its price up (on High +12% per drink, so
+   2 beers in one order = +24%), and the drinks nobody bought share that rise as a
+   fall (at most −12% each per update), so the market as a whole stays level: what's
+   popular keeps climbing, the rest gets cheaper. Plus random swings. The POS charges the market price shown on its
    tiles — no member (role) discounts on Wall Street drinks; a bartender's own free
    drinks stay free.
    On the POS the drink tabs then only hold Wall Street drinks; the others are on a
