@@ -333,28 +333,34 @@ public board **`/wallstreet`** (snacks.51vo.nl/wallstreet) for a screen at the b
 
 - **Admin → Activities → Details → 📈 Wall Street mode:** choose the drinks (≥ 2),
   **volatility** (Low / Medium / High, default High), **floor** and **ceiling** (% of
-  the drink's normal price, default 50–200%), then **▶ Start**. **■ Stop** returns to
+  the drink's normal price, default 50–200%), **seconds between updates** (default
+  20, 10–300), then **▶ Start**. **■ Stop** returns to
   normal prices. **💥 Crash (1 min)** drops every drink to the floor for 60 s,
   immediately; afterwards prices climb back. Settings can be changed while running
-  (applied from the next tick). Starting again begins a fresh market (old ticks are
+  (applied from the next tick; a new interval keeps the tick numbering going — the
+  start time is shifted so the latest tick keeps its index). Starting again begins a fresh market (old ticks are
   deleted). It only runs while the activity is OPEN.
-- **Price model** (`src/lib/wallstreet.ts`): every **20 s** (a tick) each drink's
-  multiplier `m` of its normal price (special price if set, else price) changes by
-  (1) **demand pressure** — its share of the drinks sold since the last tick (member
-  orders + external cards) minus an equal share 1/n, scaled by how busy it was (full
-  effect from 5 drinks per tick); this sums to zero, so when one drink rises the others
-  fall; (2) **random noise** per the volatility (σ 1.5% / 2.5% / 4.5%, mean removed
-  so it is zero-sum too); (3) **mean reversion** of 4% towards the normal price. It's
-  clamped to floor/ceiling and the price rounded to €0.05. Volatility also sets the
-  demand strength (k 0.15 / 0.25 / 0.35).
+- **Price model** (`src/lib/wallstreet.ts`): every tick (`wallstreetTickSec`) each
+  drink's multiplier `m` of its normal price (special price if set, else price)
+  changes by (1) **demand** — counted over the drinks sold since the last tick (member
+  orders + external cards): a drink that sold rises by *buy* × quantity; a drink that
+  didn't sell falls by *drop* × the number of other drinks sold, at most *dropCap*;
+  (2) **random noise** σ; (3) **mean reversion** of 3% towards the normal price. It's
+  clamped to floor/ceiling and the price rounded to €0.05. Per volatility
+  (Low / Medium / High): buy 5% / 7% / 10%, drop 2% / 3% / 4%, dropCap 8% / 12% / 16%,
+  σ 1% / 2% / 3%. Example on High: 3 beers in a tick → beer +30%, every unbought
+  drink −12%.
 - **Ticks** (`PppWallstreetTick`) are computed lazily by whichever request asks first
   (board, POS, order) and stored with a unique (activity, index) — concurrent
   requests can't compute a tick twice. The board shows the last 30 minutes.
 - **At the POS:** the header shows **📈 Wall Street** (a link to the board; **💥
   CRASH** during a crash), and each Wall Street drink tile shows its market price with
   a **▲/▼ move** since the previous tick. The market price **replaces the price and any
-  borrel special**; role discounts (percent and fixed) and bartender free drinks apply
-  on top as usual. The POS polls every 4 s and sends the tick it showed
+  borrel special** and gets **no role discounts** (`noRoleDiscount` in `priceOrder`);
+  a bartender's own free drinks stay free. While it runs, the POS tabs (All + categories) only show
+  Wall Street drinks; the rest sit on a **Not in Wall Street** tab, and the first tap on
+  such a drink per cart asks for confirmation ("not included in the stock market — for a
+  0.0, bill a normal beer / weizen"). External cards aren't asked (normal prices anyway). The POS polls every 4 s and sends the tick it showed
   (`wallstreetTick`); the server charges **that tick's** prices if it's recent (≤ ~65 s),
   so a price change between tapping and confirming doesn't change the bill. Lines
   snapshot the market price as `listCents`. **External cards** keep their normal
@@ -516,7 +522,7 @@ See [DATA_MODEL.md](DATA_MODEL.md) for the full schema. PPP adds:
   `specialCents?` snapshots for discount reporting + `bartenderFree` marking a
   comped bartender line).
 - `PppActivity.wallstreet*` (`Active`, `StartedAt`, `Volatility`, `MinPct`, `MaxPct`,
-  `ProductIds[]`, `CrashUntil`) + `PppWallstreetTick` (`index` unique per activity,
+  `TickSec`, `ProductIds[]`, `CrashUntil`) + `PppWallstreetTick` (`index` unique per activity,
   `at`, `prices` JSON `{ productId: { m, c } }`, `crash`).
 - `ExternalCard` (`uid` unique, `name`) → `PppExternalTab` (per activity × card:
   `title?`, `priceLevel` INTERNAL|INTERNAL_PLUS_10|TUSSEN|EXTERNAL, `cardName`
@@ -564,7 +570,7 @@ matched rows + valid-from date, nothing saved),
 `…/external-cards` (GET list / POST `{ uid, name }`; +`/[id]` PATCH rename / DELETE),
 `…/activities/[id]/external` (the borrel's external tabs with breakdown),
 `…/activities/[id]/wallstreet` (GET settings + drinks + live state; PATCH
-`{ active?, volatility?, minPct?, maxPct?, productIds?, crash? }`),
+`{ active?, volatility?, minPct?, maxPct?, tickSec?, productIds?, crash? }`),
 `…/external-tabs/[id]` (PATCH `{ title?, priceLevel? }` / DELETE; +`/pdf` download),
 `…/external-orders/[id]` (DELETE one order; an emptied tab is removed),
 `…/stats` (`?range=…|since_export`; returns `cogsInclCents`, `pl.externalIncomeCents` (internal prices), `abProfitCents`) +`/stats/sumup` (range card-income total), `…/invoices`; `/api/admin/members/[id]/roles`,

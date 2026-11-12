@@ -376,6 +376,7 @@ model PppActivity {
   wallstreetVolatility String    @default("HIGH") // LOW | MEDIUM | HIGH
   wallstreetMinPct     Int       @default(50) // floor, % of the drink's normal price
   wallstreetMaxPct     Int       @default(200) // ceiling, % of the drink's normal price
+  wallstreetTickSec    Int       @default(20) // seconds between price updates
   wallstreetProductIds String[]  @default([])
   wallstreetCrashUntil DateTime? // "market crash": every drink at the floor until then
   wallstreetTicks      PppWallstreetTick[]

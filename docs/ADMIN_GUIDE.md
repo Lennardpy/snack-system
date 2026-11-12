@@ -177,13 +177,18 @@ Two tabs: **Pending export** (confirmed, awaiting billing) and **Exported**
 Drink prices that move with demand, for a borrel game.
 
 1. **Activities → Details / P&L → 📈 Wall Street mode.** Tick the drinks, choose the
-   volatility (High is wild) and the floor/ceiling (default 50%–200% of the normal
-   price), then **▶ Start Wall Street**.
+   volatility (High is wild), the floor/ceiling (default 50%–200% of the normal
+   price) and the seconds between price updates (default 20, 10–300), then **▶ Start Wall Street**.
 2. Put **snacks.51vo.nl/wallstreet** on a screen at the bar (no login): a live graph
    of every drink's price, the current prices and a ticker tape.
-3. Every 20 seconds prices update: what's being bought gets more expensive, the rest
-   gets cheaper, plus random swings. The POS charges the market price shown on its
-   tiles (member discounts still apply).
+3. At every update each drink sold pushes its price up (on High +10% per drink, so
+   3 beers = +30%), and the drinks nobody bought get cheaper (on High −4% per drink
+   the others sold, at most −16% per update), plus random swings. The POS charges the market price shown on its
+   tiles — no member (role) discounts on Wall Street drinks; a bartender's own free
+   drinks stay free.
+   On the POS the drink tabs then only hold Wall Street drinks; the others are on a
+   separate **Not in Wall Street** tab, and tapping one asks "Are you sure?" (for a
+   0.0, bill a normal beer / weizen).
 4. **💥 Crash (1 min)** — every drink at the bottom price for a minute. Fun at a
    chosen moment.
 5. **■ Stop** at the end: normal prices again. (Closing the activity also stops it.)

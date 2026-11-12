@@ -93,6 +93,9 @@ export default function PosPage() {
   const [activity, setActivity] = useState<Activity | null>(null);
   const [rawProducts, setProducts] = useState<Product[]>([]);
   const [activeCat, setActiveCat] = useState<string>("all");
+  // Wall Street: a drink outside the market the bartender tapped, waiting for
+  // "are you sure" (they're on their own tab so they aren't tapped by mistake).
+  const [offMarket, setOffMarket] = useState<Product | null>(null);
   const [cart, setCart] = useState<Record<string, number>>({});
   const [member, setMember] = useState<MemberState>({ kind: "idle" });
   // Wall Street mode: live market prices (polled), the tick they belong to, and
@@ -497,6 +500,8 @@ export default function PosPage() {
         product: l.product,
         activitySpecialCents: cartSpecialFor(l.product.id),
         free: isFreeForBartender(l.product),
+        // Wall Street drinks: the market price, no role discounts (as the server).
+        noRoleDiscount: !isExternal && !!ws?.prices.has(l.product.id),
       })),
       memberRoles
     );
@@ -518,7 +523,7 @@ export default function PosPage() {
       }
     }
     return byProduct;
-  }, [cartLines, memberRoles, specialFor, cartSpecialFor, isFreeForBartender]);
+  }, [cartLines, memberRoles, specialFor, cartSpecialFor, isFreeForBartender, isExternal, ws]);
   // "Gross" = effective price (special if set) before role discounts; total = after.
   const grossCents = cartLines.reduce(
     (s, l) => s + activityUnitPrice(l.product, cartSpecialFor(l.product.id)) * l.qty,
@@ -583,11 +588,15 @@ export default function PosPage() {
   }
 
   // ── Category tabs ───────────────────────────────────────────────────────────
+  // While Wall Street runs, the normal tabs only hold its drinks; the rest are on a
+  // separate "Not in Wall Street" tab.
+  const onMarket = useCallback((id: string) => !ws || ws.prices.has(id), [ws]);
   const categories = useMemo(() => {
     const map = new Map<string, { id: string; name: string; sortOrder: number }>();
-    for (const p of products) map.set(p.category.id, p.category);
+    for (const p of products) if (onMarket(p.id)) map.set(p.category.id, p.category);
     return [...map.values()].sort((a, b) => a.sortOrder - b.sortOrder);
-  }, [products]);
+  }, [products, onMarket]);
+  const hasOffMarket = !!ws && products.some((p) => !onMarket(p.id));
 
   // Quantity sold per product at this borrel (from the recent history feed), used
   // to bubble the most-purchased drinks to the front of the "All" tab.
@@ -599,12 +608,22 @@ export default function PosPage() {
   }, [history]);
 
   const visible = useMemo(() => {
-    if (activeCat !== "all") return products.filter((p) => p.category.id === activeCat);
+    if (activeCat === OFF_MARKET && hasOffMarket) return products.filter((p) => !onMarket(p.id));
+    const market = products.filter((p) => onMarket(p.id));
+    // A tab that has no Wall Street drinks (or no longer exists) shows "All".
+    if (categories.some((c) => c.id === activeCat)) return market.filter((p) => p.category.id === activeCat);
     // Most-purchased first; unsold drinks keep their normal order after them.
-    return [...products].sort(
-      (a, b) => (soldByProduct.get(b.id) ?? 0) - (soldByProduct.get(a.id) ?? 0)
-    );
-  }, [activeCat, products, soldByProduct]);
+    return market.sort((a, b) => (soldByProduct.get(b.id) ?? 0) - (soldByProduct.get(a.id) ?? 0));
+  }, [activeCat, products, soldByProduct, onMarket, categories, hasOffMarket]);
+  const shownCat =
+    (activeCat === OFF_MARKET && hasOffMarket) || categories.some((c) => c.id === activeCat) ? activeCat : "all";
+
+  // Tapping a drink outside Wall Street asks first (once per drink per cart);
+  // external cards pay normal prices for everything, so they aren't asked.
+  const tapProduct = (p: Product) => {
+    if (!onMarket(p.id) && member.kind !== "external" && !cart[p.id]) setOffMarket(p);
+    else add(p.id);
+  };
 
   const memberRef = useRef<HTMLDivElement>(null);
 
@@ -723,14 +742,26 @@ export default function PosPage() {
           }`}
         >
           <div className="flex flex-wrap gap-2.5 border-b border-gray-800 px-5 py-4">
-            <CatPill active={activeCat === "all"} onClick={() => setActiveCat("all")}>
-              All
+            <CatPill active={shownCat === "all"} onClick={() => setActiveCat("all")}>
+              {ws ? "📈 All" : "All"}
             </CatPill>
             {categories.map((c) => (
-              <CatPill key={c.id} active={activeCat === c.id} onClick={() => setActiveCat(c.id)}>
+              <CatPill key={c.id} active={shownCat === c.id} onClick={() => setActiveCat(c.id)}>
                 {c.name}
               </CatPill>
             ))}
+            {hasOffMarket && (
+              <button
+                onClick={() => setActiveCat(OFF_MARKET)}
+                className={`ml-auto rounded-full border border-dashed px-5 py-2.5 text-base font-semibold transition-colors active:scale-95 ${
+                  shownCat === OFF_MARKET
+                    ? "border-red-500 bg-red-900/60 text-white"
+                    : "border-gray-600 text-gray-400 hover:bg-gray-800"
+                }`}
+              >
+                Not in Wall Street
+              </button>
+            )}
           </div>
           <div className="grid flex-1 auto-rows-min grid-cols-2 gap-4 overflow-y-auto p-5 sm:grid-cols-3 lg:grid-cols-4">
             {visible.length === 0 ? (
@@ -750,7 +781,7 @@ export default function PosPage() {
                 return (
                   <button
                     key={p.id}
-                    onClick={() => add(p.id)}
+                    onClick={() => tapProduct(p)}
                     disabled={!isOpen}
                     style={p.color ? { backgroundColor: p.color } : undefined}
                     className={`relative flex min-h-[7rem] flex-col items-center justify-center rounded-2xl border p-4 text-center shadow-sm transition-transform active:scale-95 disabled:opacity-40 ${
@@ -1194,6 +1225,37 @@ export default function PosPage() {
         </div>
       )}
 
+      {offMarket && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6">
+          <div className="w-full max-w-sm rounded-2xl border border-red-600/60 bg-gray-900 p-6 text-center">
+            <p className="text-4xl">⚠️</p>
+            <h2 className="mt-2 text-xl font-bold">Are you sure?</h2>
+            <p className="mt-2 text-base text-gray-300">
+              <b>{offMarket.name}</b> is not included in the stock market.
+            </p>
+            <p className="mt-2 text-sm text-gray-400">For a 0.0, bill a normal beer / weizen.</p>
+            <div className="mt-5 flex flex-col gap-2">
+              <button
+                autoFocus
+                onClick={() => setOffMarket(null)}
+                className="w-full rounded-lg bg-amber-600 py-3 text-base font-semibold hover:bg-amber-500"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  add(offMarket.id);
+                  setOffMarket(null);
+                }}
+                className="w-full rounded-lg bg-gray-800 py-3 text-base font-semibold text-gray-200 hover:bg-gray-700"
+              >
+                Add {offMarket.name} anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-xl bg-amber-600 px-5 py-3 font-medium shadow-lg">
           {toast}
@@ -1202,6 +1264,9 @@ export default function PosPage() {
     </div>
   );
 }
+
+// The POS tab for drinks outside a running Wall Street.
+const OFF_MARKET = "__off-market";
 
 function CatPill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (

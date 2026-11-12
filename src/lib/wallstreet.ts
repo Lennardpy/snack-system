@@ -3,35 +3,38 @@ import { Prisma } from "@prisma/client";
 
 // Wall Street mode — drink prices that move with demand.
 //
-// Every TICK_MS the selected drinks get a new price, as a multiplier `m` of their
-// normal price (special price if set, else price). Per tick:
-//   1. demand pressure — each drink's share of the drinks sold since the last tick
-//      vs. an equal share (1/n). Sums to zero: when one drink rises, the others fall.
-//      Scaled by how busy it was (full effect from FULL_DEMAND drinks per tick).
-//   2. noise — random, per the volatility level; the mean is removed so it's
-//      zero-sum too.
-//   3. mean reversion — a pull back towards the normal price.
+// Every tick (wallstreetTickSec, set per borrel) the selected drinks get a new
+// price, as a multiplier `m` of their normal price (special price if set, else
+// price). Per tick:
+//   1. demand — every drink sold since the last tick pushes its price up by BUY
+//      (per drink). Drinks nobody bought fall by DROP per drink sold of the
+//      others (capped at DROP_CAP), so a round of beers makes the rest cheaper.
+//   2. noise — random, per the volatility level.
+//   3. mean reversion — a gentle pull back towards the normal price.
 //   4. clamp to [floor, ceiling] (% of the normal price) and round to €0.05.
 // A "market crash" (admin button) puts every drink at the floor until it ends;
-// prices then climb back through mean reversion.
+// prices then climb back through mean reversion and demand.
 //
 // Ticks are computed lazily by whoever asks first (the public page, the POS or
 // an order) and stored with a unique (activity, index), so concurrent requests
 // never compute the same tick twice. The server charges the stored tick prices.
 
-export const TICK_MS = 20_000;
+export const DEFAULT_TICK_SEC = 20;
+export const MIN_TICK_SEC = 10;
+export const MAX_TICK_SEC = 300;
 export const CRASH_MS = 60_000;
-const FULL_DEMAND = 5;
-const REVERSION = 0.04;
+const REVERSION = 0.03;
 // A POS may charge the prices of the tick it showed, if that tick is this recent.
 const PRICE_GRACE_MS = 45_000;
 const HISTORY_MS = 60 * 60_000;
 
 export type Volatility = "LOW" | "MEDIUM" | "HIGH";
-const PARAMS: Record<Volatility, { k: number; sigma: number }> = {
-  LOW: { k: 0.15, sigma: 0.015 },
-  MEDIUM: { k: 0.25, sigma: 0.025 },
-  HIGH: { k: 0.35, sigma: 0.045 },
+// buy: rise per drink sold · drop: fall of an unbought drink per drink sold of
+// the others · dropCap: max fall per tick · sigma: random noise.
+const PARAMS: Record<Volatility, { buy: number; drop: number; dropCap: number; sigma: number }> = {
+  LOW: { buy: 0.05, drop: 0.02, dropCap: 0.08, sigma: 0.01 },
+  MEDIUM: { buy: 0.07, drop: 0.03, dropCap: 0.12, sigma: 0.02 },
+  HIGH: { buy: 0.1, drop: 0.04, dropCap: 0.16, sigma: 0.03 },
 };
 export const isVolatility = (v: unknown): v is Volatility => v === "LOW" || v === "MEDIUM" || v === "HIGH";
 
@@ -45,31 +48,26 @@ const gaussian = () => {
 
 export const wsPriceCents = (baseCents: number, m: number) => Math.max(5, Math.round((baseCents * m) / 5) * 5);
 
-// One step of the price model (pure; exported for testing).
+// One step of the price model (pure; exported for testing). `noise` = false
+// leaves out the random part.
 export function nextMultipliers(
   prev: Record<string, number>,
   demand: Record<string, number>,
   volatility: Volatility,
   minM: number,
-  maxM: number
+  maxM: number,
+  noise = true
 ): Record<string, number> {
   const ids = Object.keys(prev);
-  const n = ids.length;
-  if (n === 0) return {};
-  const { k, sigma } = PARAMS[volatility];
+  if (ids.length === 0) return {};
+  const { buy, drop, dropCap, sigma } = PARAMS[volatility];
   const total = ids.reduce((s, id) => s + (demand[id] ?? 0), 0);
-  const intensity = Math.min(1, total / FULL_DEMAND);
-
-  const delta: Record<string, number> = {};
-  for (const id of ids) {
-    const share = total > 0 ? (demand[id] ?? 0) / total : 1 / n;
-    delta[id] = k * (share - 1 / n) * intensity + sigma * gaussian();
-  }
-  const mean = ids.reduce((s, id) => s + delta[id], 0) / n;
 
   const next: Record<string, number> = {};
   for (const id of ids) {
-    const m = prev[id] + (delta[id] - mean) - REVERSION * (prev[id] - 1);
+    const sold = demand[id] ?? 0;
+    const move = sold > 0 ? buy * sold : -Math.min(dropCap, drop * total);
+    const m = prev[id] + move + (noise ? sigma * gaussian() : 0) - REVERSION * (prev[id] - 1);
     next[id] = Math.round(Math.min(maxM, Math.max(minM, m)) * 10_000) / 10_000;
   }
   return next;
@@ -107,6 +105,7 @@ const activitySelect = {
   wallstreetVolatility: true,
   wallstreetMinPct: true,
   wallstreetMaxPct: true,
+  wallstreetTickSec: true,
   wallstreetProductIds: true,
   wallstreetCrashUntil: true,
 } as const;
@@ -138,8 +137,9 @@ export async function getWallstreet(activityId: string, now = new Date()): Promi
   const maxM = a.wallstreetMaxPct / 100;
   const base = new Map(products.map((p) => [p.id, p.specialPrice ?? p.price]));
 
+  const tickMs = a.wallstreetTickSec * 1000;
   const startMs = a.wallstreetStartedAt.getTime();
-  const index = Math.max(0, Math.floor((now.getTime() - startMs) / TICK_MS));
+  const index = Math.max(0, Math.floor((now.getTime() - startMs) / tickMs));
   let latest = await prisma.pppWallstreetTick.findFirst({ where: { activityId }, orderBy: { index: "desc" } });
 
   if (!latest || latest.index < index) {
@@ -178,10 +178,10 @@ export async function getWallstreet(activityId: string, now = new Date()): Promi
     volatility,
     minPct: a.wallstreetMinPct,
     maxPct: a.wallstreetMaxPct,
-    tickMs: TICK_MS,
+    tickMs,
     tickIndex: latest!.index,
     tickAt: latest!.at,
-    nextTickAt: new Date(startMs + (index + 1) * TICK_MS),
+    nextTickAt: new Date(startMs + (index + 1) * tickMs),
     crashUntil: a.wallstreetCrashUntil && a.wallstreetCrashUntil > now ? a.wallstreetCrashUntil : null,
     drinks: products.map((p) => {
       const b = base.get(p.id)!;
@@ -226,7 +226,7 @@ export async function wallstreetChargePrices(
   const tick = await prisma.pppWallstreetTick.findUnique({
     where: { activityId_index: { activityId, index: shownTick } },
   });
-  if (!tick || tick.index > state.tickIndex || now.getTime() - tick.at.getTime() > PRICE_GRACE_MS + TICK_MS) {
+  if (!tick || tick.index > state.tickIndex || now.getTime() - tick.at.getTime() > PRICE_GRACE_MS + state.tickMs) {
     return current;
   }
   const shown = tick.prices as TickPrices;

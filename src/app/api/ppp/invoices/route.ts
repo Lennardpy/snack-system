@@ -114,8 +114,8 @@ export async function POST(req: NextRequest) {
   const productById = new Map(products.map((p) => [p.id, p]));
 
   // Wall Street mode: its drinks cost the market price (of the tick the POS
-  // showed, if recent) instead of their price and any borrel special. Role
-  // discounts and bartender free drinks apply on top as usual.
+  // showed, if recent) instead of their price and any borrel special. No role
+  // discounts on them; bartender free drinks still apply.
   const wallstreet = await wallstreetChargePrices(activityId, wallstreetTick);
 
   // The on-shift bartender drinks free from bartender-free categories when they
@@ -145,6 +145,7 @@ export async function POST(req: NextRequest) {
       activitySpecialCents: wsCents != null ? null : specialMap.get(productId) ?? null,
       // A bartender-free line is comped to €0 (the association covers listCents).
       free: chargingSelf && product.category.bartenderFree,
+      noRoleDiscount: wsCents != null,
     });
   }
   const itemById = new Map(items.map((it) => [it.productId, it]));

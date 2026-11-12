@@ -12,6 +12,7 @@ interface Settings {
   wallstreetVolatility: Volatility;
   wallstreetMinPct: number;
   wallstreetMaxPct: number;
+  wallstreetTickSec: number;
   wallstreetProductIds: string[];
 }
 interface ProductLite { id: string; name: string; price: number; specialPrice: number | null; category: { name: string } }
@@ -33,7 +34,13 @@ export default function WallStreet({ activityId, isOpen }: { activityId: string;
   const [settings, setSettings] = useState<Settings | null>(null);
   const [products, setProducts] = useState<ProductLite[]>([]);
   const [live, setLive] = useState<Live | null>(null);
-  const [form, setForm] = useState({ volatility: "HIGH" as Volatility, minPct: "50", maxPct: "200", ids: new Set<string>() });
+  const [form, setForm] = useState({
+    volatility: "HIGH" as Volatility,
+    minPct: "50",
+    maxPct: "200",
+    tickSec: "20",
+    ids: new Set<string>(),
+  });
   const [busy, setBusy] = useState(false);
   // Collapsed until clicked (most borrels don't use it); the buttons stay visible.
   const [open, setOpen] = useState(false);
@@ -53,6 +60,7 @@ export default function WallStreet({ activityId, isOpen }: { activityId: string;
           volatility: d.settings.wallstreetVolatility,
           minPct: String(d.settings.wallstreetMinPct),
           maxPct: String(d.settings.wallstreetMaxPct),
+          tickSec: String(d.settings.wallstreetTickSec),
           // First time: every drink selected.
           ids: new Set(ids.length > 0 ? ids : d.products.map((p: ProductLite) => p.id)),
         });
@@ -91,6 +99,7 @@ export default function WallStreet({ activityId, isOpen }: { activityId: string;
     volatility: form.volatility,
     minPct: Number(form.minPct),
     maxPct: Number(form.maxPct),
+    tickSec: Number(form.tickSec),
     productIds: [...form.ids],
   });
 
@@ -166,9 +175,10 @@ export default function WallStreet({ activityId, isOpen }: { activityId: string;
       {open && (
       <>
       <p className="mb-4 mt-1 text-sm text-gray-500">
-        Prices of the selected drinks move every 20 seconds with demand: what sells goes up, the rest goes down, plus
-        random swings. They replace the normal price and borrel specials at the POS; role discounts and bartender free
-        drinks still apply, and orders are charged the price the bartender saw. External cards keep normal prices.
+        Prices of the selected drinks move every {settings.wallstreetTickSec} seconds with demand: every drink sold
+        pushes its price up, and the drinks nobody bought get cheaper, plus random swings. They replace the normal
+        price and borrel specials at the POS; role discounts don&apos;t apply to them (bartender free drinks stay free),
+        and orders are charged the price the bartender saw. External cards keep normal prices.
         Show <a href="/wallstreet" target="_blank" className="text-amber-400 hover:underline">ppp.51vo.nl/wallstreet</a>{" "}
         on a screen at the bar.
       </p>
@@ -199,6 +209,14 @@ export default function WallStreet({ activityId, isOpen }: { activityId: string;
           <input
             type="number" min={100} max={500} step={10} value={form.maxPct}
             onChange={(e) => setForm((f) => ({ ...f, maxPct: e.target.value }))}
+            className="w-28 rounded-lg bg-gray-800 px-3 py-2 outline-none focus:ring-2 focus:ring-amber-500"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-gray-400">Seconds between updates</span>
+          <input
+            type="number" min={10} max={300} step={5} value={form.tickSec}
+            onChange={(e) => setForm((f) => ({ ...f, tickSec: e.target.value }))}
             className="w-28 rounded-lg bg-gray-800 px-3 py-2 outline-none focus:ring-2 focus:ring-amber-500"
           />
         </label>
