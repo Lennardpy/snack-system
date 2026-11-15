@@ -55,7 +55,8 @@ function LoginForm() {
           body: JSON.stringify({ uid }),
         });
         if (res.ok) {
-          router.push(from ?? "/ppp");
+          // A card only opens the POS, never the admin pages.
+          router.push(from && !from.startsWith("/ppp/admin") ? from : "/ppp");
           router.refresh();
           return;
         }
@@ -89,6 +90,11 @@ function LoginForm() {
       {searchParams.get("reason") === "idle" && !error && (
         <p className="rounded-lg bg-amber-900/30 px-3 py-2 text-sm text-amber-200">
           Signed out — no orders for 1 hour, so the borrel was ended. Sign in again to continue.
+        </p>
+      )}
+      {searchParams.get("reason") === "admin-idle" && !error && (
+        <p className="rounded-lg bg-amber-900/30 px-3 py-2 text-sm text-amber-200">
+          Signed out after 30 minutes without activity. Sign in again to continue.
         </p>
       )}
       {error && <p className="text-sm text-red-400">{error}</p>}

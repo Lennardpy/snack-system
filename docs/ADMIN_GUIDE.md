@@ -19,6 +19,11 @@ The **overall admin** sees everything on both sites and manages logins under
 **Accounts**: per login, tick SSS and/or PPP and pick the association (Stress,
 Dimensie, or All = overall admin). New logins get an emailed set-password link for
 their site; "Reset link" sends a new one. Dimensie logins can't get SSS access.
+Someone can have an admin login **and** a bartender account with the same email
+(each its own password): signing in with the admin password opens the admin, with
+the bartender password the POS. Their card only ever signs in to the bartender
+account. The admin pages sign you out after **30 minutes without activity** (a
+warning shows a minute before).
 
 ## Dashboard
 

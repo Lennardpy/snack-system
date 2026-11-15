@@ -1,4 +1,3 @@
-import { randomBytes } from "crypto";
 import { cookies } from "next/headers";
 import { prisma } from "./prisma";
 import { ASSOCIATION_IDS, type AssociationId } from "./associations";
@@ -37,7 +36,8 @@ export function oauthConfig(association: AssociationId): OAuthConfig | null {
 
 export const loginAssociations = () => ASSOCIATION_IDS.filter((a) => oauthConfig(a) !== null);
 
-export const newToken = () => randomBytes(32).toString("base64url");
+export { newToken } from "./token";
+import { newToken } from "./token";
 
 export async function createMemberSession(memberId: string, associationId: AssociationId) {
   return prisma.memberSession.create({

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { setSessionCookie, canUseSite, homePath } from "@/lib/auth";
+import { setSessionCookie, canUseSite, homePath, newSessionData } from "@/lib/auth";
 import { siteForHost } from "@/lib/site";
 import { prisma } from "@/lib/prisma";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
@@ -53,14 +53,7 @@ export async function POST(req: NextRequest) {
     await tx.user.update({ where: { id: setup.userId }, data: { passwordHash } });
     await tx.session.deleteMany({ where: { userId: setup.userId } });
     if (!canUseSite(user, site)) return null;
-    return tx.session.create({
-      data: {
-        userId: setup.userId,
-        kind: "password",
-        site,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      },
-    });
+    return tx.session.create({ data: newSessionData(user, "password", site) });
   });
   if (session === "used") return NextResponse.json({ error: "This link has already been used" }, { status: 410 });
 

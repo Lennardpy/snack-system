@@ -40,6 +40,11 @@ function LoginForm() {
     <form onSubmit={login} className="w-full max-w-sm space-y-4">
       <h1 className="text-2xl font-bold mb-1">SSS</h1>
       <p className="text-gray-600 text-xs mb-6">Stress Snack System</p>
+      {searchParams.get("reason") === "admin-idle" && !error && (
+        <p className="rounded-lg bg-amber-900/30 px-3 py-2 text-sm text-amber-200">
+          Signed out after 30 minutes without activity. Sign in again to continue.
+        </p>
+      )}
       {error && <p className="text-red-400 text-sm">{error}</p>}
       <input
         type="email" value={email} onChange={(e) => setEmail(e.target.value)}

@@ -143,7 +143,7 @@ Option B — a quick script (local DB):
 ```js
 // node script using the same Prisma setup as src/lib/prisma.ts
 const session = await prisma.shopSession.create({
-  data: { memberId: someMember.id, expiresAt: new Date(Date.now() + 3600e3) },
+  data: { token: newToken(), memberId: someMember.id, expiresAt: new Date(Date.now() + 3600e3) }, // newToken from src/lib/token.ts
 });
 console.log(`/shop/${session.token}`);
 ```

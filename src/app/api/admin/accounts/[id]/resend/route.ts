@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "crypto";
+import { newToken } from "@/lib/token";
 import { prisma } from "@/lib/prisma";
 import { requireOverallAdmin } from "@/lib/auth";
 import { sendAccountInviteEmail } from "@/lib/email";
@@ -15,7 +15,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const user = await prisma.user.findFirst({ where: { id, role: "ADMIN" } });
   if (!user) return NextResponse.json({ error: "Account not found" }, { status: 404 });
 
-  const token = randomUUID();
+  const token = newToken();
   await prisma.passwordSetupToken.upsert({
     where: { userId: id },
     update: { token, usedAt: null, createdAt: new Date() },

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { newToken } from "@/lib/token";
 import { prisma } from "@/lib/prisma";
 import { requirePpp } from "@/lib/auth";
 import { sendAccountInviteEmail } from "@/lib/email";
@@ -64,10 +65,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "A valid email is required" }, { status: 400 });
   }
 
-  const existing = await prisma.user.findUnique({ where: { email: normalised } });
+  // The same email may also have an admin account (a separate login; the card
+  // only ever signs in to this bartender account).
+  const existing = await prisma.user.findUnique({ where: { email_role: { email: normalised, role: "BARTENDER" } } });
   if (existing) {
     return NextResponse.json(
-      { error: "A user with that email already exists" },
+      { error: "A bartender with that email already exists" },
       { status: 409 }
     );
   }
@@ -82,7 +85,7 @@ export async function POST(req: NextRequest) {
       associationId,
       pppAccess: true,
       passwordHash: placeholder,
-      passwordSetup: { create: {} },
+      passwordSetup: { create: { token: newToken() } },
     },
     select: { id: true, email: true, passwordSetup: { select: { token: true } } },
   });

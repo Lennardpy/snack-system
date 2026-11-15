@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { requirePpp, isOverallAdmin } from "@/lib/auth";
+import { requirePpp, isOverallAdmin, ADMIN_IDLE_MS } from "@/lib/auth";
+import IdleLogout from "@/components/IdleLogout";
 import { siteOrigin } from "@/lib/site";
 import { ASSOCIATION_LABEL } from "@/lib/associations";
 import SiteNav, { type NavLink } from "@/components/SiteNav";
@@ -33,6 +34,7 @@ export default async function PppAdminLayout({ children }: { children: React.Rea
 
   return (
     <div className="flex min-h-screen bg-gray-950 text-white">
+      <IdleLogout idleMs={ADMIN_IDLE_MS} loginPath="/ppp/login" />
       <SiteNav
         title="PPP Admin"
         subtitle="Bar system"

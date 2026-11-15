@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { newToken } from "@/lib/token";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
@@ -35,8 +36,9 @@ export async function POST(req: NextRequest) {
   const access = parseAccess(body);
   if ("error" in access) return NextResponse.json({ error: access.error }, { status: 400 });
 
-  if (await prisma.user.findUnique({ where: { email } })) {
-    return NextResponse.json({ error: "A user with that email already exists" }, { status: 409 });
+  // The same email may also have a bartender account (a separate login).
+  if (await prisma.user.findUnique({ where: { email_role: { email, role: "ADMIN" } } })) {
+    return NextResponse.json({ error: "An admin account with that email already exists" }, { status: 409 });
   }
 
   // Unusable random password until they set their own via the emailed link.
@@ -46,7 +48,7 @@ export async function POST(req: NextRequest) {
       role: "ADMIN",
       ...access,
       passwordHash: await bcrypt.hash(randomBytes(32).toString("hex"), 10),
-      passwordSetup: { create: {} },
+      passwordSetup: { create: { token: newToken() } },
     },
     select: { ...accountSelect, passwordSetup: { select: { token: true, usedAt: true } } },
   });

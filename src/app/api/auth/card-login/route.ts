@@ -26,8 +26,9 @@ export async function POST(req: NextRequest) {
 
   // The staff account may be linked to the person's other membership (someone in
   // both associations has the card on one row and the account on the other).
+  // Only a BARTENDER account: a card tap never signs in to an admin account.
   const user = card ? await staffUserFor(card.member) : null;
-  if (!card || !user) {
+  if (!card || !user || user.role !== "BARTENDER") {
     return NextResponse.json(
       { error: "This card isn't linked to a bartender account" },
       { status: 404 }
@@ -43,7 +44,8 @@ export async function POST(req: NextRequest) {
 
   // A short, sliding "card" session (see src/lib/auth.ts): alive while the POS is
   // used, gone 2 h after last use and at most 16 h — never carried to next borrel.
-  const session = await createSession(user.id, "card", "ppp");
+  // It only opens the POS; the admin pages refuse card sessions.
+  const session = await createSession(user, "card", "ppp");
 
   const res = NextResponse.json({ ok: true, role: user.role });
   setSessionCookie(res, session);

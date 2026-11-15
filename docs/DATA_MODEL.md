@@ -70,7 +70,7 @@ The token is the value in the `/shop/<token>` URL.
 | Field | Type | Notes |
 |-------|------|-------|
 | `id` | String (cuid) | PK |
-| `token` | String (cuid) | **unique** — bearer token in the shop URL |
+| `token` | String | **unique** — bearer token in the shop URL (random, `newToken()`) |
 | `memberId` | String | the member this session shops as |
 | `expiresAt` | DateTime | 10 min from creation; extended on cart activity |
 | `createdAt` | DateTime | |
@@ -141,7 +141,7 @@ An admin (or, in principle, a member-linked) login.
 | Field | Type | Notes |
 |-------|------|-------|
 | `id` | String (cuid) | PK |
-| `email` | String | **unique** — admin login uses an email |
+| `email` | String | unique **per role** (`@@unique([email, role])`) — one person may have an admin and a bartender account |
 | `passwordHash` | String | bcrypt |
 | `role` | `UserRole` | `ADMIN` or `MEMBER` |
 | `createdAt` | DateTime | |
@@ -154,7 +154,7 @@ Admin login session, carried as an httpOnly cookie.
 | Field | Type | Notes |
 |-------|------|-------|
 | `id` | String (cuid) | PK |
-| `token` | String (cuid) | **unique** — value of the `session` cookie |
+| `token` | String | **unique** — value of the `session` cookie (random, `newToken()`) |
 | `expiresAt` | DateTime | 7 days |
 | `createdAt` | DateTime | |
 | `userId` → `user` | relation | `onDelete: Cascade` |
@@ -167,7 +167,7 @@ email is entered.
 |-------|------|-------|
 | `id` | String (cuid) | PK |
 | `uid` | String | the card UID to be linked |
-| `token` | String (cuid) | **unique** — value in the verification email link |
+| `token` | String | **unique** — value in the verification email link (random, `newToken()`) |
 | `email` | String | the member email entered at the kiosk |
 | `expiresAt` | DateTime | 15 min |
 | `usedAt` | DateTime? | set once the card is linked (single-use) |
