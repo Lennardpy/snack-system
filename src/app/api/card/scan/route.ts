@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { newToken } from "@/lib/token";
 import { prisma } from "@/lib/prisma";
 import { membershipsOf } from "@/lib/memberships";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
@@ -49,6 +50,7 @@ export async function POST(req: NextRequest) {
 
   const session = await prisma.shopSession.create({
     data: {
+      token: newToken(),
       memberId: stress.id,
       expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
     },

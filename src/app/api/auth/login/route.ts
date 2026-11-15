@@ -11,15 +11,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Too many attempts. Try again shortly." }, { status: 429 });
   }
 
-  const { email, password } = await req.json();
+  const body = await req.json().catch(() => ({}));
+  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const password = typeof body.password === "string" ? body.password : "";
+  if (!email || !password) return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
 
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+  // One email can have an admin and a bartender account (each with its own
+  // password): sign in to the one whose password this is. If it's both, the one
+  // that may use this site, the admin first (an admin can do everything a
+  // bartender can).
+  const site = siteForHost(req.headers.get("host"));
+  const accounts = await prisma.user.findMany({ where: { email } });
+  const matching = [];
+  for (const a of accounts) if (await bcrypt.compare(password, a.passwordHash)) matching.push(a);
+  if (matching.length === 0) {
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
+  const user =
+    matching.find((a) => a.role === "ADMIN" && canUseSite(a, site)) ??
+    matching.find((a) => canUseSite(a, site)) ??
+    matching[0];
 
   // Separate logins per site: the account needs access to the site it signs in on.
-  const site = siteForHost(req.headers.get("host"));
   if (!canUseSite(user, site)) {
     return NextResponse.json(
       { error: site === "ppp" ? "This account has no access to the bar system (PPP)" : "This account has no access to the snack system (SSS)" },
@@ -27,7 +40,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const session = await createSession(user.id, "password", site); // 7 days
+  const session = await createSession(user, "password", site);
 
   const res = NextResponse.json({ ok: true, role: user.role, home: homePath(user, site) });
   setSessionCookie(res, session);

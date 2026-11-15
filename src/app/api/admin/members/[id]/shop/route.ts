@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { newToken } from "@/lib/token";
 import { prisma } from "@/lib/prisma";
 import { requireSss } from "@/lib/auth";
 
@@ -20,6 +21,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   await prisma.shopSession.deleteMany({ where: { memberId: id } });
   const session = await prisma.shopSession.create({
     data: {
+      token: newToken(),
       memberId: id,
       expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
     },

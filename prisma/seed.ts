@@ -14,7 +14,7 @@ async function main() {
     throw new Error("Set ADMIN_EMAIL and ADMIN_PASSWORD (at least 12 characters) to seed the admin user.");
   }
 
-  const existing = await prisma.user.findUnique({ where: { email } });
+  const existing = await prisma.user.findUnique({ where: { email_role: { email, role: "ADMIN" } } });
 
   if (existing) {
     console.log(`Admin user already exists: ${email}`);

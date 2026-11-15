@@ -4,47 +4,58 @@ import type { User } from "@prisma/client";
 import { prisma } from "./prisma";
 import { siteForHost, type Site } from "./site";
 import type { AssociationId } from "./associations";
+import { newToken } from "./token";
 
-// Session lifetimes.
-//   • "password" — email/password login (admin panel, bartenders): 7 days.
-//   • "card"     — bar POS card tap: sliding, ends after 2 h without any request
-//                  (the open POS polls every 10 s, so it stays alive while in use)
-//                  and never lasts longer than 16 h — a card login never outlives
-//                  the borrel or lingers on the shared bar PC until next week.
-const PASSWORD_SESSION_MS = 7 * 24 * 60 * 60 * 1000;
-const CARD_IDLE_MS = 2 * 60 * 60 * 1000;
+// Session lifetimes. Every session slides: each request pushes its expiry to
+// now + the idle limit, up to a maximum after login. On top of this the admin
+// pages sign out after ADMIN_IDLE_MS without mouse/keyboard input
+// (src/components/IdleLogout.tsx; polling pages keep the server session alive
+// but not that), and the POS signs out an hour after its last order.
+//   • admin password login: 30 min idle, at most 12 h.
+//   • bartender password login: 2 h idle, at most 12 h.
+//   • "card" (bar POS card tap): 2 h idle, at most 16 h — a card login never
+//     outlives the borrel or lingers on the shared bar PC until next week.
+export const ADMIN_IDLE_MS = 30 * 60 * 1000;
+const STAFF_IDLE_MS = 2 * 60 * 60 * 1000;
+const PASSWORD_MAX_MS = 12 * 60 * 60 * 1000;
 const CARD_MAX_MS = 16 * 60 * 60 * 1000;
-// Only write the extended expiry when it moved by at least this much, so the POS
-// polling doesn't update the session row every 10 s.
-const SLIDE_STEP_MS = 5 * 60 * 1000;
+// Only write the extended expiry when it moved by at least this much, so polling
+// pages don't update the session row on every request.
+const SLIDE_STEP_MS = 2 * 60 * 1000;
 
 export type SessionKind = "password" | "card";
+
+const idleMs = (kind: string, role: User["role"]) =>
+  kind === "password" && role === "ADMIN" ? ADMIN_IDLE_MS : STAFF_IDLE_MS;
+const maxMs = (kind: string) => (kind === "card" ? CARD_MAX_MS : PASSWORD_MAX_MS);
 
 // The site (SSS or PPP) this request is for, from its domain.
 export async function currentSite(): Promise<Site> {
   return siteForHost((await headers()).get("host"));
 }
 
-export async function createSession(userId: string, kind: SessionKind, site: Site) {
-  const now = Date.now();
-  return prisma.session.create({
-    data: {
-      userId,
-      kind,
-      site,
-      expiresAt: new Date(now + (kind === "card" ? CARD_IDLE_MS : PASSWORD_SESSION_MS)),
-    },
-  });
+// The row for a new session (a random token, never Prisma's cuid()).
+export function newSessionData(user: Pick<User, "id" | "role">, kind: SessionKind, site: Site) {
+  return {
+    token: newToken(),
+    userId: user.id,
+    kind,
+    site,
+    expiresAt: new Date(Date.now() + idleMs(kind, user.role)),
+  };
 }
 
-// Set the session cookie. Secure in production (HTTPS only). For card sessions the
-// cookie lives for the 16 h maximum; the server-side expiry decides validity.
+export async function createSession(user: Pick<User, "id" | "role">, kind: SessionKind, site: Site) {
+  return prisma.session.create({ data: newSessionData(user, kind, site) });
+}
+
+// Set the session cookie. Secure in production (HTTPS only). The cookie lives
+// for the session's maximum; the sliding server-side expiry decides validity.
 export function setSessionCookie(
   res: NextResponse,
   session: { token: string; kind: string; expiresAt: Date; createdAt: Date }
 ) {
-  const expires =
-    session.kind === "card" ? new Date(session.createdAt.getTime() + CARD_MAX_MS) : session.expiresAt;
+  const expires = new Date(session.createdAt.getTime() + maxMs(session.kind));
   res.cookies.set("session", session.token, {
     httpOnly: true,
     sameSite: "lax",
@@ -69,14 +80,12 @@ export async function getSession() {
   // A session only works on the site it was created on (separate logins).
   if (session.site !== (await currentSite())) return null;
 
-  // Card sessions slide: each use pushes the expiry to now + 2 h (capped at 16 h
-  // after login).
-  if (session.kind === "card") {
-    const next = Math.min(now + CARD_IDLE_MS, session.createdAt.getTime() + CARD_MAX_MS);
-    if (next - session.expiresAt.getTime() >= SLIDE_STEP_MS) {
-      await prisma.session.update({ where: { id: session.id }, data: { expiresAt: new Date(next) } });
-      session.expiresAt = new Date(next);
-    }
+  // Slide: each use pushes the expiry to now + the idle limit (capped at the
+  // maximum after login).
+  const next = Math.min(now + idleMs(session.kind, session.user.role), session.createdAt.getTime() + maxMs(session.kind));
+  if (next - session.expiresAt.getTime() >= SLIDE_STEP_MS) {
+    await prisma.session.update({ where: { id: session.id }, data: { expiresAt: new Date(next) } });
+    session.expiresAt = new Date(next);
   }
   return session;
 }
@@ -101,9 +110,11 @@ export const isOverallAdmin = (user: Pick<User, "role" | "associationId">) =>
   user.role === "ADMIN" && user.associationId === null;
 
 // SSS admin (snack system, Stress only): an admin with SSS access, on the SSS site.
+// Admin areas need a password login: a card tap (a card UID isn't a secret) only
+// ever opens the bar POS.
 export async function requireSss() {
   const session = await getSession();
-  if (!session || session.site !== "sss") return null;
+  if (!session || session.site !== "sss" || session.kind === "card") return null;
   const { user } = session;
   if (user.role !== "ADMIN" || !user.sssAccess) return null;
   return user;
@@ -113,7 +124,7 @@ export async function requireSss() {
 // the association whose data they see — null for the overall admin (everything).
 export async function requirePpp(): Promise<{ user: User; scope: AssociationId | null } | null> {
   const session = await getSession();
-  if (!session || session.site !== "ppp") return null;
+  if (!session || session.site !== "ppp" || session.kind === "card") return null;
   const { user } = session;
   if (user.role !== "ADMIN" || !user.pppAccess) return null;
   return { user, scope: (user.associationId as AssociationId | null) ?? null };
@@ -140,7 +151,8 @@ export async function requireStressExporter() {
 // The overall admin, on either site (account management).
 export async function requireOverallAdmin() {
   const session = await getSession();
-  if (!session || !isOverallAdmin(session.user) || !canUseSite(session.user, session.site as Site)) return null;
+  if (!session || session.kind === "card") return null;
+  if (!isOverallAdmin(session.user) || !canUseSite(session.user, session.site as Site)) return null;
   return session.user;
 }
 

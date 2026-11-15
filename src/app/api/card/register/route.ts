@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { newToken } from "@/lib/token";
 import { prisma } from "@/lib/prisma";
 import { sendCardVerificationEmail } from "@/lib/email";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
@@ -54,6 +55,7 @@ export async function POST(req: NextRequest) {
 
   const registration = await prisma.cardRegistration.create({
     data: {
+      token: newToken(),
       uid: normalised,
       email: email.trim().toLowerCase(),
       expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes

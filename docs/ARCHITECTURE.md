@@ -132,7 +132,7 @@ See [CONGRESSUS.md](CONGRESSUS.md) for the integration's important quirks.
 | Model | `ShopSession` | `Session` |
 | Created by | Card tap / "Enter store" | Admin login |
 | Carried as | `token` in the `/shop/<token>` URL | httpOnly `session` cookie |
-| Lifetime | 10 min, extended on cart activity | 7 days |
+| Lifetime | 10 min, extended on cart activity | slides: admin 30 min idle, bartender / card 2 h; max 12 h (card 16 h) |
 | Grants | The kiosk shop **as one member** | The admin panel |
 
 ## Request authorisation at a glance

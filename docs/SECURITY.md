@@ -19,9 +19,21 @@ trade-offs made for a shared, physical kiosk.
 
 ### Admin
 - Login verifies a bcrypt password and sets an **httpOnly**, **Secure** (in
-  production), `SameSite=Lax` `session` cookie (7-day `Session` row, `kind:
-  "password"`). All logins go through `createSession()` / `setSessionCookie()` in
-  `src/lib/auth.ts`.
+  production), `SameSite=Lax` `session` cookie (`Session` row, `kind: "password"`,
+  random 256-bit token). All logins go through `createSession()` / `setSessionCookie()`
+  in `src/lib/auth.ts`.
+- **Automatic logout:** sessions slide with use and have a maximum lifetime — admin
+  password logins end after **30 min idle** (max 12 h), bartender password logins
+  after 2 h idle (max 12 h). The admin pages also sign out after **30 min without
+  mouse/keyboard input** (`src/components/IdleLogout.tsx`, a warning shows for the
+  last minute), even when the page keeps polling; while someone is active it pings
+  `/api/auth/ping` so the server session doesn't end under them.
+- **One email, two accounts:** a person can have an ADMIN and a BARTENDER account
+  with the same email (`User` is unique on email + role), each with its own
+  password. Login opens the account whose password was entered (both → the admin
+  account). **A card never opens an admin account:** card login only accepts a
+  BARTENDER account, and `requireSss()` / `requirePpp()` / `requireOverallAdmin()`
+  refuse `kind: "card"` sessions.
 - Every `/api/admin/*` handler calls one of (`src/lib/auth.ts`):
   - `requireSss()` — snack-system routes (products, SSS invoices, SSS dashboard);
   - `requirePpp()` — bar routes; returns the login's **scope** (association);
@@ -45,8 +57,7 @@ trade-offs made for a shared, physical kiosk.
   session: **sliding 2 h** — each request extends it (the open POS polls every
   10 s, so it stays alive while in use) — and **never longer than 16 h** after the
   tap. A card login therefore can't linger on the shared bar PC into the next
-  borrel. (Before this, all sessions lasted 7 days, so last week's login expired
-  in the middle of the next weekly borrel, making charges fail with "Unauthorized".)
+  borrel. It only opens the POS — never the admin pages.
 - When the session ends while the POS is open, the POS shows **"Session ended — tap
   a bartender card"**; the next tap signs in again in place, keeping the cart and
   selected member. A fresh page load with an ended session redirects to the login.
@@ -125,10 +136,9 @@ more important than this UX, revert `card/register` to a uniform `{ ok: true }`.
 ### Shop token is a bearer token in the URL
 Anyone holding a live `/shop/<token>` URL can act as that member until it expires
 (10 min) or the order is confirmed. Tokens are random and per-tap (a new one each
-scan), so they can't be guessed or reused. The idle auto-reset and short lifetime
-bound the exposure. Stronger options (not currently implemented): move the token
-into an httpOnly cookie so it can't be shared via URL, or use a crypto-random
-token instead of a cuid.
+scan) — 256-bit from `crypto.randomBytes` — so they can't be guessed or reused. The
+idle auto-reset and short lifetime bound the exposure. A stronger option (not
+implemented): move the token into an httpOnly cookie so it can't be shared via URL.
 
 ### Month-end export trigger
 `POST /api/cron/monthly-export` is not behind a login: it requires the shared
@@ -264,6 +274,14 @@ bartender accounts can be linked to a member.
 - A bartender can no longer reopen a closed borrel more than 2 days after its date
   (it may be billed already); admins still can.
 - The card-link email escapes the member's first name.
+
+**Tokens (pen-test checklist, #13):** session, shop, set-password and card-link
+tokens came from Prisma's `cuid()`, which is built on `Math.random()`. They now come
+from `newToken()` (`src/lib/token.ts`, `crypto.randomBytes(32)`); the schema has no
+default for them, so a missed spot fails to compile. Migration
+`20261115120000_secure_tokens_and_role_emails` replaced every existing token with a
+random value: all staff logins and kiosk carts ended, and unused invite / card-link
+emails stopped working (send a new one with "Resend").
 
 ## Audit checklist
 

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { requireSss, isOverallAdmin } from "@/lib/auth";
+import { requireSss, isOverallAdmin, ADMIN_IDLE_MS } from "@/lib/auth";
+import IdleLogout from "@/components/IdleLogout";
 import { siteOrigin } from "@/lib/site";
 import SiteNav, { type NavLink } from "@/components/SiteNav";
 
@@ -22,6 +23,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div className="flex min-h-screen bg-gray-950 text-white">
+      <IdleLogout idleMs={ADMIN_IDLE_MS} loginPath="/admin/login" />
       <SiteNav
         title="SSS Admin"
         subtitle="Stress Snack System"

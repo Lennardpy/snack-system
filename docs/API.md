@@ -81,8 +81,14 @@ long-cache headers.
 
 ### `POST /api/auth/login`  · rate-limited 10/min/IP
 Body `{ "email": "...", "password": "..." }`. On success sets an httpOnly
-`session` cookie (7 days) and returns `{ "ok": true, "role": "ADMIN" }`.
-`401` on bad credentials.
+`session` cookie and returns `{ "ok": true, "role": "ADMIN", "home": "…" }`.
+`401` on bad credentials. An email may have an admin and a bartender account: the
+one whose password was entered signs in (both match → the admin account).
+Sessions slide: admin 30 min idle, bartender 2 h, max 12 h.
+
+### `GET /api/auth/ping`
+`200 { ok: true }` while the session is valid (and slides it), else `401`. Used by
+the admin pages' idle logout to keep an in-use session alive.
 
 ### `POST /api/auth/logout`
 Clears the session cookie and deletes the DB session.
