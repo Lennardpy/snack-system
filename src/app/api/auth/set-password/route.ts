@@ -31,6 +31,14 @@ export async function POST(req: NextRequest) {
   if (typeof password !== "string" || password.length < 8) {
     return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 });
   }
+  // bcrypt only uses the first 72 bytes (the rest would be silently ignored), and
+  // hashing very long input is a cheap way to load the server.
+  if (Buffer.byteLength(password, "utf8") > 72) {
+    return NextResponse.json(
+      { error: "Password is too long (at most 72 bytes — about 72 characters, fewer with special characters)" },
+      { status: 400 }
+    );
+  }
 
   const setup = await prisma.passwordSetupToken.findUnique({ where: { token } });
   if (!setup) return NextResponse.json({ error: "Invalid link" }, { status: 404 });

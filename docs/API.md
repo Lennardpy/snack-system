@@ -79,7 +79,7 @@ long-cache headers.
 
 ## Auth
 
-### `POST /api/auth/login`  · rate-limited 10/min/IP
+### `POST /api/auth/login`  · rate-limited 10/min/IP, and 10 wrong passwords / 15 min per email (`429`)
 Body `{ "email": "...", "password": "..." }`. On success sets an httpOnly
 `session` cookie and returns `{ "ok": true, "role": "ADMIN", "home": "…" }`.
 `401` on bad credentials. An email may have an admin and a bartender account: the

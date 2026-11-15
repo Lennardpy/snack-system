@@ -99,6 +99,15 @@ trade-offs made for a shared, physical kiosk.
 `card/register` (10/min), and `wallstreet` (240/min). It is per-instance; for multi-instance scaling, swap for
 a shared store (e.g. Redis).
 
+Login is also limited **per account**: after 10 wrong passwords for one email
+within 15 minutes (from any IP), that email can't log in until the window ends —
+so many IPs can't keep guessing one password. Only failures count, and a
+successful login resets the count. Trade-off: someone who knows an admin's email
+can lock that login for 15 minutes by entering wrong passwords.
+
+Passwords are capped at **72 bytes** when set (`set-password`): bcrypt ignores
+everything after 72 bytes, and very long input is a cheap way to load the server.
+
 ## Injection & output safety
 
 - React escapes all interpolated values in the kiosk/shop/admin pages.
@@ -282,6 +291,9 @@ default for them, so a missed spot fails to compile. Migration
 `20261115120000_secure_tokens_and_role_emails` replaced every existing token with a
 random value: all staff logins and kiosk carts ended, and unused invite / card-link
 emails stopped working (send a new one with "Resend").
+
+**Pen-test checklist #11 and #2:** login now also has a per-account limit on wrong
+passwords, and set-password refuses passwords over 72 bytes (see Rate limiting).
 
 ## Audit checklist
 

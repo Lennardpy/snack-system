@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { rateLimit, clientIp, failuresExceeded, recordFailure, clearFailures } from "@/lib/rate-limit";
 import { createSession, setSessionCookie, canUseSite, homePath } from "@/lib/auth";
 import { siteForHost } from "@/lib/site";
+
+// Per account (email): at most this many wrong passwords per window, from any IP
+// — so many IPs (a botnet) can't keep guessing one account's password.
+const ACCOUNT_FAILS = 10;
+const ACCOUNT_WINDOW_MS = 15 * 60 * 1000;
 
 export async function POST(req: NextRequest) {
   // Throttle login attempts per IP to slow password brute-forcing.
@@ -15,6 +20,13 @@ export async function POST(req: NextRequest) {
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
   const password = typeof body.password === "string" ? body.password : "";
   if (!email || !password) return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+  const accountKey = `login-fail:${email}`;
+  if (failuresExceeded(accountKey, ACCOUNT_FAILS)) {
+    return NextResponse.json(
+      { error: "Too many wrong passwords for this account. Try again in 15 minutes." },
+      { status: 429 }
+    );
+  }
 
   // One email can have an admin and a bartender account (each with its own
   // password): sign in to the one whose password this is. If it's both, the one
@@ -25,8 +37,10 @@ export async function POST(req: NextRequest) {
   const matching = [];
   for (const a of accounts) if (await bcrypt.compare(password, a.passwordHash)) matching.push(a);
   if (matching.length === 0) {
+    recordFailure(accountKey, ACCOUNT_WINDOW_MS);
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
+  clearFailures(accountKey);
   const user =
     matching.find((a) => a.role === "ADMIN" && canUseSite(a, site)) ??
     matching.find((a) => canUseSite(a, site)) ??
